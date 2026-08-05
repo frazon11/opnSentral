@@ -1,22 +1,64 @@
-# opnCentral
+# opnSentral
 
-> **This project has moved to [opnSentral](https://github.com/frazon11/opnSentral).**
->
-> This repository is retained for existing installations, release history and compatibility. New development, issues and releases continue under **opnSentral**.
+Self-hosted central management for multiple OPNsense firewalls.
 
-## New project
+opnSentral is the actively maintained successor to **opnCentral**. New development, issues and releases belong in this repository.
 
-- GitHub: `https://github.com/frazon11/opnSentral`
-- GHCR: `ghcr.io/frazon11/opnsentral`
-- Docker Hub: `docker.io/frazon11/opnsentral`
+## Main features
 
-Existing opnCentral installations can continue using their current image and persistent data. Migration instructions will be maintained in the new repository.
+- Central firewall status and firmware information
+- Encrypted OPNsense API credential storage
+- Configuration backup history and one-click backups
+- Automatic backups before managed changes
+- Central alias and category management
+- WireGuard and OpenVPN management
+- IDS/IPS administration, rulesets and policy deployment
+- Plug-in and firmware management
+- Email notifications
+- Light and dark themes
+- English, German, French and Dutch interface
+- Self-backup and restore
+- AMD64 and ARM64 Docker images
 
-## Legacy project
+## Container images
 
-opnCentral is a self-hosted central management interface for multiple OPNsense firewalls.
+```text
+ghcr.io/frazon11/opnsentral
+docker.io/frazon11/opnsentral
+```
 
-The existing documentation, source history and releases remain available in this repository.
+## Quick start
+
+```bash
+cp .env.example .env
+openssl rand -hex 32
+```
+
+Add the generated value as `APP_KEY` in `.env`, set the administrator password, then start the application:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Default web address:
+
+```text
+http://DOCKER-HOST:8788
+```
+
+## Persistent data
+
+```text
+/var/www/data
+/var/www/backups
+```
+
+Keep the existing `APP_KEY` when migrating from opnCentral. Changing it makes stored OPNsense API credentials unreadable.
+
+## Project history
+
+The previous project is retained at [frazon11/opnCentral](https://github.com/frazon11/opnCentral) for compatibility and historical releases.
 
 ## License
 
