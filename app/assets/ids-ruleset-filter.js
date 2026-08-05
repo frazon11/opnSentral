@@ -37,24 +37,49 @@
         if(!controls || !textFilter || !rulesetSelect) return false;
         if(document.getElementById('ids-ruleset-preset-filter')) return true;
 
+        controls.querySelectorAll('[data-preset]:not([data-preset="clear"])').forEach(function(button){
+            button.remove();
+        });
+
+        const toolbar = document.createElement('div');
+        toolbar.className = 'ids-ruleset-filter-toolbar';
+        toolbar.style.display = 'flex';
+        toolbar.style.alignItems = 'end';
+        toolbar.style.gap = '8px';
+        toolbar.style.flexWrap = 'wrap';
+
         const presetLabel = document.createElement('label');
         presetLabel.textContent = 'Filter rulesets';
+        presetLabel.style.margin = '0';
+        presetLabel.style.flex = '0 1 260px';
 
         const presetSelect = document.createElement('select');
         presetSelect.id = 'ids-ruleset-preset-filter';
+        presetSelect.style.width = '100%';
+        presetSelect.style.minWidth = '180px';
         presetSelect.innerHTML =
             '<option value="all">All rulesets</option>' +
             '<option value="high-confidence">High-confidence ET</option>' +
             '<option value="start-blocking">Start-blocking set</option>' +
             '<option value="avoid">Noisy / avoid set</option>';
         presetLabel.appendChild(presetSelect);
+        toolbar.appendChild(presetLabel);
+
+        const clearButton = controls.querySelector('[data-preset="clear"]');
+        if(clearButton){
+            clearButton.classList.add('ids-clear-selection');
+            toolbar.appendChild(clearButton);
+        }
 
         const textLabel = textFilter.closest('label');
+        controls.insertBefore(toolbar, controls.firstChild);
         if(textLabel){
             textLabel.firstChild.textContent = 'Free-text filter';
-            controls.insertBefore(presetLabel, textLabel);
-        }else{
-            controls.insertBefore(presetLabel, controls.firstChild);
+        }
+
+        const oldActions = controls.querySelector('.actions');
+        if(oldActions && !oldActions.children.length){
+            oldActions.remove();
         }
 
         function applyCombinedFilter(){
