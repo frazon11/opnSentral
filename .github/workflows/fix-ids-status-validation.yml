@@ -1,0 +1,44 @@
+name: Fix IDS status validation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/fix-ids-status-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Accept OPNsense numeric success status
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/intrusion_detection_action.php')
+          text = path.read_text(encoding='utf-8')
+          old = "['ok', 'saved', 'success', 'done']"
+          new = "['1', 'true', 'ok', 'saved', 'success', 'done']"
+          if old not in text:
+              raise SystemExit('Expected validator list not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/intrusion_detection_action.php
+          git commit -m "Accept OPNsense status 1 as success"
+          git push
