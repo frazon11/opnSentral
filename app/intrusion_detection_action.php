@@ -54,7 +54,7 @@ function ids_response_assert_success(array $response, string $operation): void
             continue;
         }
         $value = strtolower(trim((string) $response[$key]));
-        if ($value !== '' && !in_array($value, ['ok', 'saved', 'success', 'done'], true)) {
+        if ($value !== '' && !in_array($value, ['1', 'true', 'ok', 'saved', 'success', 'done'], true)) {
             throw new RuntimeException(
                 'OPNsense rejected ' . $operation . ': ' .
                 json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
