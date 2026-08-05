@@ -13,6 +13,8 @@
 <script src="/assets/ids-policy-editor.js?v=061113"></script>
 <script>
 (function(){
+    document.title = 'opnSentral';
+
     const version = document.querySelector('.sidebar-meta span:first-child');
     if(version){
         version.textContent = 'v0.6.11.13';
