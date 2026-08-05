@@ -64,8 +64,8 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: |
-            ghcr.io/frazon11/opncentral
-            docker.io/frazon11/opncentral
+            ghcr.io/frazon11/opnsentral
+            docker.io/frazon11/opnsentral
           tags: |
             type=match,pattern=v(.*),group=1
             type=raw,value=latest
