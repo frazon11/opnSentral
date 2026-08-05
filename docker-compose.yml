@@ -31,8 +31,8 @@ services:
       TELEMETRY_WRITE_TOKEN: ${TELEMETRY_WRITE_TOKEN:-}
 
     volumes:
-      - /volume1/docker/opncentral/data:/var/www/data
-      - /volume1/docker/opncentral/backups:/var/www/backups
+      - ${BASE_PATH}/data:/var/www/data
+      - ${BASE_PATH}/backups:/var/www/backups
 
     healthcheck:
       test:
