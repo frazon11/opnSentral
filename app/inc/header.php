@@ -32,7 +32,7 @@ function nav_active(array $paths): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>opnCentral</title>
+<title>opnSentral</title>
 <link rel="icon" href="/assets/favicon.ico?v=06111" sizes="any">
 <link rel="icon" type="image/svg+xml" href="/assets/opncentral-icon.svg?v=06111">
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png?v=06111">
