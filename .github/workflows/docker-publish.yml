@@ -70,6 +70,7 @@ jobs:
             docker.io/frazon11/opnsentral
           tags: |
             type=match,pattern=v(.*),group=1
+            type=raw,value=0.6.11.14,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=latest
             type=sha,prefix=sha-
 
