@@ -1,0 +1,48 @@
+name: Replace legacy project name
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/rename-opncentral-to-opnsentral.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rename:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Replace legacy names
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git ls-files -z | while IFS= read -r -d '' file; do
+            if grep -Iq . "$file"; then
+              perl -0pi -e 's/opnCentral/opnSentral/g; s/OpnCentral/OpnSentral/g; s/opncentral/opnsentral/g' "$file"
+            fi
+          done
+
+          # Persistent host path is configured in .env and consumed by Compose.
+          grep -q '^BASE_PATH=' .env.example
+          grep -q '\${BASE_PATH}/data:/var/www/data' docker-compose.yml
+          grep -q '\${BASE_PATH}/backups:/var/www/backups' docker-compose.yml
+
+          if git diff --quiet; then
+            echo "No legacy project-name references remain."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Rename project references to opnSentral"
+          git push
