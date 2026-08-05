@@ -31,6 +31,103 @@ function ids_set_recursive(array &$node, array $keys, string $value): bool
     return false;
 }
 
+function ids_find_recursive(array $node, array $keys): mixed
+{
+    foreach ($node as $key => $child) {
+        if (in_array(strtolower((string) $key), $keys, true)) {
+            return $child;
+        }
+        if (is_array($child)) {
+            $found = ids_find_recursive($child, $keys);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+    }
+    return null;
+}
+
+function ids_response_assert_success(array $response, string $operation): void
+{
+    foreach (['result', 'status'] as $key) {
+        if (!array_key_exists($key, $response)) {
+            continue;
+        }
+        $value = strtolower(trim((string) $response[$key]));
+        if ($value !== '' && !in_array($value, ['ok', 'saved', 'success', 'done'], true)) {
+            throw new RuntimeException(
+                'OPNsense rejected ' . $operation . ': ' .
+                json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+            );
+        }
+    }
+
+    if (($response['error'] ?? '') !== '') {
+        throw new RuntimeException(
+            'OPNsense rejected ' . $operation . ': ' . (string) $response['error']
+        );
+    }
+}
+
+function ids_ruleset_rows(array $response): array
+{
+    if (isset($response['rows']) && is_array($response['rows'])) {
+        return $response['rows'];
+    }
+    foreach (['rulesets', 'items', 'data'] as $key) {
+        if (!isset($response[$key]) || !is_array($response[$key])) {
+            continue;
+        }
+        if (array_is_list($response[$key])) {
+            return $response[$key];
+        }
+        $rows = [];
+        foreach ($response[$key] as $id => $item) {
+            $rows[] = is_array($item)
+                ? ['id' => (string) $id] + $item
+                : ['id' => (string) $id, 'value' => $item];
+        }
+        return $rows;
+    }
+    return [];
+}
+
+function ids_ruleset_enabled(array $firewall, string $filename): ?string
+{
+    try {
+        $response = opn_raw_request(
+            $firewall,
+            'ids/settings/get_ruleset/' . rawurlencode($filename),
+            'GET',
+            null,
+            20
+        );
+        $enabled = ids_find_recursive($response, ['enabled']);
+        if ($enabled !== null) {
+            return ids_bool($enabled);
+        }
+    } catch (Throwable) {
+        // Fall back to the full ruleset list below.
+    }
+
+    $response = opn_raw_request($firewall, 'ids/settings/list_rulesets', 'GET', null, 20);
+    foreach (ids_ruleset_rows($response) as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $candidate = trim((string) (
+            $row['filename'] ?? $row['id'] ?? $row['name'] ?? $row['ruleset'] ?? ''
+        ));
+        if ($candidate !== $filename) {
+            continue;
+        }
+        $enabled = ids_find_recursive($row, ['enabled']);
+        return $enabled === null ? null : ids_bool($enabled);
+    }
+
+    return null;
+}
+
 function ids_selected_firewalls(array $ids): array
 {
     if ($ids === []) {
@@ -89,8 +186,14 @@ try {
                     }
                 }
 
-                opn_raw_request($firewall, 'ids/settings/set', 'POST', $settings, 20);
-                opn_raw_request($firewall, 'ids/service/reconfigure', 'POST', [], 45);
+                ids_response_assert_success(
+                    opn_raw_request($firewall, 'ids/settings/set', 'POST', $settings, 20),
+                    'IDS settings update'
+                );
+                ids_response_assert_success(
+                    opn_raw_request($firewall, 'ids/service/reconfigure', 'POST', [], 45),
+                    'IDS reconfiguration'
+                );
                 $entry['message'] = $enabled === '1'
                     ? 'IDS configuration enabled and applied.'
                     : 'IDS configuration disabled and applied.';
@@ -102,17 +205,59 @@ try {
                 if ($rulesets === []) {
                     throw new RuntimeException('Select at least one ruleset.');
                 }
+
                 $enabled = ids_bool($_POST['enabled'] ?? '0');
-                $filenames = implode(',', $rulesets);
-                opn_raw_request(
-                    $firewall,
-                    'ids/settings/toggle_ruleset/' . rawurlencode($filenames) . '/' . $enabled,
-                    'POST', [], 30
-                );
-                opn_raw_request($firewall, 'ids/service/reload_rules', 'POST', [], 45);
-                $entry['message'] = count($rulesets) . ' ruleset(s) updated and reloaded.';
+                $verified = [];
+                $failed = [];
+
+                foreach ($rulesets as $ruleset) {
+                    try {
+                        $response = opn_raw_request(
+                            $firewall,
+                            'ids/settings/toggle_ruleset/' . rawurlencode($ruleset) . '/' . $enabled,
+                            'POST',
+                            [],
+                            30
+                        );
+                        ids_response_assert_success($response, 'ruleset toggle for ' . $ruleset);
+
+                        $actual = ids_ruleset_enabled($firewall, $ruleset);
+                        if ($actual === null) {
+                            throw new RuntimeException('OPNsense did not return an enabled state after the change.');
+                        }
+                        if ($actual !== $enabled) {
+                            throw new RuntimeException(
+                                'Read-back verification failed; expected enabled=' . $enabled .
+                                ', received enabled=' . $actual . '.'
+                            );
+                        }
+                        $verified[] = $ruleset;
+                    } catch (Throwable $exception) {
+                        $failed[] = $ruleset . ': ' . $exception->getMessage();
+                    }
+                }
+
+                if ($verified !== []) {
+                    ids_response_assert_success(
+                        opn_raw_request($firewall, 'ids/service/reload_rules', 'POST', [], 60),
+                        'IDS rules reload'
+                    );
+                }
+
+                if ($failed !== []) {
+                    throw new RuntimeException(
+                        count($verified) . ' verified, ' . count($failed) . ' failed. ' .
+                        implode(' | ', $failed)
+                    );
+                }
+
+                $entry['message'] = count($verified) .
+                    ' ruleset(s) changed, verified and reloaded.';
             } elseif ($action === 'update_rules') {
-                opn_raw_request($firewall, 'ids/service/update_rules/1', 'POST', [], 180);
+                ids_response_assert_success(
+                    opn_raw_request($firewall, 'ids/service/update_rules/1', 'POST', [], 180),
+                    'rules download and reload'
+                );
                 $entry['message'] = 'Rules downloaded and reloaded.';
             } elseif ($action === 'deploy_policy') {
                 $description = trim((string) ($_POST['description'] ?? ''));
@@ -141,17 +286,26 @@ try {
                 ];
                 if ($uuid === '') {
                     $response = opn_raw_request($firewall, 'ids/settings/add_policy', 'POST', $payload, 30);
+                    ids_response_assert_success($response, 'policy creation');
                     $createdUuid = trim((string) ($response['uuid'] ?? ''));
                     $entry['message'] = 'Policy created' . ($createdUuid !== '' ? ' (' . $createdUuid . ')' : '') . ' and applied.';
                 } else {
-                    opn_raw_request(
-                        $firewall,
-                        'ids/settings/set_policy/' . rawurlencode($uuid),
-                        'POST', $payload, 30
+                    ids_response_assert_success(
+                        opn_raw_request(
+                            $firewall,
+                            'ids/settings/set_policy/' . rawurlencode($uuid),
+                            'POST',
+                            $payload,
+                            30
+                        ),
+                        'policy update'
                     );
                     $entry['message'] = 'Policy updated and applied.';
                 }
-                opn_raw_request($firewall, 'ids/service/reconfigure', 'POST', [], 60);
+                ids_response_assert_success(
+                    opn_raw_request($firewall, 'ids/service/reconfigure', 'POST', [], 60),
+                    'IDS policy reconfiguration'
+                );
             } else {
                 throw new RuntimeException('Unknown IDS action.');
             }
