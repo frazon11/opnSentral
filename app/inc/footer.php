@@ -17,7 +17,7 @@
 
     const version = document.querySelector('.sidebar-meta span:first-child');
     if(version){
-        version.textContent = 'v0.6.11.13';
+        version.textContent = 'v0.6.11.14';
     }
 })();
 </script>
