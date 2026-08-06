@@ -93,3 +93,5 @@ jobs:
           fi
           git commit -m 'Render System and GeoIP menus statically'
           git push
+
+# Triggered after workflow installation.
