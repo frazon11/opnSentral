@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-const OPNCENTRAL_VERSION = '0.6.11.13';
-const OPNCENTRAL_GITHUB_REPOSITORY = 'frazon11/opnCentral';
+const OPNCENTRAL_VERSION = '0.6.11.14';
+const OPNCENTRAL_GITHUB_REPOSITORY = 'frazon11/opnSentral';
 const OPNCENTRAL_UPDATE_INTERVAL = 86400;
 
 function update_check_path(): string
@@ -106,7 +106,7 @@ function update_check_run(bool $force = false): array
         CURLOPT_HTTPHEADER => [
             'Accept: application/vnd.github+json',
             'X-GitHub-Api-Version: 2022-11-28',
-            'User-Agent: opnCentral/' . OPNCENTRAL_VERSION,
+            'User-Agent: opnSentral/' . OPNCENTRAL_VERSION,
         ],
     ]);
     $body = curl_exec($curl);
