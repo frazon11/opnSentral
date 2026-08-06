@@ -10,12 +10,70 @@
 
     nav.dataset.opnSidebarReady = '1';
 
+    const aliasLink = nav.querySelector('a[href="/alias_overview.php"]');
+    if(aliasLink && !nav.querySelector('a[href="/geoip_settings.php"]')){
+        const geoIpLink = document.createElement('a');
+        geoIpLink.href = '/geoip_settings.php';
+        geoIpLink.innerHTML = '◉ <span>GeoIP Settings</span>';
+        if(location.pathname === '/geoip_settings.php'){
+            geoIpLink.classList.add('active');
+        }
+        aliasLink.insertAdjacentElement('afterend', geoIpLink);
+    }
+
+    const settingsLink = nav.querySelector('a[href="/settings.php"]');
+    const settingsGroup = settingsLink?.previousElementSibling;
+    if(settingsGroup && !nav.querySelector('a[href="/system_firmware_status.php"]')){
+        const systemGroup = document.createElement('div');
+        systemGroup.className = 'nav-group';
+        systemGroup.textContent = 'System';
+
+        const configurationLabel = document.createElement('div');
+        configurationLabel.className = 'nav-section-label';
+        configurationLabel.textContent = 'Configuration';
+
+        const backupLink = document.createElement('a');
+        backupLink.className = 'nav-child';
+        backupLink.href = '/backups.php';
+        backupLink.innerHTML = '<span>Backup</span>';
+
+        const firmwareLabel = document.createElement('div');
+        firmwareLabel.className = 'nav-section-label';
+        firmwareLabel.textContent = 'Firmware';
+
+        const statusLink = document.createElement('a');
+        statusLink.className = 'nav-child';
+        statusLink.href = '/system_firmware_status.php';
+        statusLink.innerHTML = '<span>Status</span>';
+
+        const pluginsLink = document.createElement('a');
+        pluginsLink.className = 'nav-child';
+        pluginsLink.href = '/plugins.php';
+        pluginsLink.innerHTML = '<span>Plugins</span>';
+
+        [backupLink, statusLink, pluginsLink].forEach(function(link){
+            if(link.getAttribute('href') === location.pathname){
+                link.classList.add('active');
+            }
+        });
+
+        settingsGroup.before(
+            systemGroup,
+            configurationLabel,
+            backupLink,
+            firmwareLabel,
+            statusLink,
+            pluginsLink
+        );
+    }
+
     const storageCollapse = 'opncentral-sidebar-collapsed';
     const storageGroups = 'opncentral-sidebar-groups-v1';
     const icons = {
         Firewalls:'▦',
         VPN:'◉',
         Actions:'⚙',
+        System:'⚙',
         Settings:'≡'
     };
 
