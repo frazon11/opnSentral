@@ -44,9 +44,56 @@ try {
     }
 
     if ($action === 'firmware_audit') {
-        $value = opn_request($firewall, 'core/firmware/audit', 'POST', [], 180);
+        $auditType = (string)($_POST['audit_type'] ?? '');
+        $auditEndpoints = [
+            'security' => 'core/firmware/audit',
+            'health' => 'core/firmware/health',
+            'connectivity' => 'core/firmware/connection',
+            'cleanup' => 'core/firmware/cleanup',
+        ];
+
+        if ($auditType === 'upgrade_log') {
+            $value = opn_request($firewall, 'core/firmware/log/0', 'POST', [], 60);
+            while (ob_get_level() > 0) ob_end_clean();
+            echo json_encode([
+                'ok' => true,
+                'audit_type' => $auditType,
+                'status' => 'done',
+                'log' => (string)($value['log'] ?? 'No upgrade log is available.'),
+                'value' => $value,
+            ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+            exit;
+        }
+
+        if (!isset($auditEndpoints[$auditType])) {
+            throw new RuntimeException('Unsupported firmware audit type.');
+        }
+
+        $value = opn_request($firewall, $auditEndpoints[$auditType], 'POST', [], 30);
+        if (($value['status'] ?? '') !== 'ok') {
+            throw new RuntimeException('OPNsense rejected the audit request.');
+        }
+
         while (ob_get_level() > 0) ob_end_clean();
-        echo json_encode(['ok' => true, 'value' => $value, 'message' => 'Firmware audit completed.'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        echo json_encode([
+            'ok' => true,
+            'audit_type' => $auditType,
+            'status' => 'running',
+            'msg_uuid' => (string)($value['msg_uuid'] ?? ''),
+            'value' => $value,
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        exit;
+    }
+
+    if ($action === 'firmware_audit_status') {
+        $value = opn_request($firewall, 'core/firmware/upgradestatus', 'GET', [], 30);
+        while (ob_get_level() > 0) ob_end_clean();
+        echo json_encode([
+            'ok' => true,
+            'status' => (string)($value['status'] ?? 'running'),
+            'log' => (string)($value['log'] ?? ''),
+            'value' => $value,
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
         exit;
     }
 
