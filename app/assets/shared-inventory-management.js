@@ -59,7 +59,7 @@ window.opnSentralSharedInventory = function(options){
                 <div id="shared-inventory-result"></div>
                 <div class="table-wrap">
                     <table class="management-table">
-                        <thead><tr><th>Name</th><th>Presence</th><th>Firewalls</th><th>Rename</th></tr></thead>
+                        <thead><tr><th>Name</th><th>Presence</th><th>Firewalls</th><th>Actions</th></tr></thead>
                         <tbody id="shared-inventory-body"></tbody>
                     </table>
                 </div>
@@ -81,19 +81,39 @@ window.opnSentralSharedInventory = function(options){
                             : '<span class="badge warning-status">' + entry.firewalls.length + ' / ' + firewallCount + '</span>'}</td>
                         <td>${esc(names)}</td>
                         <td>
-                            <div class="management-row-actions">
-                                <input class="shared-new-name" type="text" value="${esc(entry.name)}" style="min-width:180px">
-                                <select class="shared-scope">
-                                    <option value="all-matching">All matching</option>
-                                    ${entry.firewalls.map(fw=>'<option value="'+Number(fw.id)+'">'+esc(fw.name)+'</option>').join('')}
+                            <button type="button" class="button secondary shared-edit">Edit</button>
+                            <div class="management-row-actions shared-editor" hidden style="margin-top:8px">
+                                <input class="shared-new-name" type="text" value="${esc(entry.name)}" style="min-width:180px" aria-label="New name">
+                                <select class="shared-scope" aria-label="Apply to">
+                                    <option value="all-matching">All matching firewalls</option>
+                                    ${entry.firewalls.map(fw=>'<option value="'+Number(fw.id)+'">Only '+esc(fw.name)+'</option>').join('')}
                                 </select>
-                                <button type="button" class="button shared-rename">Rename</button>
+                                <button type="button" class="button shared-save">Save rename</button>
+                                <button type="button" class="button secondary shared-cancel">Cancel</button>
                             </div>
                         </td>
                     </tr>`;
             }).join('') : '<tr><td colspan="4">No matching entries.</td></tr>';
 
-            body.querySelectorAll('.shared-rename').forEach(function(button){
+            body.querySelectorAll('.shared-edit').forEach(function(button){
+                button.addEventListener('click', function(){
+                    const row = button.closest('tr');
+                    row.querySelector('.shared-editor').hidden = false;
+                    button.hidden = true;
+                    row.querySelector('.shared-new-name').focus();
+                });
+            });
+
+            body.querySelectorAll('.shared-cancel').forEach(function(button){
+                button.addEventListener('click', function(){
+                    const row = button.closest('tr');
+                    row.querySelector('.shared-new-name').value = row.dataset.name;
+                    row.querySelector('.shared-editor').hidden = true;
+                    row.querySelector('.shared-edit').hidden = false;
+                });
+            });
+
+            body.querySelectorAll('.shared-save').forEach(function(button){
                 button.addEventListener('click', async function(){
                     const row = button.closest('tr');
                     const oldName = row.dataset.name;
@@ -103,7 +123,14 @@ window.opnSentralSharedInventory = function(options){
                     const ids = scope === 'all-matching'
                         ? entry.firewalls.map(fw=>fw.id)
                         : [Number(scope)];
-                    if(!newName || newName===oldName) return;
+                    if(!newName){
+                        result.innerHTML = '<div class="alert error">The new name must not be empty.</div>';
+                        return;
+                    }
+                    if(newName===oldName){
+                        result.innerHTML = '<div class="alert">The name has not changed.</div>';
+                        return;
+                    }
                     if(!window.confirm('Rename "'+oldName+'" to "'+newName+'" on '+ids.length+' firewall(s)?')) return;
 
                     button.disabled = true;
