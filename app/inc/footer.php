@@ -12,6 +12,7 @@
 <script src="/assets/ids-ruleset-filter.js?v=06200"></script>
 <script src="/assets/ids-policy-editor.js?v=06200"></script>
 <script src="/assets/shared-inventory-management.js?v=06200"></script>
+<script src="/assets/category-edit-links.js?v=06200"></script>
 <script>
 (function(){
     document.title = 'opnSentral';
