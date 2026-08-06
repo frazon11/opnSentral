@@ -1,25 +1,36 @@
 </main>
 <?php if (logged_in()): ?></div><?php endif; ?>
 <footer class="app-footer"><?= h(t('footer')) ?></footer>
-<link rel="stylesheet" href="/assets/topbar-controls.css?v=06201">
-<link rel="stylesheet" href="/assets/sidebar-opnsense.css?v=06201">
-<link rel="stylesheet" href="/assets/sidebar-submenus.css?v=06201">
-<link rel="stylesheet" href="/assets/ids-bulk-actions.css?v=06201">
-<script src="/assets/ids-menu.js?v=06201"></script>
-<script src="/assets/sidebar-opnsense.js?v=06201"></script>
-<script src="/assets/ids-write-label.js?v=06201"></script>
-<script src="/assets/ids-bulk-actions.js?v=06201"></script>
-<script src="/assets/ids-ruleset-filter.js?v=06201"></script>
-<script src="/assets/ids-policy-editor.js?v=06201"></script>
-<script src="/assets/shared-inventory-management.js?v=06201"></script>
-<script src="/assets/category-edit-links.js?v=06201"></script>
+<link rel="stylesheet" href="/assets/topbar-controls.css?v=06202">
+<link rel="stylesheet" href="/assets/sidebar-opnsense.css?v=06202">
+<link rel="stylesheet" href="/assets/sidebar-submenus.css?v=06202">
+<link rel="stylesheet" href="/assets/ids-bulk-actions.css?v=06202">
+<script src="/assets/ids-menu.js?v=06202"></script>
+<script src="/assets/sidebar-opnsense.js?v=06202"></script>
+<script src="/assets/ids-write-label.js?v=06202"></script>
+<script src="/assets/ids-bulk-actions.js?v=06202"></script>
+<script src="/assets/ids-ruleset-filter.js?v=06202"></script>
+<script src="/assets/ids-policy-editor.js?v=06202"></script>
+<script src="/assets/shared-inventory-management.js?v=06202"></script>
+<script src="/assets/category-edit-links.js?v=06202"></script>
 <script>
 (function(){
     document.title = 'opnSentral';
 
     const version = document.querySelector('.sidebar-meta span:first-child');
     if(version){
-        version.textContent = 'v0.6.20.1';
+        version.textContent = 'v0.6.20.2';
+    }
+
+    const aliasLink = document.querySelector('.side-nav a[href="/alias_overview.php"]');
+    if(aliasLink && !document.querySelector('.side-nav a[href="/geoip_settings.php"]')){
+        const geoIpLink = document.createElement('a');
+        geoIpLink.href = '/geoip_settings.php';
+        geoIpLink.innerHTML = '◉ <span>GeoIP Settings</span>';
+        if(location.pathname === '/geoip_settings.php'){
+            geoIpLink.classList.add('active');
+        }
+        aliasLink.insertAdjacentElement('afterend', geoIpLink);
     }
 
     const path = location.pathname;
