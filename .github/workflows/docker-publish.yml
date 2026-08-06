@@ -61,7 +61,7 @@ jobs:
             docker.io/frazon11/opnsentral
           tags: |
             type=match,pattern=v(.*),group=1
-            type=raw,value=0.6.20.3
+            type=raw,value=0.6.20.4
             type=raw,value=latest
             type=sha,prefix=sha-
 
