@@ -2,167 +2,79 @@
 
 declare(strict_types=1);
 
-/*
- * JSON endpoints must never mix PHP warning/fatal HTML with JSON.
- */
 ini_set('display_errors', '0');
 ini_set('html_errors', '0');
 ob_start();
 
 register_shutdown_function(static function (): void {
     $error = error_get_last();
-
-    if ($error === null || !in_array(
-        $error['type'],
-        [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR],
-        true
-    )) {
+    if ($error === null || !in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) {
         return;
     }
-
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-
+    while (ob_get_level() > 0) ob_end_clean();
     if (!headers_sent()) {
         http_response_code(500);
         header('Content-Type: application/json; charset=utf-8');
         header('Cache-Control: no-store, no-cache, must-revalidate');
     }
-
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-
-    echo json_encode(
-        [
-            'ok' => false,
-            'error' => 'PHP fatal error: ' . $error['message'],
-        ],
-        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-    );
+    echo json_encode(['ok' => false, 'error' => 'PHP fatal error: ' . $error['message']], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 });
 
 require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/opnsense.php';
 require_once __DIR__ . '/inc/firmware.php';
 require_once __DIR__ . '/inc/backups.php';
-
 require_login();
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate');
 
 try {
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        throw new RuntimeException('POST required.');
-    }
-
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') throw new RuntimeException('POST required.');
     require_csrf();
-
-    $id = (int) ($_POST['id'] ?? 0);
-    $action = (string) ($_POST['action'] ?? '');
+    $id = (int)($_POST['id'] ?? 0);
+    $action = (string)($_POST['action'] ?? '');
     $firewall = firewall_by_id($id);
 
     if ($action === 'firmware_check') {
-        $value = opn_request(
-            $firewall,
-            'core/firmware/status',
-            'POST',
-            [],
-            120
-        );
-
-        while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-
-    echo json_encode(
-            [
-                'ok' => true,
-                'value' => $value,
-                'summary' => normalize_firmware_status($value),
-            ],
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
-        );
+        $value = opn_request($firewall, 'core/firmware/status', 'POST', [], 120);
+        while (ob_get_level() > 0) ob_end_clean();
+        echo json_encode(['ok' => true, 'value' => $value, 'summary' => normalize_firmware_status($value)], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
         exit;
     }
 
-    if (!in_array($action, ['firmware_update', 'firmware_upgrade'], true)) {
-        throw new RuntimeException('Unsupported action.');
+    if ($action === 'firmware_audit') {
+        $value = opn_request($firewall, 'core/firmware/audit', 'POST', [], 180);
+        while (ob_get_level() > 0) ob_end_clean();
+        echo json_encode(['ok' => true, 'value' => $value, 'message' => 'Firmware audit completed.'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        exit;
     }
 
+    if (!in_array($action, ['firmware_update', 'firmware_upgrade'], true)) throw new RuntimeException('Unsupported action.');
     require_configuration_unlocked();
 
-    /*
-     * Refuse an update/upgrade command unless the current checked
-     * firmware status explicitly offers that exact action.
-     */
-    $statusValue = opn_request(
-        $firewall,
-        'core/firmware/status',
-        'GET',
-        [],
-        20
-    );
-
+    $statusValue = opn_request($firewall, 'core/firmware/status', 'GET', [], 20);
     $summary = normalize_firmware_status($statusValue);
-
     if ($summary['action'] !== $action || !$summary['update_available']) {
-        throw new RuntimeException(
-            'OPNsense does not currently offer this firmware action. ' .
-            'Run Check for updates first.'
-        );
+        throw new RuntimeException('OPNsense does not currently offer this firmware action. Run Check for updates first.');
     }
 
-    $endpoint = $action === 'firmware_upgrade'
-        ? 'core/firmware/upgrade'
-        : 'core/firmware/update';
-
-    $backup = backup_before_change($firewall, $action);
-
-    $value = opn_request(
-        $firewall,
-        $endpoint,
-        'POST',
-        [],
-        30
-    );
-
+    $endpoint = $action === 'firmware_upgrade' ? 'core/firmware/upgrade' : 'core/firmware/update';
+    backup_before_change($firewall, $action);
+    $value = opn_request($firewall, $endpoint, 'POST', [], 30);
     if (($value['status'] ?? '') !== 'ok') {
-        throw new RuntimeException(
-            'OPNsense rejected the firmware command: ' .
-            json_encode($value, JSON_UNESCAPED_SLASHES)
-        );
+        throw new RuntimeException('OPNsense rejected the firmware command: ' . json_encode($value, JSON_UNESCAPED_SLASHES));
     }
 
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-
-    echo json_encode(
-        [
-            'ok' => true,
-            'value' => $value,
-            'action' => $action,
-            'message' => $action === 'firmware_upgrade'
-                ? 'Major firmware upgrade started.'
-                : 'Firmware update started.',
-        ],
-        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
-    );
+    while (ob_get_level() > 0) ob_end_clean();
+    echo json_encode([
+        'ok' => true,
+        'value' => $value,
+        'action' => $action,
+        'message' => $action === 'firmware_upgrade' ? 'Major firmware upgrade started.' : 'Firmware update started.',
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 } catch (Throwable $exception) {
     http_response_code(500);
-
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-
-    echo json_encode(
-        [
-            'ok' => false,
-            'error' => $exception->getMessage(),
-        ],
-        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-    );
+    while (ob_get_level() > 0) ob_end_clean();
+    echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 }
