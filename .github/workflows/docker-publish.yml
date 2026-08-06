@@ -33,7 +33,6 @@ jobs:
             echo "::error::DOCKERHUB_USERNAME is missing"
             exit 1
           }
-
           test -n "$DOCKERHUB_TOKEN" || {
             echo "::error::DOCKERHUB_TOKEN is missing"
             exit 1
@@ -42,16 +41,8 @@ jobs:
       - name: Verify Docker build context
         shell: bash
         run: |
-          test -f Dockerfile || {
-            echo "::error::Dockerfile is missing from repository root"
-            exit 1
-          }
-
-          test -d app || {
-            echo "::error::app directory is missing from repository root"
-            exit 1
-          }
-
+          test -f Dockerfile || { echo "::error::Dockerfile is missing from repository root"; exit 1; }
+          test -d app || { echo "::error::app directory is missing from repository root"; exit 1; }
           echo "Building commit: $GITHUB_SHA"
           echo "Triggered by ref: $GITHUB_REF"
 
@@ -70,14 +61,13 @@ jobs:
             docker.io/frazon11/opnsentral
           tags: |
             type=match,pattern=v(.*),group=1
-            type=raw,value=0.6.20.2
+            type=raw,value=0.6.20.3
             type=raw,value=latest
             type=sha,prefix=sha-
 
       - name: Show generated image tags
         shell: bash
-        run: |
-          echo '${{ steps.meta.outputs.tags }}'
+        run: echo '${{ steps.meta.outputs.tags }}'
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v4
