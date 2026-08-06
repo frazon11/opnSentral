@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   fix-menu:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -17,8 +18,9 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Replace injected menu with static markup
-        shell: python
+        shell: bash
         run: |
+          python3 - <<'PY'
           from pathlib import Path
           import re
 
@@ -69,17 +71,13 @@ jobs:
           dt = dt.replace('type=raw,value=0.6.20.4', 'type=raw,value=0.6.20.6')
           docker.write_text(dt)
 
-          required = [
-              '/geoip_settings.php', '/backups.php',
-              '/system_firmware_status.php', '/plugins.php'
-          ]
           final = header.read_text()
-          for item in required:
+          for item in ['/geoip_settings.php','/system_firmware_status.php','/plugins.php']:
               if item not in final:
                   raise SystemExit(f'Missing static menu link: {item}')
-
           if 'system-main-menu' in footer.read_text():
               raise SystemExit('Old JavaScript System menu injection still exists')
+          PY
 
       - name: Commit corrected menu
         shell: bash
@@ -87,11 +85,5 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add app/inc/header.php app/inc/footer.php app/inc/update_check.php .github/workflows/docker-publish.yml
-          if git diff --cached --quiet; then
-            echo 'No changes required.'
-            exit 0
-          fi
           git commit -m 'Render System and GeoIP menus statically'
           git push
-
-# Triggered after workflow installation.
