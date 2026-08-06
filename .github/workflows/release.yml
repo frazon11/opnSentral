@@ -1,9 +1,13 @@
-name: Create GitHub release
+name: Publish GitHub release
 
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches:
+      - main
+    paths:
+      - "app/inc/update_check.php"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,14 +15,67 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-
-      - name: Check merge-conflict markers
-        run: sh scripts/check-merge-markers.sh
-
-      - name: Create release
-        uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          fetch-depth: 0
+
+      - name: Read application version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n "s/^const OPNCENTRAL_VERSION = '\([^']*\)';$/\1/p" app/inc/update_check.php)
+          test -n "$VERSION" || {
+            echo "::error::Could not read OPNCENTRAL_VERSION"
+            exit 1
+          }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create version tag when missing
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+          fi
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --title "opnSentral $VERSION" \
+              --latest
+          else
+            gh release create "$TAG" \
+              --title "opnSentral $VERSION" \
+              --generate-notes \
+              --latest
+          fi
+
+      - name: Verify latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          LATEST=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          test "$LATEST" = "$TAG" || {
+            echo "::error::Latest release is $LATEST, expected $TAG"
+            exit 1
+          }
