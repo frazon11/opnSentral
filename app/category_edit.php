@@ -23,9 +23,7 @@ require __DIR__ . '/inc/header.php';
 <section class="card" style="max-width:900px">
     <form id="category-edit-form" class="category-form">
         <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
-        <input type="hidden" name="type" value="categories">
         <input type="hidden" name="old_name" value="<?= h($name) ?>">
-        <input type="hidden" id="category-edit-firewall-id" value="<?= $firewallId ?>">
 
         <label for="category-edit-name">Category name</label>
         <input id="category-edit-name" name="new_name" type="text" required maxlength="255">
@@ -37,7 +35,7 @@ require __DIR__ . '/inc/header.php';
             <input id="category-edit-automatic" name="automatic" type="checkbox" value="1">
             Automatic category
         </label>
-        <p class="muted">Leave this disabled for persistent categories.</p>
+        <p class="muted">Leave this disabled for a persistent category.</p>
 
         <fieldset class="distribution-targets">
             <legend>Apply change to</legend>
@@ -119,7 +117,7 @@ require __DIR__ . '/inc/header.php';
         try{
             const payload = new FormData(form);
             ids.forEach(id => payload.append('firewall_ids[]', String(id)));
-            const response = await fetch('/alias_category_inventory_action.php', {method:'POST',credentials:'same-origin',body:payload});
+            const response = await fetch('/category_edit_action.php', {method:'POST',credentials:'same-origin',body:payload});
             const raw = await response.text();
             let data;
             try{ data = JSON.parse(raw); }catch(error){ throw new Error(raw.slice(0,700)); }
