@@ -54,7 +54,7 @@ require __DIR__ . '/inc/header.php';
     <section class="card wide" id="managed-category-settings">
         <h2>OPNsense managed category</h2>
         <p class="muted">
-            Before opnCentral changes anything on an OPNsense firewall, it
+            Before opnSentral changes anything on an OPNsense firewall, it
             verifies that this persistent category exists and creates it when
             missing. Managed aliases are assigned to this category.
         </p>
@@ -102,7 +102,7 @@ require __DIR__ . '/inc/header.php';
             </label>
 
             <p class="muted">
-                Default: <strong>managed by opnCentral</strong>. Changing the
+                Default: <strong>managed by opnSentral</strong>. Changing the
                 name affects future checks and assignments; existing categories
                 are not renamed automatically.
             </p>
@@ -117,7 +117,7 @@ require __DIR__ . '/inc/header.php';
         <div class="card-head">
             <div>
                 <h2>Updates</h2>
-                <p class="muted">Check GitHub for new published opnCentral releases.</p>
+                <p class="muted">Check GitHub for new published opnSentral releases.</p>
             </div>
             <button type="button" class="button secondary" id="update-check-now">Check now</button>
         </div>
@@ -150,7 +150,7 @@ require __DIR__ . '/inc/header.php';
             <div>
                 <h2>Anonymous installation statistics</h2>
                 <p class="muted">
-                    Optionally report that this opnCentral installation is active.
+                    Optionally report that this opnSentral installation is active.
                 </p>
             </div>
             <button type="button" class="button secondary" id="telemetry-send-now">
@@ -181,7 +181,7 @@ require __DIR__ . '/inc/header.php';
         <div id="telemetry-message" class="card-message"></div>
 
         <p class="muted">
-            Sent: random anonymous installation hash, opnCentral version, CPU
+            Sent: random anonymous installation hash, opnSentral version, CPU
             architecture and platform “docker”.
         </p>
         <p class="muted">
@@ -194,13 +194,13 @@ require __DIR__ . '/inc/header.php';
     <section class="card wide" id="self-backup-settings">
         <h2>Backup &amp; Restore</h2>
         <p class="muted">
-            Back up opnCentral's database, application state and optionally all stored
+            Back up opnSentral's database, application state and optionally all stored
             OPNsense configuration backups.
         </p>
 
         <div class="backup-restore-grid">
             <div class="settings-subpanel">
-                <h3>Create opnCentral backup</h3>
+                <h3>Create opnSentral backup</h3>
                 <form method="post" action="/self_backup_download.php">
                     <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
 
@@ -226,12 +226,12 @@ require __DIR__ . '/inc/header.php';
             </div>
 
             <div class="settings-subpanel">
-                <h3>Restore opnCentral</h3>
+                <h3>Restore opnSentral</h3>
                 <form id="self-restore-form" enctype="multipart/form-data">
                     <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
 
                     <label>
-                        opnCentral backup ZIP
+                        opnSentral backup ZIP
                         <input
                             type="file"
                             name="backup_file"
@@ -242,12 +242,12 @@ require __DIR__ . '/inc/header.php';
 
                     <label class="checkbox">
                         <input type="checkbox" id="restore-confirmation" required>
-                        I understand that current opnCentral data will be replaced
+                        I understand that current opnSentral data will be replaced
                     </label>
 
                     <p class="muted">
                         The archive and every included file are verified first.
-                        opnCentral creates a persistent safety backup before replacing data.
+                        opnSentral creates a persistent safety backup before replacing data.
                     </p>
 
                     <button type="submit" class="danger" id="restore-button">
@@ -284,7 +284,7 @@ require __DIR__ . '/inc/header.php';
     theme.value=currentTheme;
 
     theme?.addEventListener('change',function(){
-        window.opnCentralSetTheme(this.value);
+        window.opnSentralSetTheme(this.value);
     });
 
 
@@ -331,7 +331,7 @@ require __DIR__ . '/inc/header.php';
 
         if(state.comparison==='behind'){
             status.innerHTML='<span class="badge warning">Update available</span>';
-            message.textContent='A newer published opnCentral release is available.';
+            message.textContent='A newer published opnSentral release is available.';
         }else if(state.comparison==='ahead'){
             status.innerHTML='<span class="badge neutral">Ahead of latest release</span>';
             message.textContent=
@@ -423,7 +423,7 @@ require __DIR__ . '/inc/header.php';
         }else if(!result.configured){
             telemetryStatus.innerHTML='<span class="badge bad">Not configured</span>';
             telemetryMessage.textContent=
-                'Set TELEMETRY_URL in the opnCentral container environment.';
+                'Set TELEMETRY_URL in the opnSentral container environment.';
         }else if(state.last_status==='sent'){
             telemetryStatus.innerHTML='<span class="badge good">Sent</span>';
             telemetryMessage.textContent=
@@ -504,12 +504,12 @@ require __DIR__ . '/inc/header.php';
 
         const file=this.elements.backup_file.files[0];
         if(!file){
-            alert('Select an opnCentral backup ZIP.');
+            alert('Select an opnSentral backup ZIP.');
             return;
         }
 
         if(!confirm(
-            'Restore this opnCentral backup now?\n\n'+
+            'Restore this opnSentral backup now?\n\n'+
             'Current application data will be replaced. A safety backup is created first. '+
             'The container must be restarted after the restore.'
         )){
@@ -550,7 +550,7 @@ require __DIR__ . '/inc/header.php';
                 '<strong>Restore completed.</strong><br>'+
                 'Safety backup: '+escapeHtml(result.safety_backup)+'<br>'+
                 'Restored archive version: '+escapeHtml(result.restored_version)+'<br><br>'+
-                '<strong>Restart or recreate the opnCentral container now.</strong>';
+                '<strong>Restart or recreate the opnSentral container now.</strong>';
             restoreForm.reset();
         }catch(error){
             restoreResult.className='alert error';
