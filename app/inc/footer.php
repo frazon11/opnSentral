@@ -11,6 +11,7 @@
 <script src="/assets/ids-bulk-actions.js?v=06119"></script>
 <script src="/assets/ids-ruleset-filter.js?v=061112"></script>
 <script src="/assets/ids-policy-editor.js?v=061113"></script>
+<script src="/assets/shared-inventory-management.js?v=061114"></script>
 <script>
 (function(){
     document.title = 'opnSentral';
@@ -18,6 +19,36 @@
     const version = document.querySelector('.sidebar-meta span:first-child');
     if(version){
         version.textContent = 'v0.6.11.14';
+    }
+
+    const path = location.pathname;
+    let settings = null;
+    if(path === '/category_overview.php'){
+        settings = {
+            type: 'categories',
+            label: 'categories',
+            anchorId: 'category-inventory-list'
+        };
+    }else if(path === '/alias_overview.php'){
+        settings = {
+            type: 'aliases',
+            label: 'variables',
+            anchorId: 'alias-inventory-list'
+        };
+    }
+
+    if(settings && typeof window.opnSentralSharedInventory === 'function'){
+        const anchor = document.getElementById(settings.anchorId);
+        if(anchor){
+            const mount = document.createElement('div');
+            mount.id = 'shared-inventory-management';
+            anchor.parentNode.insertBefore(mount, anchor);
+            window.opnSentralSharedInventory({
+                type: settings.type,
+                label: settings.label,
+                mountId: mount.id
+            });
+        }
     }
 })();
 </script>
