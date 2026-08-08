@@ -10,13 +10,19 @@ The detailed development history remains available through the Git commit histor
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.20.10
+
+- Structurally moved Configuration Lock/Unlock out of the top bar and into Settings → Interface & access.
+- Structurally moved Presentation Mode out of the top bar and into Settings → Interface & access.
+- Removed the temporary DOM-relocation helper used in 0.6.20.9.
+- Kept the support link independent in the top bar instead of coupling it to Lock/Unlock.
+- Moved configuration-access behavior into a dedicated JavaScript module.
+- Moved Presentation Mode runtime behavior into a dedicated JavaScript module while keeping its state browser-persistent.
+- Locked write controls now point users to the Settings access section.
+
 ## 0.6.20.9
 
-- Moved Configuration Lock/Unlock controls from the top bar to Settings.
-- Moved Presentation Mode controls from the top bar to Settings.
-- Added a dedicated `Interface & access` section in Settings.
-- Kept the existing session-based configuration lock and unlock-password workflow.
-- Kept Presentation Mode anonymization behavior while relocating its controls.
+- Added the first Settings-oriented Interface & access layout for Configuration Lock/Unlock and Presentation Mode.
 - Made firmware audit output collapsible per firewall for a cleaner overview.
 
 ## 0.6.20.8
