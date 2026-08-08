@@ -7,7 +7,6 @@ opnSentral is the actively maintained successor to **opnCentral**. New developme
 ## Main features
 
 - Central firewall status and firmware information
-- Encrypted OPNsense API credential storage
 - Configuration backup history and one-click backups
 - Automatic backups before managed changes
 - Central alias and category management
@@ -15,10 +14,9 @@ opnSentral is the actively maintained successor to **opnCentral**. New developme
 - IDS/IPS administration, rulesets and policy deployment
 - Plug-in and firmware management
 - Email notifications
-- Light and dark themes
 - English, German, French and Dutch interface
 - Self-backup and restore
-- AMD64 and ARM64 Docker images
+- Multi-architecture Docker images for AMD64 and ARM64, including Raspberry Pi 4/5 with a 64-bit OS
 
 ## Container images
 
