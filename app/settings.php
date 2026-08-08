@@ -48,8 +48,50 @@ require __DIR__ . '/inc/header.php';
         </div>
     </section>
 
+    <section class="card wide" id="interface-access-settings">
+        <h2>Interface &amp; access</h2>
+        <p class="muted">Control configuration write access and presentation mode.</p>
 
+        <div class="backup-restore-grid">
+            <div class="settings-subpanel" id="configuration-access-settings">
+                <h3>Configuration access</h3>
+                <p class="muted">
+                    opnSentral is <?= configuration_unlocked() ? 'currently unlocked for configuration changes' : 'currently in read-only mode' ?>.
+                    Unlock state applies only to the current login session.
+                </p>
+                <button
+                    type="button"
+                    id="configuration-lock-button"
+                    class="button <?= configuration_unlocked() ? 'warning' : 'secondary' ?>"
+                    data-unlocked="<?= configuration_unlocked() ? '1' : '0' ?>"
+                >
+                    <?= configuration_unlocked() ? 'Lock configuration' : 'Unlock configuration' ?>
+                </button>
+            </div>
 
+            <div class="settings-subpanel presentation-mode-stack" id="presentation-settings" data-presentation-exempt="true">
+                <h3>Presentation mode</h3>
+                <p class="muted">
+                    Replace visible firewall names, addresses, domains and email addresses with presentation-safe values.
+                </p>
+                <button
+                    type="button"
+                    id="presentation-mode-button"
+                    class="button secondary"
+                    aria-pressed="false"
+                >
+                    Enable presentation mode
+                </button>
+                <span
+                    id="presentation-mode-state"
+                    class="presentation-mode-state"
+                    hidden
+                >
+                    Presentation mode active
+                </span>
+            </div>
+        </div>
+    </section>
 
     <section class="card wide" id="managed-category-settings">
         <h2>OPNsense managed category</h2>
@@ -142,8 +184,6 @@ require __DIR__ . '/inc/header.php';
             firewall details, credentials, networks or VPN data are sent.
         </p>
     </section>
-
-
 
     <section class="card wide" id="telemetry-settings-card">
         <div class="card-head">
@@ -269,6 +309,33 @@ require __DIR__ . '/inc/header.php';
     </section>
 </div>
 
+<div id="configuration-unlock-dialog"
+     class="configuration-unlock-dialog"
+     hidden>
+    <div class="configuration-unlock-backdrop"></div>
+    <section class="configuration-unlock-card"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="configuration-unlock-title">
+        <h2 id="configuration-unlock-title">Unlock configuration changes</h2>
+        <p>
+            Enter the configuration password to enable changes on managed
+            OPNsense firewalls for this login session.
+        </p>
+        <label for="configuration-unlock-password">Password</label>
+        <input
+            type="password"
+            id="configuration-unlock-password"
+            autocomplete="current-password"
+        >
+        <div id="configuration-unlock-error" class="alert error hidden"></div>
+        <div class="actions">
+            <button type="button" class="button secondary" id="configuration-unlock-cancel">Cancel</button>
+            <button type="button" class="button" id="configuration-unlock-submit">Unlock</button>
+        </div>
+    </section>
+</div>
+
 <script>
 (function(){
     const language=document.getElementById('settings-language');
@@ -286,7 +353,6 @@ require __DIR__ . '/inc/header.php';
     theme?.addEventListener('change',function(){
         window.opnSentralSetTheme(this.value);
     });
-
 
     const automatic=document.getElementById('automatic-update-check');
     const checkNow=document.getElementById('update-check-now');
@@ -334,12 +400,10 @@ require __DIR__ . '/inc/header.php';
             message.textContent='A newer published opnSentral release is available.';
         }else if(state.comparison==='ahead'){
             status.innerHTML='<span class="badge neutral">Ahead of latest release</span>';
-            message.textContent=
-                'This installation is newer than the latest published GitHub release.';
+            message.textContent='This installation is newer than the latest published GitHub release.';
         }else if(state.comparison==='equal'){
             status.innerHTML='<span class="badge good">Up to date</span>';
-            message.textContent=
-                'This installation matches the latest published GitHub release.';
+            message.textContent='This installation matches the latest published GitHub release.';
         }else{
             status.innerHTML='<span class="badge neutral">Unknown</span>';
             message.textContent='The installed and published versions could not be compared.';
@@ -395,8 +459,6 @@ require __DIR__ . '/inc/header.php';
     checkNow.addEventListener('click',()=>loadUpdate(true));
     loadUpdate(false);
 
-
-
     const telemetryEnabled=document.getElementById('telemetry-enabled');
     const telemetrySendNow=document.getElementById('telemetry-send-now');
     const telemetryEndpoint=document.getElementById('telemetry-endpoint');
@@ -418,23 +480,19 @@ require __DIR__ . '/inc/header.php';
 
         if(!state.enabled){
             telemetryStatus.innerHTML='<span class="badge neutral">Disabled</span>';
-            telemetryMessage.textContent=
-                'Anonymous installation statistics are disabled.';
+            telemetryMessage.textContent='Anonymous installation statistics are disabled.';
         }else if(!result.configured){
             telemetryStatus.innerHTML='<span class="badge bad">Not configured</span>';
-            telemetryMessage.textContent=
-                'Set TELEMETRY_URL in the opnSentral container environment.';
+            telemetryMessage.textContent='Set TELEMETRY_URL in the opnSentral container environment.';
         }else if(state.last_status==='sent'){
             telemetryStatus.innerHTML='<span class="badge good">Sent</span>';
-            telemetryMessage.textContent=
-                'The anonymous active-installation check was accepted.';
+            telemetryMessage.textContent='The anonymous active-installation check was accepted.';
         }else if(state.last_error){
             telemetryStatus.innerHTML='<span class="badge bad">Failed</span>';
             telemetryMessage.textContent=state.last_error;
         }else{
             telemetryStatus.innerHTML='<span class="badge neutral">Waiting</span>';
-            telemetryMessage.textContent=
-                'The next anonymous check will run in the background.';
+            telemetryMessage.textContent='The next anonymous check will run in the background.';
         }
     }
 
@@ -472,9 +530,7 @@ require __DIR__ . '/inc/header.php';
                 method:'POST',
                 credentials:'same-origin',
                 cache:'no-store',
-                headers:{
-                    'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'
-                },
+                headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
                 body
             });
             const result=await response.json();
