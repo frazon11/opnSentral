@@ -7,7 +7,11 @@ require __DIR__ . '/inc/header.php';
 ?>
 <style>
 .audit-result{margin-top:12px;border-top:1px solid rgba(127,127,127,.25);padding-top:12px}
-.audit-result-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.audit-result summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:6px 0}
+.audit-result summary::-webkit-details-marker{display:none}
+.audit-result summary::before{content:'▸';display:inline-block;margin-right:7px;transition:transform .15s ease}
+.audit-result[open] summary::before{transform:rotate(90deg)}
+.audit-result-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:1;flex-wrap:wrap}
 .audit-result pre{max-height:360px;overflow:auto;white-space:pre-wrap;word-break:break-word;background:rgba(127,127,127,.08);padding:12px;border-radius:8px;margin:8px 0 0}
 .audit-dialog[hidden]{display:none}
 .audit-dialog{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px}
@@ -37,13 +41,15 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
   <div class="firmware-details muted">No firmware information loaded.</div>
-  <div class="audit-result" hidden>
-    <div class="audit-result-head">
-      <strong class="audit-result-title">Audit result</strong>
-      <span class="audit-result-time muted"></span>
-    </div>
+  <details class="audit-result" hidden>
+    <summary>
+      <span class="audit-result-head">
+        <strong class="audit-result-title">Audit result</strong>
+        <span class="audit-result-time muted"></span>
+      </span>
+    </summary>
     <pre class="audit-result-log"></pre>
-  </div>
+  </details>
 </section>
 <?php endforeach; ?>
 <?php if (!$firewalls): ?><section class="card"><p class="muted">No firewalls configured.</p></section><?php endif; ?>
