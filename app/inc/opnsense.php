@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/managed_category.php';
+require_once __DIR__ . '/network_settings.php';
 
 function firewall_by_id(int $id): array
 {
@@ -89,6 +90,7 @@ function opn_raw_request(
             ':' .
             decrypt_value((string) $firewall['api_secret_enc']),
         CURLOPT_HTTPAUTH => CURLAUTH_BASIC,
+        CURLOPT_IPRESOLVE => opnsense_curl_ipresolve_option(),
         CURLOPT_CONNECTTIMEOUT => min(10, max(1, $timeout)),
         CURLOPT_TIMEOUT => $timeout,
         CURLOPT_FOLLOWLOCATION => false,
@@ -222,6 +224,7 @@ function opn_curl_handle(
             ':' .
             decrypt_value((string) $firewall['api_secret_enc']),
         CURLOPT_HTTPAUTH => CURLAUTH_BASIC,
+        CURLOPT_IPRESOLVE => opnsense_curl_ipresolve_option(),
         // DNS resolution is included in cURL's connect timeout.
         // Normal firewall calls may use up to ten seconds to connect.
         CURLOPT_CONNECTTIMEOUT => min(10, max(1, $timeout)),
@@ -407,6 +410,7 @@ function opn_download(array $firewall, string $path): string
             ':' .
             decrypt_value((string) $firewall['api_secret_enc']),
         CURLOPT_HTTPAUTH => CURLAUTH_BASIC,
+        CURLOPT_IPRESOLVE => opnsense_curl_ipresolve_option(),
         CURLOPT_CONNECTTIMEOUT => 8,
         CURLOPT_TIMEOUT => 60,
         CURLOPT_SSL_VERIFYPEER => (bool) $firewall['verify_tls'],
@@ -465,6 +469,7 @@ function opn_downloads_parallel(array $requests): array
                     CURLOPT_RETURNTRANSFER => true,
                     CURLOPT_USERPWD => decrypt_value((string)$firewall['api_key_enc']) . ':' . decrypt_value((string)$firewall['api_secret_enc']),
                     CURLOPT_HTTPAUTH => CURLAUTH_BASIC,
+                    CURLOPT_IPRESOLVE => opnsense_curl_ipresolve_option(),
                     CURLOPT_CONNECTTIMEOUT => 8,
                     CURLOPT_TIMEOUT => (int)($request['timeout'] ?? 60),
                     CURLOPT_FOLLOWLOCATION => false,
