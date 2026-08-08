@@ -54,6 +54,10 @@ http://DOCKER-HOST:8788
 
 Keep the existing `APP_KEY` when migrating from opnCentral. Changing it makes stored OPNsense API credentials unreadable.
 
+## Documentation
+
+- [Changelog](CHANGELOG.md) — release history and notable changes
+
 ## Project history
 
 The previous project is retained at [frazon11/opnCentral](https://github.com/frazon11/opnCentral) for compatibility and historical releases.
