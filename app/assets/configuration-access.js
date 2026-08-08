@@ -39,11 +39,6 @@
                 if(element.id === 'configuration-lock-button') return;
                 element.classList.add('remote-change-control');
                 element.dataset.configurationLocked = locked ? '1' : '0';
-
-                if('disabled' in element){
-                    element.disabled = locked;
-                }
-
                 element.setAttribute('aria-disabled', locked ? 'true' : 'false');
                 element.title = locked
                     ? 'Unlock configuration changes in Settings first.'
