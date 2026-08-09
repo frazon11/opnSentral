@@ -10,6 +10,13 @@ The detailed development history remains available through the Git commit histor
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.20.12
+
+- Removed remaining hard-coded `opnCentral` wording from the alias distribution page.
+- Alias distribution now displays the configured managed-category name from Settings.
+- Updated missing-category errors, takeover guidance and confirmation text to use the configured managed-category name.
+- Added `GeoIP` directly to the server-rendered alias type list as well as the existing GeoIP guidance.
+
 ## 0.6.20.11
 
 - Added the missing `GeoIP` alias type to the central alias editor.
