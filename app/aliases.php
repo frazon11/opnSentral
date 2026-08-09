@@ -7,6 +7,7 @@ require_once __DIR__ . '/inc/distribution_targets.php';
 require_login();
 central_alias_init();
 
+$managedCategoryName = managed_category_name();
 $firewalls = db()->query('SELECT * FROM firewalls ORDER BY name')->fetchAll();
 $results = [];
 $error = '';
@@ -50,7 +51,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 backup_before_change($firewall, 'alias-distribution');
                 $categoryUuid = central_alias_category_uuid($firewall);
                 if ($categoryUuid === null) {
-                    throw new RuntimeException('Category opnCentral is missing on this firewall. Create it under Firewall > Categories.');
+                    throw new RuntimeException(
+                        'Category ' . $managedCategoryName .
+                        ' is missing on this firewall. Create it under Firewall > Categories.'
+                    );
                 }
 
                 $existing = central_alias_find($firewall, $name);
@@ -69,8 +73,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     if (!$alreadyManaged && !$takeOverExisting) {
                         throw new RuntimeException(
-                            'Existing alias is not in category opnCentral and was protected. ' .
-                            'Enable “Take over existing alias” to preserve its current categories and add opnCentral.'
+                            'Existing alias is not in category ' . $managedCategoryName . ' and was protected. ' .
+                            'Enable “Take over existing alias” to preserve its current categories and add ' .
+                            $managedCategoryName . '.'
                         );
                     }
 
@@ -143,12 +148,12 @@ require __DIR__ . '/inc/header.php';
 <style>
 .alias-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);gap:20px}.alias-form label{display:block;font-weight:700;margin:14px 0 6px}.alias-form input[type=text],.alias-form select,.alias-form textarea{width:100%;box-sizing:border-box}.alias-form textarea{min-height:180px;font-family:monospace}.targets,.results{display:grid;gap:8px}.target,.result{padding:10px;border-radius:8px;background:rgba(127,127,127,.08)}.result.good{border-left:4px solid #2aa84a}.result.bad{border-left:4px solid #d74747}.takeover-option{display:flex!important;align-items:flex-start;gap:9px;padding:10px;border:1px solid #d6b56a;background:#fff8e7;border-radius:3px}.takeover-option input{width:auto;margin:3px 0 0}@media(max-width:850px){.alias-grid{grid-template-columns:1fr}}
 </style>
-<div class="page-title"><div><h1><?= h(t('aliases.distribute')) ?></h1><p>Category opnCentral protects centrally managed aliases.</p></div><a class="button secondary" href="/alias_overview.php">Overview</a></div>
+<div class="page-title"><div><h1><?= h(t('aliases.distribute')) ?></h1><p>Category <?= h($managedCategoryName) ?> protects centrally managed aliases.</p></div><a class="button secondary" href="/alias_overview.php">Overview</a></div>
 <?php if ($error): ?><div class="alert error"><?= h($error) ?></div><?php endif; ?>
 <div class="alias-grid">
 <section class="card"><h2>Alias</h2><form method="post" class="alias-form"><input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
 <label>Name</label><input type="text" name="name" required pattern="[A-Za-z0-9_]+" value="<?= h((string)($_POST['name'] ?? '')) ?>" placeholder="Trusted_Admins">
-<label><?= h(t('aliases.type')) ?></label><select name="type"><?php foreach (['host'=>'Host(s)','network'=>'Network(s)','port'=>'Port(s)','url'=>'URL','urltable'=>'URL table','networkgroup'=>'Network group','mac'=>'MAC','asn'=>'ASN'] as $value=>$label): ?><option value="<?= h($value) ?>" <?= (($_POST['type'] ?? 'host') === $value) ? 'selected' : '' ?>><?= h($label) ?></option><?php endforeach; ?></select>
+<label><?= h(t('aliases.type')) ?></label><select name="type"><?php foreach (['host'=>'Host(s)','network'=>'Network(s)','port'=>'Port(s)','url'=>'URL','urltable'=>'URL table','geoip'=>'GeoIP','networkgroup'=>'Network group','mac'=>'MAC','asn'=>'ASN'] as $value=>$label): ?><option value="<?= h($value) ?>" <?= (($_POST['type'] ?? 'host') === $value) ? 'selected' : '' ?>><?= h($label) ?></option><?php endforeach; ?></select>
 <label><?= h(t('aliases.content')) ?></label><textarea name="content" required placeholder="One value per line"><?= h((string)($_POST['content'] ?? '')) ?></textarea>
 <label><?= h(t('aliases.description')) ?></label><input type="text" name="description" value="<?= h((string)($_POST['description'] ?? '')) ?>">
 <label>Existing alias</label>
@@ -161,7 +166,7 @@ require __DIR__ . '/inc/header.php';
     <input type="checkbox" name="take_over_existing" value="1" <?= isset($_POST['take_over_existing']) ? 'checked' : '' ?>>
     <span>
         <strong>Take over existing alias</strong><br>
-        <span class="muted">Keep all current categories, add opnCentral, then apply the selected replace or merge mode.</span>
+        <span class="muted">Keep all current categories, add <?= h($managedCategoryName) ?>, then apply the selected replace or merge mode.</span>
     </span>
 </label>
 <label><input type="checkbox" name="enabled" value="1" <?= !isset($_POST['enabled']) && $_SERVER['REQUEST_METHOD'] !== 'POST' || isset($_POST['enabled']) ? 'checked' : '' ?>> Enabled</label>
@@ -221,6 +226,8 @@ $requestedFirewallId = (int)($_POST['target_firewall_id'] ?? $_GET['firewall_id'
 <section class="card"><h2>Results</h2><?php if (!$results): ?><div class="empty">No distribution performed yet.</div><?php else: ?><div class="results"><?php foreach ($results as $result): ?><div class="result <?= $result['ok'] ? 'good' : 'bad' ?>"><strong><?= h($result['name']) ?></strong><br><?= h($result['message']) ?></div><?php endforeach; ?></div><?php endif; ?></section>
 </div>
 <script>
+const managedCategoryName = <?= json_encode($managedCategoryName, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+
 document.querySelectorAll('input[name="target_scope"]').forEach(
     function(radio){
         radio.addEventListener('change',function(){
@@ -241,7 +248,7 @@ function confirmAliasDistribution(){
     const takeover=document.querySelector('input[name="take_over_existing"]')?.checked===true;
     let message='Distribute this alias using '+mode+' mode?';
     if(takeover){
-        message+='\n\nExisting aliases not yet managed by opnCentral will keep their current categories, receive the opnCentral category, and then be '+(mode==='merge'?'merged':'replaced')+'.';
+        message+='\n\nExisting aliases not yet managed by '+managedCategoryName+' will keep their current categories, receive the '+managedCategoryName+' category, and then be '+(mode==='merge'?'merged':'replaced')+'.';
     }
     return confirm(message);
 }
