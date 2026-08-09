@@ -10,6 +10,12 @@ The detailed development history remains available through the Git commit histor
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.20.11
+
+- Added the missing `GeoIP` alias type to the central alias editor.
+- GeoIP aliases use the OPNsense alias type value `geoip`.
+- Added country-code guidance for GeoIP alias content, using ISO country codes such as `BE`, `DE` and `NL`.
+
 ## 0.6.20.10
 
 - Structurally moved Configuration Lock/Unlock out of the top bar and into Settings → Interface & access.
