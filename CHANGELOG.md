@@ -10,6 +10,12 @@ The detailed development history remains available through the Git commit histor
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.20.15
+
+- Fixed telemetry startup on Synology/Portainer bind mounts where SQLite failed with `unable to open database file`.
+- Added a telemetry entrypoint that creates `/var/www/data` and restores `www-data` ownership and write permissions at container startup.
+- Kept Apache running through the official PHP image entrypoint after the permission initialization.
+
 ## 0.6.20.14
 
 - Changed the telemetry server default web port to `4455`.
