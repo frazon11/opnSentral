@@ -26,7 +26,7 @@ The telemetry image is built by the repository CI for AMD64 and ARM64. Portainer
 
 ## Environment
 
-Use the supplied `.env.example` or the visible `env.example` copy:
+Use the supplied `.env.example`:
 
 ```env
 BASE_PATH=/volume1/docker/opnsentral-telemetry
@@ -97,6 +97,8 @@ TELEMETRY_URL=https://opnsentral.kryszon.info/api.php
 ```
 
 Recreate opnSentral, then enable **Settings → Anonymous installation statistics**.
+
+When telemetry is enabled, opnSentral sends once on every container start (including the first start after creation) and continues with the normal 24-hour schedule while the container is running.
 
 The telemetry dashboard is served from the same public base URL without `/api.php`.
 
