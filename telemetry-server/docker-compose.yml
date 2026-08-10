@@ -1,8 +1,10 @@
 services:
-  opncentral-telemetry:
-    build: .
-    image: opncentral-telemetry:latest
-    container_name: OpnCentral-Telemetry
+  opnsentral-telemetry:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: opnsentral-telemetry:latest
+    container_name: opnSentral-Telemetry
     restart: unless-stopped
 
     ports:
@@ -16,7 +18,7 @@ services:
       RETENTION_DAYS: ${RETENTION_DAYS:-730}
 
     volumes:
-      - ./data:/var/www/data
+      - "${TELEMETRY_BASE_PATH}/data:/var/www/data"
 
     healthcheck:
       test:
