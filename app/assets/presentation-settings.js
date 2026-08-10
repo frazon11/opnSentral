@@ -6,10 +6,15 @@
         const state = document.getElementById('presentation-mode-state');
         if(!button) return;
 
-        const storageKey = 'opncentral-presentation-mode';
+        function isEnabled(){
+            if(typeof window.opnSentralPresentationEnabled === 'function'){
+                return window.opnSentralPresentationEnabled() === true;
+            }
+            return localStorage.getItem('opnsentral-presentation-mode') === '1';
+        }
 
         function render(){
-            const enabled = localStorage.getItem(storageKey) === '1';
+            const enabled = isEnabled();
             button.classList.toggle('warning', enabled);
             button.classList.toggle('secondary', !enabled);
             button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
@@ -18,8 +23,15 @@
         }
 
         button.addEventListener('click', function(){
-            const enabled = localStorage.getItem(storageKey) === '1';
-            localStorage.setItem(storageKey, enabled ? '0' : '1');
+            const enabled = isEnabled();
+
+            if(typeof window.opnSentralSetPresentationMode === 'function'){
+                window.opnSentralSetPresentationMode(!enabled);
+                render();
+                return;
+            }
+
+            localStorage.setItem('opnsentral-presentation-mode', enabled ? '0' : '1');
             window.location.reload();
         });
 
