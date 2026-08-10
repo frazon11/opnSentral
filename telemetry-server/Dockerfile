@@ -22,11 +22,16 @@ RUN set -eux; \
 
 COPY app/ /var/www/html/
 COPY apache.conf /etc/apache2/conf-available/opnsentral-telemetry.conf
+COPY docker-entrypoint-opnsentral.sh /usr/local/bin/docker-entrypoint-opnsentral
 
 RUN set -eux; \
     a2enconf opnsentral-telemetry; \
     mkdir -p /var/www/data; \
-    chown -R www-data:www-data /var/www/html /var/www/data
+    chown -R www-data:www-data /var/www/html /var/www/data; \
+    chmod 0755 /usr/local/bin/docker-entrypoint-opnsentral
+
+ENTRYPOINT ["docker-entrypoint-opnsentral"]
+CMD ["apache2-foreground"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD php -r '$pdo=new PDO("sqlite:/var/www/data/telemetry.sqlite"); echo "ok";' || exit 1
