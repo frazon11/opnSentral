@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-const OPNCENTRAL_VERSION = '0.6.20.12';
-const OPNCENTRAL_GITHUB_REPOSITORY = 'frazon11/opnSentral';
-const OPNCENTRAL_UPDATE_INTERVAL = 86400;
+const OPNSENTRAL_VERSION = '0.6.20.13';
+const OPNSENTRAL_GITHUB_REPOSITORY = 'frazon11/opnSentral';
+const OPNSENTRAL_UPDATE_INTERVAL = 86400;
 
 function update_check_path(): string
 {
@@ -40,10 +40,10 @@ function update_check_compare(array $state): array
     if ($latest === '') {
         $state['comparison'] = 'unknown';
         $state['update_available'] = false;
-    } elseif (version_compare($latest, OPNCENTRAL_VERSION, '>')) {
+    } elseif (version_compare($latest, OPNSENTRAL_VERSION, '>')) {
         $state['comparison'] = 'behind';
         $state['update_available'] = true;
-    } elseif (version_compare($latest, OPNCENTRAL_VERSION, '<')) {
+    } elseif (version_compare($latest, OPNSENTRAL_VERSION, '<')) {
         $state['comparison'] = 'ahead';
         $state['update_available'] = false;
     } else {
@@ -79,7 +79,7 @@ function update_check_is_stale(array $state): bool
     $lastSuccess = trim((string) ($state['last_checked'] ?? ''));
     if ($lastSuccess !== '') {
         $timestamp = strtotime($lastSuccess);
-        if ($timestamp !== false && (time() - $timestamp) < OPNCENTRAL_UPDATE_INTERVAL) return false;
+        if ($timestamp !== false && (time() - $timestamp) < OPNSENTRAL_UPDATE_INTERVAL) return false;
     }
     $lastAttempt = trim((string) ($state['last_attempt'] ?? ''));
     if ($lastAttempt !== '') {
@@ -95,7 +95,7 @@ function update_check_run(bool $force = false): array
     if (($state['enabled'] ?? true) !== true && !$force) return $state;
     if (!$force && !update_check_is_stale($state)) return update_check_compare($state);
 
-    $url = 'https://api.github.com/repos/' . OPNCENTRAL_GITHUB_REPOSITORY . '/releases/latest';
+    $url = 'https://api.github.com/repos/' . OPNSENTRAL_GITHUB_REPOSITORY . '/releases/latest';
     $curl = curl_init($url);
     if ($curl === false) throw new RuntimeException('Could not initialize the GitHub request.');
     curl_setopt_array($curl, [
@@ -106,7 +106,7 @@ function update_check_run(bool $force = false): array
         CURLOPT_HTTPHEADER => [
             'Accept: application/vnd.github+json',
             'X-GitHub-Api-Version: 2022-11-28',
-            'User-Agent: opnSentral/' . OPNCENTRAL_VERSION,
+            'User-Agent: opnSentral/' . OPNSENTRAL_VERSION,
         ],
     ]);
     $body = curl_exec($curl);
