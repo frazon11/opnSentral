@@ -10,6 +10,14 @@ The detailed development history remains available through the Git commit histor
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.20.14
+
+- Changed the telemetry server default web port to `4455`.
+- Added the shared telemetry write-token default to both the telemetry receiver stack and the main opnSentral stack.
+- Added the default telemetry client endpoint `https://opnsentral.kryszon.info:4455/api.php` to the main compose and environment template.
+- Updated telemetry environment templates to match the new port and token defaults.
+- Documented the difference between direct public HTTPS on port 4455 and reverse-proxy HTTPS on the standard port 443.
+
 ## 0.6.20.13
 
 - Reworked the telemetry Docker deployment for Synology and Portainer Git-repository stacks.
