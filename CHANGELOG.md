@@ -10,6 +10,18 @@ The detailed development history remains available through the Git commit histor
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.20.13
+
+- Reworked the telemetry Docker deployment for Synology and Portainer Git-repository stacks.
+- Removed the telemetry compose `build:` step and switched deployment to the published `opnsentral-telemetry` image.
+- Added AMD64 and ARM64 telemetry image publishing to the existing Docker CI workflow.
+- Replaced the relative telemetry `./data` bind mount with the standard `BASE_PATH` host path used by opnSentral.
+- Aligned telemetry stack variables with the main stack: `BASE_PATH`, `WEB_PORT`, `IMAGE_VERSION` and `TZ`.
+- Updated both telemetry environment templates for Synology/File Station and Portainer use.
+- Replaced active telemetry branding and authentication text from `opnCentral` to `opnSentral`.
+- Renamed active update-check constants from `OPNCENTRAL_*` to `OPNSENTRAL_*`.
+- Rewrote telemetry deployment documentation with a Portainer Git-repository example.
+
 ## 0.6.20.12
 
 - Removed remaining hard-coded `opnCentral` wording from the alias distribution page.
