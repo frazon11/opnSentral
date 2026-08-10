@@ -10,6 +10,13 @@ The detailed development history remains available through the Git commit histor
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.20.19
+
+- Added the running telemetry server version to the private telemetry dashboard.
+- Passed the application version into the telemetry image at build time so the dashboard shows the actual image version.
+- Changed the Docker image workflow to read `OPNSENTRAL_VERSION` once and reuse it for image tags instead of maintaining separate hard-coded image versions.
+- Stopped publishing `opnsentral-telemetry` to Docker Hub; future telemetry images are published to GHCR only.
+
 ## 0.6.20.18
 
 - Made the telemetry dashboard developer-only and disabled by default.
