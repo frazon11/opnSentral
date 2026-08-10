@@ -1,9 +1,6 @@
 services:
   opnsentral-telemetry:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: opnsentral-telemetry:latest
+    image: ghcr.io/frazon11/opnsentral-telemetry:${TELEMETRY_VERSION:-latest}
     container_name: opnSentral-Telemetry
     restart: unless-stopped
 
