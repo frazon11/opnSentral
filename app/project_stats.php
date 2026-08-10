@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+// JSON endpoints must never leak PHP warnings/deprecations as HTML because
+// that makes the response impossible for the browser to parse as JSON.
+ini_set('display_errors', '0');
+ini_set('html_errors', '0');
+
 require_once __DIR__ . '/inc/config.php';
 
 require_login();
@@ -32,7 +37,10 @@ function project_stats_request(string $url, array $headers = []): array
     $body = curl_exec($curl);
     $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
     $error = curl_error($curl);
-    curl_close($curl);
+
+    // curl_close() is deprecated as of PHP 8.5 and is a no-op since PHP 8.0.
+    // Let the CurlHandle be released normally instead of emitting a deprecation.
+    unset($curl);
 
     if (!is_string($body) || $body === '') {
         return [
@@ -62,74 +70,95 @@ function project_stats_request(string $url, array $headers = []): array
     return ['ok' => true, 'status' => $status, 'data' => $decoded];
 }
 
-$dockerRepository = envv('DOCKER_HUB_REPOSITORY', 'frazon11/opnsentral');
-$githubRepository = envv('GITHUB_TRAFFIC_REPOSITORY', 'frazon11/opnSentral');
-$githubToken = trim(envv('GITHUB_TRAFFIC_TOKEN', ''));
+try {
+    $dockerRepository = envv('DOCKER_HUB_REPOSITORY', 'frazon11/opnsentral');
+    $githubRepository = envv('GITHUB_TRAFFIC_REPOSITORY', 'frazon11/opnSentral');
+    $githubToken = trim(envv('GITHUB_TRAFFIC_TOKEN', ''));
 
-$result = [
-    'ok' => true,
-    'docker_hub' => [
-        'repository' => $dockerRepository,
-        'pulls' => null,
-        'error' => null,
-    ],
-    'github' => [
-        'repository' => $githubRepository,
-        'configured' => $githubToken !== '',
-        'views' => null,
-        'clones' => null,
-        'error' => null,
-    ],
-];
-
-$dockerResponse = project_stats_request(
-    'https://hub.docker.com/v2/repositories/' . rawurlencode(explode('/', $dockerRepository, 2)[0] ?? '') . '/' . rawurlencode(explode('/', $dockerRepository, 2)[1] ?? '') . '/'
-);
-
-if ($dockerResponse['ok'] === true) {
-    $result['docker_hub']['pulls'] = isset($dockerResponse['data']['pull_count'])
-        ? (int) $dockerResponse['data']['pull_count']
-        : null;
-} else {
-    $result['docker_hub']['error'] = (string) ($dockerResponse['error'] ?? 'Docker Hub request failed.');
-}
-
-if ($githubToken !== '' && str_contains($githubRepository, '/')) {
-    [$owner, $repo] = explode('/', $githubRepository, 2);
-    $githubHeaders = [
-        'Authorization: Bearer ' . $githubToken,
-        'Accept: application/vnd.github+json',
-        'X-GitHub-Api-Version: 2022-11-28',
+    $result = [
+        'ok' => true,
+        'docker_hub' => [
+            'repository' => $dockerRepository,
+            'pulls' => null,
+            'error' => null,
+        ],
+        'github' => [
+            'repository' => $githubRepository,
+            'configured' => $githubToken !== '',
+            'views' => null,
+            'clones' => null,
+            'error' => null,
+        ],
     ];
 
-    $base = 'https://api.github.com/repos/' . rawurlencode($owner) . '/' . rawurlencode($repo) . '/traffic/';
-    $viewsResponse = project_stats_request($base . 'views?per=day', $githubHeaders);
-    $clonesResponse = project_stats_request($base . 'clones?per=day', $githubHeaders);
+    $dockerParts = explode('/', $dockerRepository, 2);
+    if (count($dockerParts) === 2 && $dockerParts[0] !== '' && $dockerParts[1] !== '') {
+        $dockerResponse = project_stats_request(
+            'https://hub.docker.com/v2/repositories/'
+            . rawurlencode($dockerParts[0]) . '/'
+            . rawurlencode($dockerParts[1]) . '/'
+        );
 
-    if ($viewsResponse['ok'] === true) {
-        $result['github']['views'] = [
-            'count' => (int) ($viewsResponse['data']['count'] ?? 0),
-            'uniques' => (int) ($viewsResponse['data']['uniques'] ?? 0),
-        ];
-    }
-
-    if ($clonesResponse['ok'] === true) {
-        $result['github']['clones'] = [
-            'count' => (int) ($clonesResponse['data']['count'] ?? 0),
-            'uniques' => (int) ($clonesResponse['data']['uniques'] ?? 0),
-        ];
-    }
-
-    if ($viewsResponse['ok'] !== true || $clonesResponse['ok'] !== true) {
-        $errors = [];
-        if ($viewsResponse['ok'] !== true) {
-            $errors[] = 'views: ' . (string) ($viewsResponse['error'] ?? 'request failed');
+        if ($dockerResponse['ok'] === true) {
+            $result['docker_hub']['pulls'] = isset($dockerResponse['data']['pull_count'])
+                ? (int) $dockerResponse['data']['pull_count']
+                : null;
+        } else {
+            $result['docker_hub']['error'] = (string) ($dockerResponse['error'] ?? 'Docker Hub request failed.');
         }
-        if ($clonesResponse['ok'] !== true) {
-            $errors[] = 'clones: ' . (string) ($clonesResponse['error'] ?? 'request failed');
-        }
-        $result['github']['error'] = implode('; ', $errors);
+    } else {
+        $result['docker_hub']['error'] = 'Invalid Docker Hub repository setting.';
     }
+
+    if ($githubToken !== '' && str_contains($githubRepository, '/')) {
+        [$owner, $repo] = explode('/', $githubRepository, 2);
+        $githubHeaders = [
+            'Authorization: Bearer ' . $githubToken,
+            'Accept: application/vnd.github+json',
+            'X-GitHub-Api-Version: 2022-11-28',
+        ];
+
+        $base = 'https://api.github.com/repos/' . rawurlencode($owner) . '/' . rawurlencode($repo) . '/traffic/';
+        $viewsResponse = project_stats_request($base . 'views?per=day', $githubHeaders);
+        $clonesResponse = project_stats_request($base . 'clones?per=day', $githubHeaders);
+
+        if ($viewsResponse['ok'] === true) {
+            $result['github']['views'] = [
+                'count' => (int) ($viewsResponse['data']['count'] ?? 0),
+                'uniques' => (int) ($viewsResponse['data']['uniques'] ?? 0),
+            ];
+        }
+
+        if ($clonesResponse['ok'] === true) {
+            $result['github']['clones'] = [
+                'count' => (int) ($clonesResponse['data']['count'] ?? 0),
+                'uniques' => (int) ($clonesResponse['data']['uniques'] ?? 0),
+            ];
+        }
+
+        if ($viewsResponse['ok'] !== true || $clonesResponse['ok'] !== true) {
+            $errors = [];
+            if ($viewsResponse['ok'] !== true) {
+                $errors[] = 'views: ' . (string) ($viewsResponse['error'] ?? 'request failed');
+            }
+            if ($clonesResponse['ok'] !== true) {
+                $errors[] = 'clones: ' . (string) ($clonesResponse['error'] ?? 'request failed');
+            }
+            $result['github']['error'] = implode('; ', $errors);
+        }
+    }
+
+    echo json_encode(
+        $result,
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
+    );
+} catch (Throwable $exception) {
+    http_response_code(500);
+    echo json_encode(
+        [
+            'ok' => false,
+            'error' => 'Project statistics failed: ' . $exception->getMessage(),
+        ],
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+    );
 }
-
-echo json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
