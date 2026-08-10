@@ -6,15 +6,13 @@ It is infrastructure for the project maintainer, not an end-user opnSentral feat
 
 ## Public vs private endpoints
 
-Only the ingest endpoint needs to be reachable by opnSentral installations:
+The ingest endpoint must be reachable by opnSentral installations:
 
 ```text
 https://opnsentral.kryszon.info:4455/api.php
 ```
 
-The telemetry dashboard at `/` is developer-only and is disabled by default. When disabled it returns HTTP 404.
-
-To enable the dashboard on a private or otherwise restricted deployment:
+The telemetry dashboard at `/` is developer-only. It is enabled by default for the telemetry-server deployment and protected by HTTP Basic Auth:
 
 ```env
 TELEMETRY_DASHBOARD_ENABLED=true
@@ -22,7 +20,30 @@ DASHBOARD_USER=admin
 DASHBOARD_PASSWORD=replace-with-a-strong-password
 ```
 
-Basic authentication is still required when the dashboard is enabled. Restrict dashboard access further at the reverse proxy or firewall where possible.
+Restrict dashboard access further at the reverse proxy or firewall where possible.
+
+## Dashboard contents
+
+The developer dashboard shows:
+
+- known telemetry installations
+- active installations for 24 hours, 7 days and 30 days
+- active opnSentral versions and architectures
+- recent anonymous installation activity
+- Project statistics: Docker Hub pulls plus GitHub views, unique visitors, clones and unique cloners
+- telemetry server version
+
+Project statistics are intentionally available only on the telemetry-server dashboard and are not exposed in the normal opnSentral UI.
+
+GitHub traffic statistics require a GitHub token with permission to read repository traffic:
+
+```env
+DOCKER_HUB_REPOSITORY=frazon11/opnsentral
+GITHUB_TRAFFIC_REPOSITORY=frazon11/opnSentral
+GITHUB_TRAFFIC_TOKEN=
+```
+
+Docker Hub lifetime pull count does not require authentication.
 
 ## Data stored
 
@@ -41,10 +62,9 @@ Apache access logging is disabled in the supplied image to avoid retaining clien
 
 ```text
 ghcr.io/frazon11/opnsentral-telemetry:latest
-docker.io/frazon11/opnsentral-telemetry:latest
 ```
 
-The telemetry image is built for AMD64 and ARM64.
+The telemetry image is built for AMD64 and ARM64. It is not published to Docker Hub.
 
 ## Synology / Portainer environment
 
@@ -54,13 +74,15 @@ WEB_PORT=4455
 IMAGE_VERSION=latest
 TZ=Europe/Brussels
 
-# Optional API Bearer token. Standard public opnSentral clients do not embed a secret.
 TELEMETRY_WRITE_TOKEN=
 
-# Keep the dashboard disabled unless access is deliberately restricted.
-TELEMETRY_DASHBOARD_ENABLED=false
+TELEMETRY_DASHBOARD_ENABLED=true
 DASHBOARD_USER=admin
-DASHBOARD_PASSWORD=
+DASHBOARD_PASSWORD=replace-with-a-strong-password
+
+DOCKER_HUB_REPOSITORY=frazon11/opnsentral
+GITHUB_TRAFFIC_REPOSITORY=frazon11/opnSentral
+GITHUB_TRAFFIC_TOKEN=
 
 RETENTION_DAYS=730
 ```
@@ -82,11 +104,4 @@ The compose file pulls the published telemetry image and does not build locally.
 
 ## Client configuration
 
-The public opnSentral client only requires:
-
-```text
-TELEMETRY_ENABLED=true
-TELEMETRY_URL=https://opnsentral.kryszon.info:4455/api.php
-```
-
-`TELEMETRY_WRITE_TOKEN` is optional. If a private receiver deployment enables a token, only clients configured with the same token can submit telemetry.
+The normal opnSentral compose enables anonymous telemetry by default and supplies the receiver URL and write-token default directly from `docker-compose.yml`. These values do not need to be added to the normal opnSentral `.env` file.
