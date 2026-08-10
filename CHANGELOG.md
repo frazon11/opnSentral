@@ -10,6 +10,20 @@ The detailed development history remains available through the Git commit histor
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.20.17
+
+- Removed the duplicate `telemetry-server/env.example`; `.env.example` is now the single telemetry environment template.
+- Added an immediate telemetry send on every opnSentral container start, including the first start after container creation, while preserving the existing telemetry opt-in.
+- Moved startup telemetry out of the browser path so no login or page load is required for the startup send.
+- Made the sidebar version read directly from `OPNSENTRAL_VERSION` and removed the independent footer JavaScript version override.
+- Cleaned remaining active `opnCentral` branding from the root Dockerfile, image labels, PHP upload config and entrypoint naming.
+
+## 0.6.20.16
+
+- Fixed telemetry authentication handling behind Apache/reverse-proxy setups by accepting the standard Authorization header through multiple PHP/Apache server-header paths.
+- Updated telemetry client version reporting and User-Agent naming from the old `opnCentral` identifiers to `opnSentral` / `OPNSENTRAL_VERSION`.
+- Fixed the GitHub release workflow after the version constant was renamed from `OPNCENTRAL_VERSION` to `OPNSENTRAL_VERSION`.
+
 ## 0.6.20.15
 
 - Fixed telemetry startup on Synology/Portainer bind mounts where SQLite failed with `unable to open database file`.
