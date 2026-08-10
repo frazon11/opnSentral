@@ -8,9 +8,10 @@ RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         libsqlite3-dev \
+        libcurl4-openssl-dev \
         sqlite3 \
         ca-certificates; \
-    docker-php-ext-install -j"$(nproc)" pdo_sqlite; \
+    docker-php-ext-install -j"$(nproc)" pdo_sqlite curl; \
     a2enmod rewrite headers; \
     printf '%s\n' \
         'ServerTokens Prod' \
