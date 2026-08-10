@@ -14,9 +14,9 @@
 <script src="/assets/shared-inventory-management.js?v=06215"></script>
 <script src="/assets/category-edit-links.js?v=06215"></script>
 <script src="/assets/network-settings.js?v=06215"></script>
-<script src="/assets/presentation-mode.js?v=06215"></script>
+<script src="/assets/presentation-mode.js?v=062020"></script>
 <script src="/assets/configuration-access.js?v=06215"></script>
-<script src="/assets/presentation-settings.js?v=06215"></script>
+<script src="/assets/presentation-settings.js?v=062020"></script>
 <script src="/assets/alias-geoip-type.js?v=06215"></script>
 <script>
 (function(){
