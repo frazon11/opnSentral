@@ -10,6 +10,15 @@ The detailed development history remains available through the Git commit histor
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.20.18
+
+- Made the telemetry dashboard developer-only and disabled by default.
+- Added `TELEMETRY_DASHBOARD_ENABLED`; when disabled the dashboard root returns HTTP 404 while `/api.php` remains available for anonymous telemetry ingestion.
+- Kept Basic Auth mandatory when the developer dashboard is explicitly enabled.
+- Removed the hard-coded public telemetry write token from the main opnSentral compose and environment template.
+- Made `TELEMETRY_WRITE_TOKEN` optional on both the client and receiver instead of treating a repository-embedded value as a secret.
+- Updated telemetry receiver documentation to distinguish the public ingest endpoint from the private developer dashboard.
+
 ## 0.6.20.17
 
 - Removed the duplicate `telemetry-server/env.example`; `.env.example` is now the single telemetry environment template.
