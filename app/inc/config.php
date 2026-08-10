@@ -97,62 +97,27 @@ function verify_csrf(): void { require_csrf(); }
 function logged_in(): bool { start_session_secure(); return ($_SESSION['auth']??false)===true; }
 function require_login(): void { if(!logged_in()){header('Location: /login.php');exit;}}
 
+// 0.6.21+: configuration changes are available to authenticated users without
+// a separate read-only/unlock state. These compatibility helpers remain so
+// existing action handlers do not need special-case migrations.
 function configuration_unlocked(): bool
 {
-    start_session_secure();
-
-    return ($_SESSION['configuration_unlocked'] ?? false) === true;
+    return true;
 }
 
 function unlock_configuration(string $password): bool
 {
-    start_session_secure();
-
-    if (!hash_equals('ThankYou', $password)) {
-        return false;
-    }
-
-    session_regenerate_id(true);
-    $_SESSION['configuration_unlocked'] = true;
-    $_SESSION['configuration_unlocked_at'] = time();
-
     return true;
 }
 
 function lock_configuration(): void
 {
-    start_session_secure();
-    unset(
-        $_SESSION['configuration_unlocked'],
-        $_SESSION['configuration_unlocked_at']
-    );
 }
 
 function require_configuration_unlocked(bool $json = true): void
 {
-    if (configuration_unlocked()) {
-        return;
-    }
-
-    if ($json) {
-        http_response_code(423);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(
-            [
-                'ok' => false,
-                'error' =>
-                    'opnCentral is locked. Unlock configuration changes first.',
-                'locked' => true,
-            ],
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-        );
-        exit;
-    }
-
-    throw new RuntimeException(
-        'opnCentral is locked. Unlock configuration changes first.'
-    );
 }
+
 function h(string $v): string { return htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');}
 function normalize_url(string $u): string {$u=rtrim(trim($u),'/');if(!preg_match('#^https?://#i',$u))$u='https://'.$u;if(filter_var($u,FILTER_VALIDATE_URL)===false)throw new InvalidArgumentException('Invalid URL.');return $u;}
 
