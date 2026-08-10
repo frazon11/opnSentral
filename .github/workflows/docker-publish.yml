@@ -23,6 +23,18 @@ jobs:
       - name: Check merge-conflict markers
         run: sh scripts/check-merge-markers.sh
 
+      - name: Read application version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n "s/^const OPNSENTRAL_VERSION = '\([^']*\)';$/\1/p" app/inc/update_check.php)
+          test -n "$VERSION" || {
+            echo "::error::Could not read OPNSENTRAL_VERSION"
+            exit 1
+          }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Verify Docker Hub secrets
         shell: bash
         env:
@@ -45,6 +57,7 @@ jobs:
           test -d app || { echo "::error::app directory is missing from repository root"; exit 1; }
           test -f telemetry-server/Dockerfile || { echo "::error::telemetry-server/Dockerfile is missing"; exit 1; }
           test -d telemetry-server/app || { echo "::error::telemetry-server/app directory is missing"; exit 1; }
+          echo "Building version: ${{ steps.version.outputs.version }}"
           echo "Building commit: $GITHUB_SHA"
           echo "Triggered by ref: $GITHUB_REF"
 
@@ -63,7 +76,7 @@ jobs:
             docker.io/frazon11/opnsentral
           tags: |
             type=match,pattern=v(.*),group=1
-            type=raw,value=0.6.20.18
+            type=raw,value=${{ steps.version.outputs.version }}
             type=raw,value=latest
             type=sha,prefix=sha-
 
@@ -73,10 +86,9 @@ jobs:
         with:
           images: |
             ghcr.io/frazon11/opnsentral-telemetry
-            docker.io/frazon11/opnsentral-telemetry
           tags: |
             type=match,pattern=v(.*),group=1
-            type=raw,value=0.6.20.18
+            type=raw,value=${{ steps.version.outputs.version }}
             type=raw,value=latest
             type=sha,prefix=sha-
 
@@ -114,5 +126,7 @@ jobs:
           push: true
           pull: true
           no-cache: true
+          build-args: |
+            OPNSENTRAL_VERSION=${{ steps.version.outputs.version }}
           tags: ${{ steps.telemetry_meta.outputs.tags }}
           labels: ${{ steps.telemetry_meta.outputs.labels }}
