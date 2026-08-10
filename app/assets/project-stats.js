@@ -19,6 +19,7 @@
     const style = document.createElement('style');
     style.textContent = `
         .project-stats-panel{margin:0 0 18px}
+        .presentation-mode .project-stats-panel{display:none!important}
         .project-stats-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}
         .project-stats-head h2{margin:0 0 3px}
         .project-stats-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
@@ -34,7 +35,6 @@
 
     const panel = document.createElement('section');
     panel.className = 'card project-stats-panel';
-    panel.setAttribute('data-presentation-exempt', 'true');
     panel.innerHTML = `
         <div class="project-stats-head">
             <div>
