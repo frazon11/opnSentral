@@ -1,9 +1,21 @@
 (function(){
     'use strict';
 
-    const storageKey='opncentral-presentation-mode';
-    const mappingKey='opncentral-presentation-mapping-v1';
+    const storageKey='opnsentral-presentation-mode';
+    const legacyStorageKey='opncentral-presentation-mode';
+    const mappingKey='opnsentral-presentation-mapping-v1';
+    const legacyMappingKey='opncentral-presentation-mapping-v1';
     const fantasyNames=['Dragonhold','Moonspire','Silverkeep','Ravenwatch','Stormhaven','Emberfall','Frostgate','Ironvale','Starforge','Shadowfen','Oakshield','Crystalreach','Thunderpeak','Wolfden','Suncrest','Nightfall','Goldenmoor','Mistwatch','Phoenixrest','Winterhold'];
+
+    if(localStorage.getItem(storageKey)===null && localStorage.getItem(legacyStorageKey)!==null){
+        localStorage.setItem(storageKey,localStorage.getItem(legacyStorageKey));
+        localStorage.removeItem(legacyStorageKey);
+    }
+    if(sessionStorage.getItem(mappingKey)===null && sessionStorage.getItem(legacyMappingKey)!==null){
+        sessionStorage.setItem(mappingKey,sessionStorage.getItem(legacyMappingKey));
+        sessionStorage.removeItem(legacyMappingKey);
+    }
+
     let enabled=localStorage.getItem(storageKey)==='1';
     let mappings=loadMappings();
     let observer=null;
@@ -28,7 +40,7 @@
     function anonymizeHost(host){return mapped('host',host,function(){const lower=host.toLowerCase();if(lower==='localhost')return 'demo-host.local';const suffix=lower.endsWith('.local')?'.demo.local':'.example.invalid';return 'host-'+stableNumber(host,1,999)+suffix;});}
     function replaceVisibleText(input){
         let output=String(input);
-        const names=Array.isArray(window.opnCentralPresentationNames)?window.opnCentralPresentationNames:[];
+        const names=Array.isArray(window.opnSentralPresentationNames)?window.opnSentralPresentationNames:[];
         names.slice().sort((a,b)=>b.length-a.length).forEach(function(name){if(name)output=output.split(name).join(fantasyName(name));});
         output=output.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,anonymizeEmail);
         output=output.replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g,anonymizeIpv4);
