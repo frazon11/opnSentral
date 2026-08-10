@@ -21,10 +21,10 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 COPY app/ /var/www/html/
-COPY apache.conf /etc/apache2/conf-available/opncentral-telemetry.conf
+COPY apache.conf /etc/apache2/conf-available/opnsentral-telemetry.conf
 
 RUN set -eux; \
-    a2enconf opncentral-telemetry; \
+    a2enconf opnsentral-telemetry; \
     mkdir -p /var/www/data; \
     chown -R www-data:www-data /var/www/html /var/www/data
 
