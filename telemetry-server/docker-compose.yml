@@ -1,21 +1,21 @@
 services:
   opnsentral-telemetry:
-    image: ghcr.io/frazon11/opnsentral-telemetry:${TELEMETRY_VERSION:-latest}
+    image: ghcr.io/frazon11/opnsentral-telemetry:${IMAGE_VERSION:-latest}
     container_name: opnSentral-Telemetry
     restart: unless-stopped
 
     ports:
-      - "${TELEMETRY_WEB_PORT:-8791}:80"
+      - "${WEB_PORT:?Set WEB_PORT in .env}:80"
 
     environment:
       TZ: ${TZ:-Europe/Brussels}
       TELEMETRY_WRITE_TOKEN: ${TELEMETRY_WRITE_TOKEN:-}
       DASHBOARD_USER: ${DASHBOARD_USER:-admin}
-      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?Set DASHBOARD_PASSWORD in .env}
       RETENTION_DAYS: ${RETENTION_DAYS:-730}
 
     volumes:
-      - "${TELEMETRY_BASE_PATH}/data:/var/www/data"
+      - "${BASE_PATH:?Set BASE_PATH in .env}/data:/var/www/data"
 
     healthcheck:
       test:
