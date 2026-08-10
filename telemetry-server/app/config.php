@@ -103,7 +103,7 @@ function require_dashboard_login(): void
         !hash_equals($expectedUser, $user) ||
         !hash_equals($expectedPassword, $password)
     ) {
-        header('WWW-Authenticate: Basic realm="opnCentral Telemetry"');
+        header('WWW-Authenticate: Basic realm="opnSentral Telemetry"');
         http_response_code(401);
         exit('Authentication required.');
     }
