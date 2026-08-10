@@ -30,11 +30,11 @@ Use the supplied `.env.example` or the visible `env.example` copy:
 
 ```env
 BASE_PATH=/volume1/docker/opnsentral-telemetry
-WEB_PORT=8791
+WEB_PORT=4455
 IMAGE_VERSION=latest
 TZ=Europe/Brussels
 
-TELEMETRY_WRITE_TOKEN=replace-with-a-long-random-secret
+TELEMETRY_WRITE_TOKEN=OMwcXVnI9rTcXiNjGnXz41X6
 DASHBOARD_USER=admin
 DASHBOARD_PASSWORD=replace-with-a-strong-password
 RETENTION_DAYS=730
@@ -61,7 +61,7 @@ For Synology the important variables are:
 
 ```text
 BASE_PATH=/volume1/docker/opnsentral-telemetry
-WEB_PORT=8791
+WEB_PORT=4455
 IMAGE_VERSION=latest
 ```
 
@@ -81,19 +81,23 @@ Do not use `--build`; the normal deployment uses the published image.
 
 ## Connect opnSentral
 
-Publish the telemetry service through an HTTPS reverse proxy, then configure the main opnSentral stack:
+The receiver endpoint is `/api.php` and accepts telemetry via HTTP POST with the configured write token.
+
+If the telemetry service itself is publicly exposed as HTTPS on port 4455, configure opnSentral with:
 
 ```text
-TELEMETRY_URL=https://telemetry.example.com/api.php
-TELEMETRY_WRITE_TOKEN=the-same-long-random-value
+TELEMETRY_URL=https://opnsentral.kryszon.info:4455/api.php
+TELEMETRY_WRITE_TOKEN=OMwcXVnI9rTcXiNjGnXz41X6
+```
+
+If a reverse proxy listens on normal HTTPS port 443 and forwards internally to the telemetry container on port 4455, omit the port from the public URL:
+
+```text
+TELEMETRY_URL=https://opnsentral.kryszon.info/api.php
 ```
 
 Recreate opnSentral, then enable **Settings → Anonymous installation statistics**.
 
-Dashboard:
-
-```text
-https://telemetry.example.com/
-```
+The telemetry dashboard is served from the same public base URL without `/api.php`.
 
 The browser prompts for `DASHBOARD_USER` and `DASHBOARD_PASSWORD`.
