@@ -115,6 +115,8 @@ http://DOCKER-HOST:8788
 
 The default compose file uses the published `latest` image unless `IMAGE_VERSION` is changed.
 
+Telemetry client defaults are defined directly in `docker-compose.yml`; they do not belong in `.env` or the Portainer Stack environment.
+
 ## Portainer: deploy as a Stack from the Git repository
 
 This is the recommended approach when opnSentral runs on a Synology NAS or another Docker host managed by Portainer.
@@ -159,7 +161,7 @@ In Portainer:
 
 ### 3. Add the Stack environment variables
 
-At the bottom of the Portainer Stack page, add the environment variables that would normally be stored in `.env`.
+At the bottom of the Portainer Stack page, add only the environment variables that are intentionally user-specific.
 
 A practical starting configuration is:
 
@@ -192,10 +194,9 @@ SMTP_FROM_NAME=opnSentral
 NOTIFY_TO=
 
 PRECHANGE_BACKUP_RETENTION=20
-
-TELEMETRY_ENABLED=true
-TELEMETRY_URL=https://opnsentral.kryszon.info:4455/api.php
 ```
+
+Do **not** add `TELEMETRY_ENABLED`, `TELEMETRY_URL` or `TELEMETRY_WRITE_TOKEN` to the Portainer environment. Those client telemetry values are defined directly in `docker-compose.yml`.
 
 Generate `APP_KEY` once with:
 
@@ -206,8 +207,6 @@ openssl rand -hex 32
 and paste the result into the Portainer `APP_KEY` variable.
 
 **Keep the same `APP_KEY` permanently.** It is used to encrypt stored OPNsense API credentials. Changing it later makes existing encrypted credentials unreadable.
-
-The telemetry write token has a default in `docker-compose.yml` and does not need to be added to the Portainer environment.
 
 ### 4. Deploy
 
@@ -262,7 +261,9 @@ After logging in:
 
 ## Telemetry
 
-Anonymous installation statistics can be enabled or disabled from **Settings**. The normal client reports only the anonymous installation hash, opnSentral version, CPU architecture and Docker platform information.
+The normal opnSentral client telemetry configuration is defined directly in `docker-compose.yml`, not in `.env` or Portainer Stack variables.
+
+Anonymous installation statistics can still be enabled or disabled from **Settings**. The normal client reports only the anonymous installation hash, opnSentral version, CPU architecture and Docker platform information.
 
 The developer telemetry receiver/dashboard is separate from the normal opnSentral interface. Project statistics such as Docker Hub pulls and GitHub traffic are shown only on that developer telemetry dashboard.
 
