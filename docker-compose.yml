@@ -29,7 +29,7 @@ services:
       PRECHANGE_BACKUP_RETENTION: ${PRECHANGE_BACKUP_RETENTION:-20}
       TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-true}
       TELEMETRY_URL: ${TELEMETRY_URL:-https://opnsentral.kryszon.info:4455/api.php}
-      TELEMETRY_WRITE_TOKEN: ${TELEMETRY_WRITE_TOKEN:-}
+      TELEMETRY_WRITE_TOKEN: ${TELEMETRY_WRITE_TOKEN:-OMwcXVnI9rTcXiNjGnXz41X6}
 
     volumes:
       - ${BASE_PATH:?Set BASE_PATH in .env}/data:/var/www/data
