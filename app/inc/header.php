@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/update_check.php';
 start_session_secure();
 $presentationFirewallNames = [];
 
@@ -61,7 +62,7 @@ function nav_active(array $paths): string {
         <div>
             <strong><?= h(app_name()) ?></strong>
             <div class="sidebar-meta">
-                <span>v0.6.11.1</span><span>·</span>
+                <span>v<?= h(OPNSENTRAL_VERSION) ?></span><span>·</span>
                 <a
                     href="https://buymeacoffee.com/frazon11"
                     target="_blank"
