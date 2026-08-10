@@ -10,6 +10,20 @@ function env_value(string $name, string $default = ''): string
     return $value === false || $value === '' ? $default : $value;
 }
 
+function env_bool(string $name, bool $default = false): bool
+{
+    $value = getenv($name);
+    if ($value === false || trim((string) $value) === '') {
+        return $default;
+    }
+
+    return in_array(
+        strtolower(trim((string) $value)),
+        ['1', 'true', 'yes', 'on'],
+        true
+    );
+}
+
 function telemetry_db(): PDO
 {
     static $pdo = null;
@@ -111,8 +125,22 @@ function require_write_token(): void
     }
 }
 
+function require_dashboard_enabled(): void
+{
+    if (env_bool('TELEMETRY_DASHBOARD_ENABLED', false)) {
+        return;
+    }
+
+    http_response_code(404);
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Cache-Control: no-store');
+    exit('Not Found');
+}
+
 function require_dashboard_login(): void
 {
+    require_dashboard_enabled();
+
     $expectedUser = env_value('DASHBOARD_USER', 'admin');
     $expectedPassword = env_value('DASHBOARD_PASSWORD');
 
