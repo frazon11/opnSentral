@@ -1,6 +1,28 @@
-# opnSentral Telemetry
+# opnSentral Telemetry Receiver
 
-A small optional receiving service for anonymous opnSentral active-installation statistics.
+This directory contains the developer-operated receiver for anonymous opnSentral installation telemetry.
+
+It is infrastructure for the project maintainer, not an end-user opnSentral feature.
+
+## Public vs private endpoints
+
+Only the ingest endpoint needs to be reachable by opnSentral installations:
+
+```text
+https://opnsentral.kryszon.info:4455/api.php
+```
+
+The telemetry dashboard at `/` is developer-only and is disabled by default. When disabled it returns HTTP 404.
+
+To enable the dashboard on a private or otherwise restricted deployment:
+
+```env
+TELEMETRY_DASHBOARD_ENABLED=true
+DASHBOARD_USER=admin
+DASHBOARD_PASSWORD=replace-with-a-strong-password
+```
+
+Basic authentication is still required when the dashboard is enabled. Restrict dashboard access further at the reverse proxy or firewall where possible.
 
 ## Data stored
 
@@ -22,11 +44,9 @@ ghcr.io/frazon11/opnsentral-telemetry:latest
 docker.io/frazon11/opnsentral-telemetry:latest
 ```
 
-The telemetry image is built by the repository CI for AMD64 and ARM64. Portainer and Synology do not need to build the image locally.
+The telemetry image is built for AMD64 and ARM64.
 
-## Environment
-
-Use the supplied `.env.example`:
+## Synology / Portainer environment
 
 ```env
 BASE_PATH=/volume1/docker/opnsentral-telemetry
@@ -34,72 +54,39 @@ WEB_PORT=4455
 IMAGE_VERSION=latest
 TZ=Europe/Brussels
 
-TELEMETRY_WRITE_TOKEN=OMwcXVnI9rTcXiNjGnXz41X6
+# Optional API Bearer token. Standard public opnSentral clients do not embed a secret.
+TELEMETRY_WRITE_TOKEN=
+
+# Keep the dashboard disabled unless access is deliberately restricted.
+TELEMETRY_DASHBOARD_ENABLED=false
 DASHBOARD_USER=admin
-DASHBOARD_PASSWORD=replace-with-a-strong-password
+DASHBOARD_PASSWORD=
+
 RETENTION_DAYS=730
 ```
 
-`BASE_PATH` is the persistent host path. On Synology create this directory before deployment:
+Persistent data directory:
 
 ```text
 /volume1/docker/opnsentral-telemetry/data
 ```
 
-## Portainer / Synology Git repository deployment
-
-Create a new stack using **Git repository** and use:
+## Portainer Git repository deployment
 
 ```text
 Repository: https://github.com/frazon11/opnSentral.git
 Compose path: telemetry-server/docker-compose.yml
 ```
 
-Add the environment variables shown above in the stack environment-variable section. The compose file pulls the published telemetry image and therefore does not contain a local `build:` step.
+The compose file pulls the published telemetry image and does not build locally.
 
-For Synology the important variables are:
+## Client configuration
 
-```text
-BASE_PATH=/volume1/docker/opnsentral-telemetry
-WEB_PORT=4455
-IMAGE_VERSION=latest
-```
-
-Then deploy the stack.
-
-## Docker Compose deployment
-
-From the `telemetry-server` directory:
-
-```bash
-cp .env.example .env
-docker compose pull
-docker compose up -d
-```
-
-Do not use `--build`; the normal deployment uses the published image.
-
-## Connect opnSentral
-
-The receiver endpoint is `/api.php` and accepts telemetry via HTTP POST with the configured write token.
-
-If the telemetry service itself is publicly exposed as HTTPS on port 4455, configure opnSentral with:
+The public opnSentral client only requires:
 
 ```text
+TELEMETRY_ENABLED=true
 TELEMETRY_URL=https://opnsentral.kryszon.info:4455/api.php
-TELEMETRY_WRITE_TOKEN=OMwcXVnI9rTcXiNjGnXz41X6
 ```
 
-If a reverse proxy listens on normal HTTPS port 443 and forwards internally to the telemetry container on port 4455, omit the port from the public URL:
-
-```text
-TELEMETRY_URL=https://opnsentral.kryszon.info/api.php
-```
-
-Recreate opnSentral, then enable **Settings → Anonymous installation statistics**.
-
-When telemetry is enabled, opnSentral sends once on every container start (including the first start after creation) and continues with the normal 24-hour schedule while the container is running.
-
-The telemetry dashboard is served from the same public base URL without `/api.php`.
-
-The browser prompts for `DASHBOARD_USER` and `DASHBOARD_PASSWORD`.
+`TELEMETRY_WRITE_TOKEN` is optional. If a private receiver deployment enables a token, only clients configured with the same token can submit telemetry.
