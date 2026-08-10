@@ -18,6 +18,7 @@
 <script src="/assets/configuration-access.js?v=06215"></script>
 <script src="/assets/presentation-settings.js?v=062020"></script>
 <script src="/assets/alias-geoip-type.js?v=06215"></script>
+<script src="/assets/project-stats.js?v=062021"></script>
 <script>
 (function(){
     document.title = 'opnSentral';
