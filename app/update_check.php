@@ -20,7 +20,7 @@ try {
 
     echo json_encode([
         'ok' => true,
-        'installed_version' => OPNCENTRAL_VERSION,
+        'installed_version' => OPNSENTRAL_VERSION,
         'state' => $state,
     ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 } catch (Throwable $exception) {
