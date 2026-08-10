@@ -61,11 +61,26 @@
     }
 
     fetch('/project_stats.php', {credentials:'same-origin', cache:'no-store'})
-        .then(function(response){
-            return response.json().then(function(data){
-                if(!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
-                return data;
-            });
+        .then(async function(response){
+            const text = await response.text();
+            let data;
+
+            try{
+                data = JSON.parse(text);
+            }catch(error){
+                const compact = text.replace(/\s+/g, ' ').trim().slice(0, 300);
+                throw new Error(
+                    compact
+                        ? 'Server returned invalid JSON: ' + compact
+                        : 'Server returned an empty response.'
+                );
+            }
+
+            if(!response.ok || data.ok !== true){
+                throw new Error(data.error || ('HTTP ' + response.status));
+            }
+
+            return data;
         })
         .then(function(data){
             set('docker-pulls', data.docker_hub?.pulls);
