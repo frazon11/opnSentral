@@ -1,6 +1,8 @@
 FROM php:8.5-apache-trixie
 
-ENV DEBIAN_FRONTEND=noninteractive
+ARG OPNSENTRAL_VERSION=unknown
+ENV DEBIAN_FRONTEND=noninteractive \
+    TELEMETRY_SERVER_VERSION=${OPNSENTRAL_VERSION}
 
 RUN set -eux; \
     apt-get update; \
