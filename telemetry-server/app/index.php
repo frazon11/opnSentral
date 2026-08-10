@@ -8,6 +8,7 @@ cleanup_old_installations();
 
 $pdo = telemetry_db();
 $now = time();
+$serverVersion = env_value('TELEMETRY_SERVER_VERSION', 'unknown');
 
 function count_since(PDO $pdo, int $seconds): int
 {
@@ -76,7 +77,7 @@ function h(string $value): string
 :root{font-family:Inter,system-ui,Segoe UI,sans-serif;color:#e7edf1;background:#151a1e}
 *{box-sizing:border-box}body{margin:0;background:#151a1e;color:#e7edf1}
 main{max-width:1500px;margin:auto;padding:28px}
-h1{margin-top:0}.muted{color:#9eabb4}
+h1{margin:0}.muted{color:#9eabb4}.page-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}.server-version{font-size:.95rem;color:#9eabb4}
 .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 .card{background:#222a30;border:1px solid #3b4750;padding:18px;border-radius:4px}
 .metric{font-size:2rem;font-weight:750;margin-top:8px}
@@ -90,7 +91,10 @@ th{background:#2c363e}.badge{display:inline-block;padding:3px 8px;background:#26
 </head>
 <body>
 <main>
-    <h1>opnSentral Telemetry</h1>
+    <div class="page-head">
+        <h1>opnSentral Telemetry</h1>
+        <span class="server-version">v<?= h($serverVersion) ?></span>
+    </div>
     <p class="muted">
         Anonymous active-installation statistics. No raw installation ID,
         firewall data or client IP address is displayed or stored by the application.
