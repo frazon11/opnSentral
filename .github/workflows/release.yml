@@ -27,9 +27,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION=$(sed -n "s/^const OPNCENTRAL_VERSION = '\([^']*\)';$/\1/p" app/inc/update_check.php)
+          VERSION=$(sed -n "s/^const OPNSENTRAL_VERSION = '\([^']*\)';$/\1/p" app/inc/update_check.php)
           test -n "$VERSION" || {
-            echo "::error::Could not read OPNCENTRAL_VERSION"
+            echo "::error::Could not read OPNSENTRAL_VERSION"
             exit 1
           }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
