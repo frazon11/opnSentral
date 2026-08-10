@@ -41,7 +41,13 @@ function nav_active(array $paths): string {
 <meta name="theme-color" content="#26313a" id="browser-theme-color">
 <script>
 (function(){
-    const saved=localStorage.getItem('opncentral-theme');
+    const key='opnsentral-theme';
+    const legacyKey='opncentral-theme';
+    if(localStorage.getItem(key)===null && localStorage.getItem(legacyKey)!==null){
+        localStorage.setItem(key,localStorage.getItem(legacyKey));
+        localStorage.removeItem(legacyKey);
+    }
+    const saved=localStorage.getItem(key);
     document.documentElement.dataset.theme=saved==='dark'?'dark':'light';
 })();
 </script>
@@ -148,20 +154,20 @@ function nav_active(array $paths): string {
 <main class="content login-content">
 <?php endif; ?>
 <script>
-window.opnCentralPresentationNames = <?= json_encode(
+window.opnSentralPresentationNames = <?= json_encode(
     $presentationFirewallNames,
     JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
 ) ?>;
 window.opnSentralCsrf = <?= json_encode(csrf_token(), JSON_UNESCAPED_SLASHES) ?>;
 
-window.opnCentralSetTheme=function(theme){
+window.opnSentralSetTheme=function(theme){
     const selected=theme==='dark'?'dark':'light';
     document.documentElement.dataset.theme=selected;
-    localStorage.setItem('opncentral-theme',selected);
+    localStorage.setItem('opnsentral-theme',selected);
     const meta=document.getElementById('browser-theme-color');
     if(meta) meta.setAttribute('content',selected==='dark'?'#1b2228':'#26313a');
 };
-window.opnCentralSetTheme(document.documentElement.dataset.theme||'light');
+window.opnSentralSetTheme(document.documentElement.dataset.theme||'light');
 
 document.getElementById('sidebar-toggle')?.addEventListener('click',function(){
     document.body.classList.toggle('sidebar-open');
