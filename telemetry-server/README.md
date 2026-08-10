@@ -1,12 +1,12 @@
-# opnCentral Telemetry
+# opnSentral Telemetry
 
-A small optional receiving service for anonymous opnCentral active-installation statistics.
+A small optional receiving service for anonymous opnSentral active-installation statistics.
 
 ## Data stored
 
 - SHA-256 anonymous installation hash
 - first and last seen timestamps
-- opnCentral version
+- opnSentral version
 - CPU architecture
 - platform (`docker`)
 - number of accepted checks
@@ -15,38 +15,80 @@ The application does not store firewall names, addresses, credentials, networks,
 
 Apache access logging is disabled in the supplied image to avoid retaining client IP addresses. Reverse proxies placed in front of this container may still log IP addresses; disable or anonymise those logs separately.
 
-## Deployment
+## Container image
 
-1. Create `.env` from the supplied template:
-
-   Linux/macOS:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Synology/File Station or Windows:
-
-   - Copy the visible `env.example` file.
-   - Rename the copy to `.env`.
-   - Dotfiles may be hidden in File Station; `env.example` contains the same settings as `.env.example`.
-2. Set a strong `DASHBOARD_PASSWORD`.
-3. Set `TELEMETRY_WRITE_TOKEN` to a long random value.
-4. Run:
-
-```bash
-docker compose up -d --build
+```text
+ghcr.io/frazon11/opnsentral-telemetry:latest
+docker.io/frazon11/opnsentral-telemetry:latest
 ```
 
-5. Publish the service through an HTTPS reverse proxy.
-6. Set the opnCentral environment:
+The telemetry image is built by the repository CI for AMD64 and ARM64. Portainer and Synology do not need to build the image locally.
+
+## Environment
+
+Use the supplied `.env.example` or the visible `env.example` copy:
+
+```env
+BASE_PATH=/volume1/docker/opnsentral-telemetry
+WEB_PORT=8791
+IMAGE_VERSION=latest
+TZ=Europe/Brussels
+
+TELEMETRY_WRITE_TOKEN=replace-with-a-long-random-secret
+DASHBOARD_USER=admin
+DASHBOARD_PASSWORD=replace-with-a-strong-password
+RETENTION_DAYS=730
+```
+
+`BASE_PATH` is the persistent host path. On Synology create this directory before deployment:
+
+```text
+/volume1/docker/opnsentral-telemetry/data
+```
+
+## Portainer / Synology Git repository deployment
+
+Create a new stack using **Git repository** and use:
+
+```text
+Repository: https://github.com/frazon11/opnSentral.git
+Compose path: telemetry-server/docker-compose.yml
+```
+
+Add the environment variables shown above in the stack environment-variable section. The compose file pulls the published telemetry image and therefore does not contain a local `build:` step.
+
+For Synology the important variables are:
+
+```text
+BASE_PATH=/volume1/docker/opnsentral-telemetry
+WEB_PORT=8791
+IMAGE_VERSION=latest
+```
+
+Then deploy the stack.
+
+## Docker Compose deployment
+
+From the `telemetry-server` directory:
+
+```bash
+cp .env.example .env
+docker compose pull
+docker compose up -d
+```
+
+Do not use `--build`; the normal deployment uses the published image.
+
+## Connect opnSentral
+
+Publish the telemetry service through an HTTPS reverse proxy, then configure the main opnSentral stack:
 
 ```text
 TELEMETRY_URL=https://telemetry.example.com/api.php
 TELEMETRY_WRITE_TOKEN=the-same-long-random-value
 ```
 
-7. Recreate opnCentral, then enable **Settings → Anonymous installation statistics**.
+Recreate opnSentral, then enable **Settings → Anonymous installation statistics**.
 
 Dashboard:
 
