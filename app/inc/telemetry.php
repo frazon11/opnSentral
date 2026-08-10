@@ -10,10 +10,16 @@ function telemetry_state_path(): string
     return DATA_DIR . '/telemetry.json';
 }
 
+function telemetry_default_enabled(): bool
+{
+    $value = strtolower(trim(envv('TELEMETRY_ENABLED', 'false')));
+    return in_array($value, ['1', 'true', 'yes', 'on'], true);
+}
+
 function telemetry_default_state(): array
 {
     return [
-        'enabled' => false,
+        'enabled' => telemetry_default_enabled(),
         'installation_secret' => null,
         'last_attempt' => null,
         'last_sent' => null,
