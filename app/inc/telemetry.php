@@ -75,7 +75,7 @@ function telemetry_installation_hash(array &$state): string
 {
     return hash(
         'sha256',
-        'opncentral-installation-v1:' . telemetry_installation_secret($state)
+        'opnsentral-installation-v1:' . telemetry_installation_secret($state)
     );
 }
 
@@ -119,8 +119,8 @@ function telemetry_payload(array &$state): array
 {
     return [
         'installation_hash' => telemetry_installation_hash($state),
-        'version' => defined('OPNCENTRAL_VERSION')
-            ? OPNCENTRAL_VERSION
+        'version' => defined('OPNSENTRAL_VERSION')
+            ? OPNSENTRAL_VERSION
             : 'unknown',
         'architecture' => php_uname('m') ?: 'unknown',
         'platform' => 'docker',
@@ -173,7 +173,7 @@ function telemetry_send(bool $force = false): array
     $headers = [
         'Accept: application/json',
         'Content-Type: application/json',
-        'User-Agent: opnCentral/' . $payload['version'],
+        'User-Agent: opnSentral/' . $payload['version'],
     ];
 
     $token = trim(envv('TELEMETRY_WRITE_TOKEN', ''));
