@@ -71,7 +71,7 @@ function h(string $value): string
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>opnCentral Telemetry</title>
+<title>opnSentral Telemetry</title>
 <style>
 :root{font-family:Inter,system-ui,Segoe UI,sans-serif;color:#e7edf1;background:#151a1e}
 *{box-sizing:border-box}body{margin:0;background:#151a1e;color:#e7edf1}
@@ -90,7 +90,7 @@ th{background:#2c363e}.badge{display:inline-block;padding:3px 8px;background:#26
 </head>
 <body>
 <main>
-    <h1>opnCentral Telemetry</h1>
+    <h1>opnSentral Telemetry</h1>
     <p class="muted">
         Anonymous active-installation statistics. No raw installation ID,
         firewall data or client IP address is displayed or stored by the application.
