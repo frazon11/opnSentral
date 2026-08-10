@@ -21,8 +21,6 @@
 <script>
 (function(){
     document.title = 'opnSentral';
-    const version = document.querySelector('.sidebar-meta span:first-child');
-    if(version) version.textContent = 'v0.6.20.15';
 
     const path = location.pathname;
     let settings = null;
