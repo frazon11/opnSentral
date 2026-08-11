@@ -2,13 +2,23 @@
 
 All notable changes to opnSentral are documented here.
 
-The detailed development history remains available through the Git commit history and GitHub releases. This file is intentionally kept concise and release-oriented.
+Historical releases remain summarized here and in published GitHub releases. The active Git history intentionally starts from the cleaned repository baseline.
 
 ## Unreleased
 
 - Clarified Docker platform support in the README, including Raspberry Pi 4/5 with a 64-bit OS.
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
+
+## 0.6.21.1
+
+- Added short-lived, single-use registration tokens for outbound OPNsense agents.
+- Added a one-command remote OPNsense installer generated from the Agents page.
+- Added per-agent HMAC-SHA256 authentication with timestamp and nonce replay protection, including compatibility with the earlier agent header names.
+- Added authenticated heartbeat/reporting plus an outbound job queue and result channel.
+- Added initial allow-listed remote jobs for inventory and system status; arbitrary remote command execution is not exposed.
+- Added five-minute job leases so abandoned running jobs can be re-queued automatically.
+- Added OPNsense rc(8) service installation using `/etc/rc.conf.d/opnsentral_agent`.
 
 ## 0.6.20.19
 
@@ -136,4 +146,4 @@ This period contains the original opnCentral/opnSentral feature build-out and ma
 - Telemetry and update-check infrastructure.
 - Multi-architecture Docker publishing.
 
-For exact historical changes from this period, use the Git commit history and published GitHub releases.
+For exact historical behavior, use the release summaries above and published GitHub releases.
