@@ -28,7 +28,7 @@ services:
       NOTIFY_TO: ${NOTIFY_TO}
       PRECHANGE_BACKUP_RETENTION: ${PRECHANGE_BACKUP_RETENTION:-20}
       TELEMETRY_ENABLED: "true"
-      TELEMETRY_URL: "https://opnsentral.kryszon.info:4455/api.php"
+      TELEMETRY_URL: "https://opnsentral.kryszon.info/api.php"
       TELEMETRY_WRITE_TOKEN: "OMwcXVnI9rTcXiNjGnXz41X6"
 
     volumes:
