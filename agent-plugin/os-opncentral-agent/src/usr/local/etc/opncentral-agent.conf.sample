@@ -1,0 +1,6 @@
+{
+  "server_url": "https://opncentral.example/api/agent_report.php",
+  "agent_id": "",
+  "agent_secret": "",
+  "verify_tls": true
+}

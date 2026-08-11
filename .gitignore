@@ -1,0 +1,39 @@
+# Runtime configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Application data
+data/*
+!data/.gitkeep
+backups/*
+!backups/.gitkeep
+telemetry-server/data/*
+!telemetry-server/data/.gitkeep
+
+# SQLite runtime files
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Generated archives and logs
+*.zip
+*.tar
+*.tar.gz
+*.log
+README-UPDATE.txt
+
+# Temporary build/test output
+*_extract/
+opnCentral-v*/
+coverage/
+test-output/
+tmp/
+temp/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini

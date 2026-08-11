@@ -1,0 +1,44 @@
+/* v0.6.11.5: align top-bar controls and keep only the corner presentation indicator. */
+.presentation-mode-state{
+    display:none!important;
+}
+
+.topbar-right{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+}
+
+.presentation-mode-stack,
+.configuration-lock-stack{
+    width:160px;
+    margin-right:0;
+}
+
+.presentation-mode-stack #presentation-mode-button,
+.configuration-lock-stack #configuration-lock-button{
+    display:block;
+    width:100%;
+    min-width:0;
+    min-height:40px;
+    box-sizing:border-box;
+    padding:8px 12px;
+    border-radius:3px;
+    font-size:.95rem;
+    line-height:1.2;
+    text-align:center;
+}
+
+@media(max-width:760px){
+    .presentation-mode-stack,
+    .configuration-lock-stack{
+        width:132px;
+    }
+}
+
+@media(max-width:620px){
+    .presentation-mode-stack,
+    .configuration-lock-stack{
+        width:108px;
+    }
+}

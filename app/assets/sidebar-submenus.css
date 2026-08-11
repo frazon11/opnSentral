@@ -1,0 +1,97 @@
+/* Sidebar submenu refinement for v0.6.11.7. */
+.opn-sidebar-group-content{
+    padding:4px 0 8px;
+}
+.opn-sidebar-group-content>a,
+.opn-sidebar-group-content>.nav-child,
+.opn-sidebar-group-content>.nav-disabled{
+    display:flex;
+    align-items:center;
+    width:100%;
+    min-width:0;
+    min-height:36px;
+    margin:0;
+    padding:8px 16px 8px 36px;
+    gap:9px;
+    border:0;
+    border-left:3px solid transparent;
+    color:#d7e0e6;
+    text-decoration:none;
+    font-size:.88rem;
+    line-height:1.25;
+    white-space:normal;
+    overflow-wrap:anywhere;
+}
+.opn-sidebar-group-content>a:hover,
+.opn-sidebar-group-content>.nav-child:hover{
+    background:#293239;
+    color:#fff;
+}
+.opn-sidebar-group-content>a.active,
+.opn-sidebar-group-content>.nav-child.active{
+    background:#30383e;
+    border-left-color:#d96b27;
+    color:#fff;
+}
+.opn-sidebar-group-content .nav-section-label{
+    display:block;
+    width:100%;
+    margin:4px 0 1px;
+    padding:8px 16px 4px 38px;
+    color:#98a6af;
+    font-size:.68rem;
+    font-weight:750;
+    line-height:1.2;
+    letter-spacing:.075em;
+    text-transform:uppercase;
+}
+.opn-sidebar-group-content .nav-child::before{
+    content:"";
+    display:block;
+    flex:0 0 8px;
+    width:8px;
+    height:8px;
+    margin:0;
+    border-left:1px solid #77858e;
+    border-bottom:1px solid #77858e;
+}
+.opn-sidebar-group-content>a:not(.nav-child)::before{
+    content:"";
+    display:block;
+    flex:0 0 5px;
+    width:5px;
+    height:5px;
+    border-radius:50%;
+    background:#7e8c95;
+}
+.opn-sidebar-group-content>a.active::before,
+.opn-sidebar-group-content>.nav-child.active::before{
+    border-color:#e47a35;
+    background:#e47a35;
+}
+.opn-sidebar-group-content .nav-disabled{
+    color:#7f8d96;
+    cursor:not-allowed;
+}
+.opn-sidebar-group-content .nav-disabled:hover{
+    background:transparent;
+    color:#7f8d96;
+}
+.opn-sidebar-group-content .nav-disabled small{
+    margin-left:auto;
+    color:#71808a;
+    font-size:.66rem;
+    white-space:nowrap;
+}
+.opn-sidebar-group-content a span,
+.opn-sidebar-group-content .nav-child span,
+.opn-sidebar-group-content .nav-disabled span{
+    min-width:0;
+}
+@media(max-width:900px){
+    .opn-sidebar-group-content>a,
+    .opn-sidebar-group-content>.nav-child,
+    .opn-sidebar-group-content>.nav-disabled{
+        padding-right:14px;
+    }
+}

@@ -1,0 +1,4 @@
+usr/local/opncentral-agent/report.py
+usr/local/etc/opncentral-agent.conf.sample
+usr/local/etc/rc.d/opncentral_agent
+opnsense/service/conf/actions.d/actions_opncentralagent.conf

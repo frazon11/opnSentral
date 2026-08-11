@@ -1,0 +1,287 @@
+<?php
+
+declare(strict_types=1);
+
+ini_set('display_errors', '0');
+ini_set('html_errors', '0');
+ob_start();
+
+register_shutdown_function(static function (): void {
+    $error = error_get_last();
+
+    if ($error === null || !in_array(
+        $error['type'],
+        [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR],
+        true
+    )) {
+        return;
+    }
+
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+        header('Cache-Control: no-store');
+    }
+
+    echo json_encode(
+        [
+            'ok' => false,
+            'error' => 'PHP fatal error: ' . $error['message'],
+        ],
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+    );
+});
+
+require_once __DIR__ . '/inc/config.php';
+require_once __DIR__ . '/inc/opnsense.php';
+
+require_login();
+
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
+
+function plugin_cache_path(): string
+{
+    return DATA_DIR . '/plugins-cache.json';
+}
+
+function plugin_read_cache(): ?array
+{
+    $path = plugin_cache_path();
+
+    if (!is_file($path)) {
+        return null;
+    }
+
+    $raw = file_get_contents($path);
+    $decoded = $raw === false ? null : json_decode($raw, true);
+
+    if (
+        !is_array($decoded) ||
+        !isset($decoded['firewalls']) ||
+        !is_array($decoded['firewalls'])
+    ) {
+        return null;
+    }
+
+    $modified = filemtime($path);
+    $decoded['age'] = $modified === false
+        ? null
+        : max(0, time() - $modified);
+
+    return $decoded;
+}
+
+function plugin_write_cache(array $data): void
+{
+    if (!is_dir(DATA_DIR)) {
+        @mkdir(DATA_DIR, 0770, true);
+    }
+
+    $temporary = plugin_cache_path() . '.tmp-' . bin2hex(random_bytes(4));
+    $payload = json_encode(
+        $data,
+        JSON_UNESCAPED_SLASHES |
+        JSON_UNESCAPED_UNICODE |
+        JSON_THROW_ON_ERROR
+    );
+
+    if (file_put_contents($temporary, $payload, LOCK_EX) !== false) {
+        @chmod($temporary, 0660);
+        @rename($temporary, plugin_cache_path());
+    } else {
+        @unlink($temporary);
+    }
+}
+
+function plugin_bool(mixed $value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    if (is_int($value) || is_float($value)) {
+        return $value !== 0;
+    }
+
+    return in_array(
+        strtolower(trim((string) $value)),
+        ['1', 'true', 'yes', 'on', 'installed', 'locked'],
+        true
+    );
+}
+
+function plugin_find_packages(mixed $node, array &$output): void
+{
+    if (!is_array($node)) {
+        return;
+    }
+
+    $name = trim((string) (
+        $node['name'] ??
+        $node['pkg_name'] ??
+        $node['package'] ??
+        ''
+    ));
+
+    if ($name !== '' && str_starts_with($name, 'os-')) {
+        $status = strtolower(trim((string) ($node['status'] ?? '')));
+        $current = trim((string) ($node['current'] ?? ''));
+
+        $installed = array_key_exists('installed', $node)
+            ? plugin_bool($node['installed'])
+            : ($status === 'installed' || $current !== '');
+
+        $output[$name] = [
+            'name' => $name,
+            'version' => trim((string) (
+                $node['version'] ??
+                $node['installed_version'] ??
+                $current
+            )),
+            'available_version' => trim((string) (
+                $node['available_version'] ??
+                $node['new_version'] ??
+                $node['version'] ??
+                ''
+            )),
+            'installed' => $installed,
+            'locked' => plugin_bool($node['locked'] ?? false),
+            'description' => trim((string) (
+                $node['comment'] ??
+                $node['description'] ??
+                ''
+            )),
+        ];
+    }
+
+    foreach ($node as $value) {
+        plugin_find_packages($value, $output);
+    }
+}
+
+function plugin_live(array $firewalls): array
+{
+    $requests = [];
+
+    foreach ($firewalls as $firewall) {
+        $requests[(string) $firewall['id']] = [
+            'firewall' => $firewall,
+            'path' => 'core/firmware/info',
+            'timeout' => 30,
+        ];
+    }
+
+    $responses = opn_requests_parallel($requests);
+    $rows = [];
+
+    foreach ($firewalls as $firewall) {
+        $key = (string) $firewall['id'];
+        $response = $responses[$key] ?? [
+            'ok' => false,
+            'error' => 'No result',
+        ];
+        $plugins = [];
+
+        if (($response['ok'] ?? false) === true) {
+            plugin_find_packages($response['value'] ?? [], $plugins);
+        }
+
+        // SORT_NATURAL | SORT_FLAG_CASE is not a valid ksort() flag.
+        // uksort with strnatcasecmp provides case-insensitive natural sorting.
+        uksort($plugins, 'strnatcasecmp');
+
+        $rows[] = [
+            'id' => (int) $firewall['id'],
+            'name' => (string) $firewall['name'],
+            'base_url' => (string) $firewall['base_url'],
+            'ok' => ($response['ok'] ?? false) === true,
+            'error' => $response['error'] ?? null,
+            'plugins' => array_values($plugins),
+        ];
+    }
+
+    $data = [
+        'created_at' => gmdate('c'),
+        'firewalls' => $rows,
+    ];
+
+    plugin_write_cache($data);
+    $data['age'] = 0;
+
+    return $data;
+}
+
+try {
+    $force = ($_GET['force'] ?? '') === '1';
+    $firewallId = (int) ($_GET['firewall_id'] ?? 0);
+
+    if ($firewallId < 1) {
+        throw new RuntimeException('Select a firewall.');
+    }
+
+    $firewall = firewall_by_id($firewallId);
+    $cache = plugin_read_cache();
+    $source = 'cache';
+
+    $cachedFirewall = null;
+    if ($cache !== null) {
+        foreach ($cache['firewalls'] as $row) {
+            if ((int) ($row['id'] ?? 0) === $firewallId) {
+                $cachedFirewall = $row;
+                break;
+            }
+        }
+    }
+
+    if ($force || $cachedFirewall === null) {
+        $live = plugin_live([$firewall]);
+        $cache = $live;
+        $source = 'live';
+    } else {
+        $cache['firewalls'] = [$cachedFirewall];
+    }
+
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    echo json_encode(
+        [
+            'ok' => true,
+            'firewalls' => $cache['firewalls'],
+            'cache' => [
+                'source' => $source,
+                'age' => $cache['age'] ?? null,
+                'refresh_recommended' =>
+                    $source === 'cache' &&
+                    (($cache['age'] ?? 999) >= 300),
+            ],
+        ],
+        JSON_UNESCAPED_SLASHES |
+        JSON_UNESCAPED_UNICODE |
+        JSON_THROW_ON_ERROR
+    );
+} catch (Throwable $exception) {
+    http_response_code(500);
+
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    echo json_encode(
+        [
+            'ok' => false,
+            'error' => $exception->getMessage(),
+        ],
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+    );
+}

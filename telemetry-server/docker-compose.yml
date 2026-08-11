@@ -1,0 +1,31 @@
+services:
+  opnsentral-telemetry:
+    image: ghcr.io/frazon11/opnsentral-telemetry:${IMAGE_VERSION:-latest}
+    container_name: opnSentral-Telemetry
+    restart: unless-stopped
+
+    ports:
+      - "${WEB_PORT:-4455}:80"
+
+    environment:
+      TZ: ${TZ:-Europe/Brussels}
+      TELEMETRY_WRITE_TOKEN: ${TELEMETRY_WRITE_TOKEN:-}
+      TELEMETRY_DASHBOARD_ENABLED: ${TELEMETRY_DASHBOARD_ENABLED:-true}
+      DASHBOARD_USER: ${DASHBOARD_USER:-admin}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?Set DASHBOARD_PASSWORD in .env}
+      RETENTION_DAYS: ${RETENTION_DAYS:-730}
+      DOCKER_HUB_REPOSITORY: ${DOCKER_HUB_REPOSITORY:-frazon11/opnsentral}
+      GITHUB_TRAFFIC_REPOSITORY: ${GITHUB_TRAFFIC_REPOSITORY:-frazon11/opnSentral}
+      GITHUB_TRAFFIC_TOKEN: ${GITHUB_TRAFFIC_TOKEN:-}
+
+    volumes:
+      - "${BASE_PATH:?Set BASE_PATH in .env}/data:/var/www/data"
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - php -r '$$pdo=new PDO("sqlite:/var/www/data/telemetry.sqlite"); echo "ok";' || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

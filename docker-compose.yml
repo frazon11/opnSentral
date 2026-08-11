@@ -1,0 +1,45 @@
+services:
+  opnsentral:
+    image: ghcr.io/frazon11/opnsentral:${IMAGE_VERSION:-latest}
+    container_name: OpnSentral
+    restart: unless-stopped
+
+    ports:
+      - "${WEB_PORT:?Set WEB_PORT in .env}:80"
+
+    environment:
+      TZ: ${TZ}
+      APP_NAME: ${APP_NAME}
+      APP_KEY: ${APP_KEY}
+      ADMIN_USER: ${ADMIN_USER}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      SESSION_SECURE: ${SESSION_SECURE}
+      ALERTS_ENABLED: ${ALERTS_ENABLED}
+      ALERT_VPN: ${ALERT_VPN}
+      ALERT_CHECK_INTERVAL: ${ALERT_CHECK_INTERVAL}
+      ALERT_FAILURE_THRESHOLD: ${ALERT_FAILURE_THRESHOLD}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURITY: ${SMTP_SECURITY}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME}
+      NOTIFY_TO: ${NOTIFY_TO}
+      PRECHANGE_BACKUP_RETENTION: ${PRECHANGE_BACKUP_RETENTION:-20}
+      TELEMETRY_ENABLED: "true"
+      TELEMETRY_URL: "https://opnsentral.kryszon.info:4455/api.php"
+      TELEMETRY_WRITE_TOKEN: "OMwcXVnI9rTcXiNjGnXz41X6"
+
+    volumes:
+      - ${BASE_PATH:?Set BASE_PATH in .env}/data:/var/www/data
+      - ${BASE_PATH:?Set BASE_PATH in .env}/backups:/var/www/backups
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1/health.php || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

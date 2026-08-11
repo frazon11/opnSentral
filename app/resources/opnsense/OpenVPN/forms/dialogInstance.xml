@@ -1,0 +1,400 @@
+<?xml version='1.0' encoding='utf-8'?>
+<fields>
+    <field>
+        <type>header</type>
+        <label>General Settings</label>
+    </field>
+    <field>
+        <id>instance.vpnid</id>
+        <label>VPN ID</label>
+        <type>text</type>
+        <style>role</style>
+    </field>
+    <field>
+        <id>instance.role</id>
+        <label>Role</label>
+        <type>dropdown</type>
+    </field>
+    <field>
+        <id>instance.description</id>
+        <label>Description</label>
+        <type>text</type>
+    </field>
+    <field>
+        <id>instance.enabled</id>
+        <label>Enabled</label>
+        <type>checkbox</type>
+    </field>
+    <field>
+        <id>instance.proto</id>
+        <label>Protocol</label>
+        <type>dropdown</type>
+    </field>
+    <field>
+        <id>instance.port</id>
+        <label>Port number</label>
+        <type>text</type>
+    </field>
+    <field>
+        <id>instance.local</id>
+        <label>Bind address</label>
+        <type>text</type>
+    </field>
+    <field>
+        <id>instance.port-share</id>
+        <label>Port share</label>
+        <type>text</type>
+        <advanced>true</advanced>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <id>instance.dev_type</id>
+        <label>Type</label>
+        <type>dropdown</type>
+    </field>
+    <field>
+        <id>instance.verb</id>
+        <label>Verbosity</label>
+        <type>dropdown</type>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>instance.maxclients</id>
+        <label>Concurrent connections</label>
+        <type>text</type>
+        <advanced>true</advanced>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <id>instance.keepalive_interval</id>
+        <label>Keep alive interval</label>
+        <type>text</type>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>instance.keepalive_timeout</id>
+        <label>Keep alive timeout</label>
+        <type>text</type>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>instance.server</id>
+        <label>Server (IPv4)</label>
+        <type>text</type>
+        <style>role role_server_tun role_server_ovpn</style>
+    </field>
+    <field>
+        <id>instance.server_ipv6</id>
+        <label>Server (IPv6)</label>
+        <type>text</type>
+        <style>role role_server_tun role_server_ovpn</style>
+    </field>
+    <field>
+        <id>instance.nopool</id>
+        <label>No Pool</label>
+        <type>checkbox</type>
+        <style>role role_server_tun role_server_ovpn</style>
+    </field>
+    <field>
+        <id>instance.bridge_gateway</id>
+        <label>Bridge gateway</label>
+        <type>text</type>
+        <style>role role_server_tap</style>
+    </field>
+    <field>
+        <id>instance.bridge_pool</id>
+        <label>Bridge DHCP pool</label>
+        <type>text</type>
+        <style>role role_server_tap</style>
+    </field>
+    <field>
+        <id>instance.topology</id>
+        <label>Topology</label>
+        <type>dropdown</type>
+        <style>selectpicker role role_server</style>
+    </field>
+    <field>
+        <id>instance.remote</id>
+        <label>Remote</label>
+        <type>select_multiple</type>
+        <style>tokenize role role_client</style>
+    </field>
+    <field>
+        <id>instance.carp_depend_on</id>
+        <label>Depend on (CARP)</label>
+        <type>dropdown</type>
+        <style>role role_client selectpicker</style>
+    </field>
+    <field>
+        <type>header</type>
+        <label>Trust</label>
+    </field>
+    <field>
+        <id>instance.cert</id>
+        <label>Certificate</label>
+        <type>dropdown</type>
+    </field>
+    <field>
+        <id>instance.remote_cert_tls</id>
+        <label>Verify Remote Certificate</label>
+        <type>checkbox</type>
+    </field>
+    <field>
+        <id>instance.ca</id>
+        <label>Certificate Authority</label>
+        <type>dropdown</type>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>instance.crl</id>
+        <label>Certificate Revocation List</label>
+        <type>dropdown</type>
+        <style>selectpicker role role_server</style>
+    </field>
+    <field>
+        <id>instance.verify_client_cert</id>
+        <label>Verify Client Certificate</label>
+        <type>dropdown</type>
+        <style>selectpicker role role_server</style>
+    </field>
+    <field>
+        <id>instance.use_ocsp</id>
+        <label>Use OCSP (when available)</label>
+        <type>checkbox</type>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <id>instance.cert_depth</id>
+        <label>Certificate Depth</label>
+        <type>dropdown</type>
+        <style>selectpicker role role_server</style>
+    </field>
+    <field>
+        <id>instance.tls_key</id>
+        <label>TLS static key</label>
+        <type>dropdown</type>
+    </field>
+    <field>
+        <id>instance.auth</id>
+        <label>Auth</label>
+        <type>dropdown</type>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>instance.data-ciphers</id>
+        <label>Data Ciphers</label>
+        <type>select_multiple</type>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>instance.data-ciphers-fallback</id>
+        <label>Data Ciphers Fallback</label>
+        <type>dropdown</type>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <type>header</type>
+        <label>Authentication</label>
+    </field>
+    <field>
+        <id>instance.authmode</id>
+        <label>Authentication</label>
+        <type>select_multiple</type>
+        <style>selectpicker role role_server</style>
+    </field>
+    <field>
+        <id>instance.local_group</id>
+        <label>Enforce local group</label>
+        <type>dropdown</type>
+        <style>selectpicker role role_server</style>
+    </field>
+    <field>
+        <id>instance.username_as_common_name</id>
+        <label>Username as CN</label>
+        <type>checkbox</type>
+        <advanced>true</advanced>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <id>instance.strictusercn</id>
+        <label>Strict User/CN Matching</label>
+        <type>dropdown</type>
+        <style>selectpicker role role_server</style>
+    </field>
+    <field>
+        <id>instance.username</id>
+        <label>Username</label>
+        <type>text</type>
+        <style>role role_client</style>
+    </field>
+    <field>
+        <id>instance.password</id>
+        <label>Password</label>
+        <type>password</type>
+        <style>role role_client</style>
+    </field>
+    <field>
+        <id>instance.reneg-sec</id>
+        <label>Renegotiate time</label>
+        <type>text</type>
+    </field>
+    <field>
+        <id>instance.auth-gen-token</id>
+        <label>Auth Token Lifetime</label>
+        <type>text</type>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <id>instance.auth-gen-token-renewal</id>
+        <label>Auth Token Renewal</label>
+        <type>text</type>
+        <advanced>true</advanced>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <id>instance.auth-gen-token-secret</id>
+        <label>Auth Token secret</label>
+        <type>textbox</type>
+        <advanced>true</advanced>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <id>instance.provision_exclusive</id>
+        <label>Require Client Provisioning</label>
+        <type>checkbox</type>
+        <advanced>true</advanced>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <type>header</type>
+        <label>Routing</label>
+    </field>
+    <field>
+        <id>instance.push_route</id>
+        <label>Local Network</label>
+        <type>select_multiple</type>
+        <style>tokenize</style>
+    </field>
+    <field>
+        <id>instance.route</id>
+        <label>Remote Network</label>
+        <type>select_multiple</type>
+        <style>tokenize</style>
+    </field>
+    <field>
+        <id>instance.push_excluded_routes</id>
+        <label>Excluded routes</label>
+        <type>select_multiple</type>
+        <advanced>true</advanced>
+        <style>tokenize</style>
+    </field>
+    <field>
+        <type>header</type>
+        <label>Miscellaneous</label>
+    </field>
+    <field>
+        <id>instance.various_flags</id>
+        <label>Options</label>
+        <type>select_multiple</type>
+    </field>
+    <field>
+        <id>instance.various_push_flags</id>
+        <label>Push Options</label>
+        <type>select_multiple</type>
+        <style>selectpicker role role_server</style>
+    </field>
+    <field>
+        <id>instance.push_inactive</id>
+        <label>Push inactivity timeout</label>
+        <type>text</type>
+        <advanced>true</advanced>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <id>instance.redirect_gateway</id>
+        <label>Redirect gateway</label>
+        <type>select_multiple</type>
+        <style>selectpicker role role_server</style>
+    </field>
+    <field>
+        <id>instance.route_metric</id>
+        <label>Route-metric (client)</label>
+        <type>text</type>
+        <advanced>true</advanced>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <id>instance.register_dns</id>
+        <label>Register DNS</label>
+        <type>checkbox</type>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <id>instance.dns_domain</id>
+        <label>DNS Domain list</label>
+        <type>select_multiple</type>
+        <style>tokenize role role_server</style>
+    </field>
+    <field>
+        <id>instance.dns_domain_search</id>
+        <label>DNS Domain search list</label>
+        <type>select_multiple</type>
+        <style>tokenize role role_server</style>
+    </field>
+    <field>
+        <id>instance.dns_servers</id>
+        <label>DNS Servers</label>
+        <type>select_multiple</type>
+        <style>tokenize role role_server</style>
+    </field>
+    <field>
+        <id>instance.ntp_servers</id>
+        <label>NTP Servers</label>
+        <type>select_multiple</type>
+        <style>tokenize role role_server</style>
+    </field>
+    <field>
+        <id>instance.tun_mtu</id>
+        <label>TUN device MTU</label>
+        <type>text</type>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>instance.fragment</id>
+        <label>Fragment size</label>
+        <type>text</type>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>instance.mssfix</id>
+        <label>MSS fix</label>
+        <type>checkbox</type>
+        <advanced>true</advanced>
+    </field>
+    <field>
+        <id>instance.compress_migrate</id>
+        <label>Compression migrate</label>
+        <type>checkbox</type>
+        <advanced>true</advanced>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <id>instance.ifconfig-pool-persist</id>
+        <label>Persist address pool</label>
+        <type>checkbox</type>
+        <advanced>true</advanced>
+        <style>role role_server</style>
+    </field>
+    <field>
+        <id>instance.http-proxy</id>
+        <label>HTTP Proxy</label>
+        <type>text</type>
+        <style>role role_client</style>
+    </field>
+    <field>
+        <id>instance.verify-x509-name</id>
+        <label>Verify X.509 name</label>
+        <type>text</type>
+        <advanced>true</advanced>
+    </field>
+</fields>
