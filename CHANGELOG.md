@@ -10,6 +10,13 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.21.2
+
+- Compacted Settings cards for Interface & access, OPNsense managed category and OPNsense network connections so they no longer consume a full-width row unnecessarily.
+- Simplified the Presentation Mode section to a single-column panel.
+- Removed the telemetry receiver endpoint URL from the Settings UI and reduced telemetry status to Last sent and Status.
+- Removed stale Configuration Lock/Unlock markup from Settings now that 0.6.21 no longer uses a separate read-only mode.
+
 ## 0.6.21.1
 
 - Added short-lived, single-use registration tokens for outbound OPNsense agents.
