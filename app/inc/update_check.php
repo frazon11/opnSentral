@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-const OPNSENTRAL_VERSION = '0.6.21.3';
+const OPNSENTRAL_VERSION = '0.6.21.4';
 const OPNSENTRAL_GITHUB_REPOSITORY = 'frazon11/opnSentral';
 const OPNSENTRAL_UPDATE_INTERVAL = 86400;
 
@@ -113,7 +113,6 @@ function update_check_run(bool $force = false): array
     $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
     $curlError = curl_error($curl);
 
-    // curl_close() is deprecated as of PHP 8.5 and has been a no-op since PHP 8.0.
     unset($curl);
 
     $state['last_attempt'] = gmdate('c');
