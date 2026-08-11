@@ -10,6 +10,12 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.21.3
+
+- Changed the telemetry server default host port from 4455 to standard HTTPS port 443.
+- Updated the normal opnSentral telemetry client endpoint to `https://opnsentral.kryszon.info/api.php` without an explicit non-standard port.
+- Updated the telemetry-server environment example to use port 443.
+
 ## 0.6.21.2
 
 - Compacted Settings cards for Interface & access, OPNsense managed category and OPNsense network connections so they no longer consume a full-width row unnecessarily.
