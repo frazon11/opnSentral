@@ -18,19 +18,19 @@ try {
 
     $requeue = $pdo->prepare(
         'UPDATE agent_jobs
-         SET status = "queued", picked_at = NULL
-         WHERE agent_id = ? AND status = "running" AND picked_at < ?'
+         SET status = ?, picked_at = NULL
+         WHERE agent_id = ? AND status = ? AND picked_at < ?'
     );
-    $requeue->execute([$agentDbId, gmdate('c', time() - 300)]);
+    $requeue->execute(['queued', $agentDbId, 'running', gmdate('c', time() - 300)]);
 
     $statement = $pdo->prepare(
         'SELECT id, job_type, payload_json, created_at
          FROM agent_jobs
-         WHERE agent_id = ? AND status = "queued"
+         WHERE agent_id = ? AND status = ?
          ORDER BY id
          LIMIT 1'
     );
-    $statement->execute([$agentDbId]);
+    $statement->execute([$agentDbId, 'queued']);
     $job = $statement->fetch();
 
     if (!$job) {
@@ -41,10 +41,10 @@ try {
 
     $claim = $pdo->prepare(
         'UPDATE agent_jobs
-         SET status = "running", picked_at = ?
-         WHERE id = ? AND status = "queued"'
+         SET status = ?, picked_at = ?
+         WHERE id = ? AND status = ?'
     );
-    $claim->execute([$now, (int) $job['id']]);
+    $claim->execute(['running', $now, (int) $job['id'], 'queued']);
 
     if ($claim->rowCount() !== 1) {
         $pdo->rollBack();
