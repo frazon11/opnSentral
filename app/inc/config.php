@@ -55,6 +55,30 @@ function db(): PDO {
  PRIMARY KEY(agent_id,nonce)
  )');
  $p->exec('CREATE INDEX IF NOT EXISTS idx_agent_nonces_seen ON agent_nonces(seen_at)');
+ $p->exec('CREATE TABLE IF NOT EXISTS agent_registration_tokens (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ firewall_id INTEGER,
+ token_hash TEXT NOT NULL UNIQUE,
+ token_prefix TEXT NOT NULL,
+ label TEXT NOT NULL DEFAULT "",
+ created_at TEXT NOT NULL,
+ expires_at TEXT NOT NULL,
+ used_at TEXT
+ )');
+ $p->exec('CREATE INDEX IF NOT EXISTS idx_agent_registration_tokens_expires ON agent_registration_tokens(expires_at)');
+ $p->exec('CREATE TABLE IF NOT EXISTS agent_jobs (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ agent_id INTEGER NOT NULL,
+ job_type TEXT NOT NULL,
+ payload_json TEXT NOT NULL DEFAULT "{}",
+ status TEXT NOT NULL DEFAULT "queued",
+ result_json TEXT NOT NULL DEFAULT "null",
+ error TEXT NOT NULL DEFAULT "",
+ created_at TEXT NOT NULL,
+ picked_at TEXT,
+ finished_at TEXT
+ )');
+ $p->exec('CREATE INDEX IF NOT EXISTS idx_agent_jobs_agent_status ON agent_jobs(agent_id,status,id)');
  $p->exec('CREATE TABLE IF NOT EXISTS plugin_jobs (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  firewall_id INTEGER NOT NULL,
