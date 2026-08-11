@@ -29,10 +29,11 @@ if ($action === 'create_registration') {
     $createdAt = gmdate('c');
     $expiresAt = gmdate('c', time() + ($ttl * 60));
 
-    $pdo->exec(
+    $cleanup = $pdo->prepare(
         'DELETE FROM agent_registration_tokens
-         WHERE used_at IS NOT NULL OR expires_at < "' . gmdate('c', time() - 86400) . '"'
+         WHERE used_at IS NOT NULL OR expires_at < ?'
     );
+    $cleanup->execute([gmdate('c', time() - 86400)]);
 
     $statement = $pdo->prepare(
         'INSERT INTO agent_registration_tokens(
@@ -92,9 +93,9 @@ if ($action === 'create_registration') {
 
     $statement = $pdo->prepare(
         'INSERT INTO agent_jobs(agent_id, job_type, payload_json, status, created_at)
-         VALUES(?, ?, "{}", "queued", ?)'
+         VALUES(?, ?, ?, ?, ?)'
     );
-    $statement->execute([$agentId, $jobType, gmdate('c')]);
+    $statement->execute([$agentId, $jobType, '{}', 'queued', gmdate('c')]);
 } elseif ($action === 'delete') {
     $id = (int) ($_POST['id'] ?? 0);
     $agent = $pdo->prepare('SELECT agent_id FROM agents WHERE id = ?');
