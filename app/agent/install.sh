@@ -20,6 +20,8 @@ esac
 SERVER_URL="${SERVER_URL%/}"
 AGENT_BIN="/usr/local/sbin/opnsentral-agent"
 RC_SCRIPT="/usr/local/etc/rc.d/opnsentral_agent"
+RC_CONF_DIR="/etc/rc.conf.d"
+RC_CONF_FILE="$RC_CONF_DIR/opnsentral_agent"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Run this installer as root on OPNsense." >&2
@@ -31,7 +33,7 @@ command -v fetch >/dev/null 2>&1 || {
     exit 1
 }
 
-command -v /usr/local/bin/php >/dev/null 2>&1 || {
+[ -x /usr/local/bin/php ] || {
     echo "/usr/local/bin/php is required." >&2
     exit 1
 }
@@ -61,12 +63,11 @@ run_rc_command "$1"
 EOF
 
 chmod 0755 "$RC_SCRIPT"
-
-if command -v sysrc >/dev/null 2>&1; then
-    sysrc opnsentral_agent_enable=YES >/dev/null
-else
-    echo 'opnsentral_agent_enable="YES"' >> /etc/rc.conf
-fi
+mkdir -p "$RC_CONF_DIR"
+cat > "$RC_CONF_FILE" <<'EOF'
+opnsentral_agent_enable="YES"
+EOF
+chmod 0644 "$RC_CONF_FILE"
 
 service opnsentral_agent stop >/dev/null 2>&1 || true
 service opnsentral_agent start
