@@ -10,6 +10,14 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.21.4
+
+- Reorganized Settings into clear Interface, OPNsense, Application, and Data & privacy sections.
+- Grouped related cards together instead of presenting one long mixed settings grid.
+- Moved Presentation Mode into a normal top-level card instead of a nested panel.
+- Moved OPNsense network settings into the OPNsense section beside the managed-category settings.
+- Kept telemetry endpoint details hidden from the Settings UI.
+
 ## 0.6.21.3
 
 - Changed the telemetry server default host port from 4455 to standard HTTPS port 443.
