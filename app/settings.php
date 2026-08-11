@@ -5,11 +5,22 @@ require_login();
 require __DIR__ . '/inc/header.php';
 ?>
 <style>
-#interface-access-settings .backup-restore-grid{grid-template-columns:1fr}
-#opnsense-network-settings{grid-column:auto!important}
+.settings-sections{display:grid;gap:26px}
+.settings-group{display:grid;gap:12px}
+.settings-group-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:0 2px 8px;border-bottom:1px solid var(--border)}
+.settings-group-heading h2{margin:0;font-size:1.15rem}
+.settings-group-heading p{margin:0;color:var(--muted);font-size:.9rem}
+.settings-group-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+.settings-group-grid.interface-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.settings-group-grid>.wide{grid-column:1/-1}
+.settings-group .card{height:100%}
+#presentation-settings{display:flex;flex-direction:column}
+#presentation-settings .button{align-self:flex-start;margin-top:auto}
 .telemetry-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-@media(max-width:850px){.telemetry-status-grid{grid-template-columns:1fr}}
+@media(max-width:1200px){.settings-group-grid.interface-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:850px){.settings-group-grid,.settings-group-grid.interface-grid,.telemetry-status-grid{grid-template-columns:1fr}.settings-group-grid>.wide{grid-column:auto}.settings-group-heading{align-items:flex-start;flex-direction:column;gap:3px}}
 </style>
+
 <div class="page-title">
     <div>
         <h1><?= h(t('settings.title')) ?></h1>
@@ -17,235 +28,197 @@ require __DIR__ . '/inc/header.php';
     </div>
 </div>
 
-<div class="settings-grid">
-    <section class="card">
-        <h2><?= h(t('language')) ?></h2>
-        <p class="muted"><?= h(t('settings.language_help')) ?></p>
+<div class="settings-sections">
+    <section class="settings-group" aria-labelledby="settings-interface-heading">
+        <div class="settings-group-heading">
+            <h2 id="settings-interface-heading">Interface</h2>
+            <p>Appearance, language and presentation-safe display.</p>
+        </div>
 
-        <label>
-            <?= h(t('language')) ?>
-            <select id="settings-language">
-                <?php foreach (supported_languages() as $code => $label): ?>
-                    <option value="<?= h($code) ?>" <?= current_language()===$code?'selected':'' ?>>
-                        <?= h($label) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </label>
-    </section>
+        <div class="settings-group-grid interface-grid">
+            <section class="card">
+                <h2><?= h(t('language')) ?></h2>
+                <p class="muted"><?= h(t('settings.language_help')) ?></p>
+                <label>
+                    <?= h(t('language')) ?>
+                    <select id="settings-language">
+                        <?php foreach (supported_languages() as $code => $label): ?>
+                            <option value="<?= h($code) ?>" <?= current_language()===$code?'selected':'' ?>><?= h($label) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+            </section>
 
-    <section class="card">
-        <h2><?= h(t('settings.theme')) ?></h2>
-        <p class="muted"><?= h(t('settings.theme_help')) ?></p>
+            <section class="card">
+                <h2><?= h(t('settings.theme')) ?></h2>
+                <p class="muted"><?= h(t('settings.theme_help')) ?></p>
+                <label>
+                    <?= h(t('settings.theme')) ?>
+                    <select id="settings-theme">
+                        <option value="light"><?= h(t('settings.theme_light')) ?></option>
+                        <option value="dark"><?= h(t('settings.theme_dark')) ?></option>
+                    </select>
+                </label>
+                <div class="theme-preview">
+                    <div class="theme-preview-sidebar"></div>
+                    <div class="theme-preview-content"><span></span><span></span><span></span></div>
+                </div>
+            </section>
 
-        <label>
-            <?= h(t('settings.theme')) ?>
-            <select id="settings-theme">
-                <option value="light"><?= h(t('settings.theme_light')) ?></option>
-                <option value="dark"><?= h(t('settings.theme_dark')) ?></option>
-            </select>
-        </label>
-
-        <div class="theme-preview">
-            <div class="theme-preview-sidebar"></div>
-            <div class="theme-preview-content">
-                <span></span><span></span><span></span>
-            </div>
+            <section class="card" id="presentation-settings" data-presentation-exempt="true">
+                <h2>Presentation mode</h2>
+                <p class="muted">Replace visible firewall names, addresses, domains and email addresses with presentation-safe values.</p>
+                <button type="button" id="presentation-mode-button" class="button secondary" aria-pressed="false">Enable presentation mode</button>
+                <span id="presentation-mode-state" class="presentation-mode-state" hidden>Presentation mode active</span>
+            </section>
         </div>
     </section>
 
-    <section class="card" id="interface-access-settings">
-        <h2>Interface &amp; access</h2>
-        <p class="muted">Control presentation mode.</p>
-
-        <div class="backup-restore-grid">
-            <div class="settings-subpanel presentation-mode-stack" id="presentation-settings" data-presentation-exempt="true">
-                <h3>Presentation mode</h3>
-                <p class="muted">
-                    Replace visible firewall names, addresses, domains and email addresses with presentation-safe values.
-                </p>
-                <button
-                    type="button"
-                    id="presentation-mode-button"
-                    class="button secondary"
-                    aria-pressed="false"
-                >
-                    Enable presentation mode
-                </button>
-                <span
-                    id="presentation-mode-state"
-                    class="presentation-mode-state"
-                    hidden
-                >
-                    Presentation mode active
-                </span>
-            </div>
-        </div>
-    </section>
-
-    <section class="card" id="managed-category-settings">
-        <h2>OPNsense managed category</h2>
-        <p class="muted">
-            Before opnSentral changes anything on an OPNsense firewall, it
-            verifies that this persistent category exists and creates it when
-            missing. Managed aliases are assigned to this category.
-        </p>
-
-        <?php if (isset($_GET['managed_category_saved'])): ?>
-            <div class="alert goodbox">
-                Managed category settings saved.
-            </div>
-        <?php endif; ?>
-
-        <?php if (!empty($_GET['managed_category_error'])): ?>
-            <div class="alert error">
-                <?= h((string) $_GET['managed_category_error']) ?>
-            </div>
-        <?php endif; ?>
-
-        <form method="post" action="/managed_category_settings_action.php">
-            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
-
-            <label>
-                Category name
-                <input type="text" name="managed_category_name" maxlength="255" required value="<?= h(managed_category_name()) ?>">
-            </label>
-
-            <label>
-                Category color
-                <input type="text" name="managed_category_color" maxlength="7" required value="<?= h(managed_category_color()) ?>" placeholder="F0AD4E">
-            </label>
-
-            <p class="muted">
-                Default: <strong>managed by opnSentral</strong>. Changing the
-                name affects future checks and assignments; existing categories
-                are not renamed automatically.
-            </p>
-
-            <button type="submit" class="remote-change-control">Save managed category</button>
-        </form>
-    </section>
-
-    <section class="card wide" id="update-settings-card">
-        <div class="card-head">
-            <div>
-                <h2>Updates</h2>
-                <p class="muted">Check GitHub for new published opnSentral releases.</p>
-            </div>
-            <button type="button" class="button secondary" id="update-check-now">Check now</button>
+    <section class="settings-group" aria-labelledby="settings-opnsense-heading">
+        <div class="settings-group-heading">
+            <h2 id="settings-opnsense-heading">OPNsense</h2>
+            <p>Defaults controlling how managed firewalls are handled.</p>
         </div>
 
-        <label class="checkbox">
-            <input type="checkbox" id="automatic-update-check" checked>
-            Check GitHub automatically every 24 hours
-        </label>
+        <div class="settings-group-grid" id="opnsense-settings-grid">
+            <section class="card" id="managed-category-settings">
+                <h2>Managed category</h2>
+                <p class="muted">Before opnSentral changes a firewall, it verifies that this persistent category exists. Managed aliases are assigned to it.</p>
 
-        <div class="update-status-grid">
-            <div><strong>Installed version</strong><span id="installed-version">Loading…</span></div>
-            <div><strong>Latest version</strong><span id="latest-version">Loading…</span></div>
-            <div><strong>Last checked</strong><span id="last-update-check">Loading…</span></div>
-            <div><strong>Status</strong><span id="update-check-status">Loading…</span></div>
-        </div>
+                <?php if (isset($_GET['managed_category_saved'])): ?>
+                    <div class="alert goodbox">Managed category settings saved.</div>
+                <?php endif; ?>
+                <?php if (!empty($_GET['managed_category_error'])): ?>
+                    <div class="alert error"><?= h((string) $_GET['managed_category_error']) ?></div>
+                <?php endif; ?>
 
-        <div id="update-check-message" class="card-message"></div>
-        <a id="release-link" class="button secondary hidden" target="_blank" rel="noopener noreferrer">View release</a>
-
-        <p class="muted update-privacy-note">
-            This reads public release information from GitHub. No installation ID,
-            firewall details, credentials, networks or VPN data are sent.
-        </p>
-    </section>
-
-    <section class="card wide" id="telemetry-settings-card">
-        <div class="card-head">
-            <div>
-                <h2>Anonymous installation statistics</h2>
-                <p class="muted">Optionally report that this opnSentral installation is active.</p>
-            </div>
-            <button type="button" class="button secondary" id="telemetry-send-now">Send now</button>
-        </div>
-
-        <label class="checkbox">
-            <input type="checkbox" id="telemetry-enabled">
-            Share anonymous installation statistics once every 24 hours
-        </label>
-
-        <div class="telemetry-status-grid">
-            <div>
-                <strong>Last sent</strong>
-                <span id="telemetry-last-sent">Never</span>
-            </div>
-            <div>
-                <strong>Status</strong>
-                <span id="telemetry-status">Loading…</span>
-            </div>
-        </div>
-
-        <div id="telemetry-message" class="card-message"></div>
-
-        <p class="muted">
-            Sent: random anonymous installation hash, opnSentral version, CPU
-            architecture and platform “docker”.
-        </p>
-        <p class="muted">
-            Never sent: firewall names or addresses, API credentials, usernames,
-            LAN networks, VPN configuration, email addresses or the APP_KEY.
-        </p>
-    </section>
-
-    <section class="card wide" id="self-backup-settings">
-        <h2>Backup &amp; Restore</h2>
-        <p class="muted">
-            Back up opnSentral's database, application state and optionally all stored
-            OPNsense configuration backups.
-        </p>
-
-        <div class="backup-restore-grid">
-            <div class="settings-subpanel">
-                <h3>Create opnSentral backup</h3>
-                <form method="post" action="/self_backup_download.php">
-                    <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
-                    <label class="checkbox">
-                        <input type="checkbox" name="include_stored_backups" value="1" checked>
-                        Include stored OPNsense configuration backups
-                    </label>
-                    <p class="alert warningbox">
-                        <strong>APP_KEY is not included.</strong>
-                        Preserve the exact APP_KEY from your compose file, environment or
-                        Portainer stack. Encrypted firewall credentials cannot be restored
-                        with a different key.
-                    </p>
-                    <button type="submit" class="remote-change-control backup-download-control">Download backup now</button>
-                </form>
-            </div>
-
-            <div class="settings-subpanel">
-                <h3>Restore opnSentral</h3>
-                <form id="self-restore-form" enctype="multipart/form-data">
+                <form method="post" action="/managed_category_settings_action.php">
                     <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
                     <label>
-                        opnSentral backup ZIP
-                        <input type="file" name="backup_file" accept=".zip,application/zip" required>
+                        Category name
+                        <input type="text" name="managed_category_name" maxlength="255" required value="<?= h(managed_category_name()) ?>">
                     </label>
-                    <label class="checkbox">
-                        <input type="checkbox" id="restore-confirmation" required>
-                        I understand that current opnSentral data will be replaced
+                    <label>
+                        Category color
+                        <input type="text" name="managed_category_color" maxlength="7" required value="<?= h(managed_category_color()) ?>" placeholder="F0AD4E">
                     </label>
-                    <p class="muted">
-                        The archive and every included file are verified first.
-                        opnSentral creates a persistent safety backup before replacing data.
-                    </p>
-                    <button type="submit" class="danger" id="restore-button">Validate and restore</button>
+                    <p class="muted">Default: <strong>managed by opnSentral</strong>. Existing categories are not renamed automatically.</p>
+                    <button type="submit" class="remote-change-control">Save managed category</button>
                 </form>
-                <div id="restore-result" class="alert hidden"></div>
-            </div>
+            </section>
         </div>
     </section>
 
-    <section class="card wide">
-        <h2><?= h(t('menu.notifications')) ?></h2>
-        <p class="muted"><?= h(t('settings.notifications_help')) ?></p>
-        <a class="button secondary" href="/notifications.php"><?= h(t('settings.open_notifications')) ?></a>
+    <section class="settings-group" aria-labelledby="settings-application-heading">
+        <div class="settings-group-heading">
+            <h2 id="settings-application-heading">Application</h2>
+            <p>Updates and notification configuration.</p>
+        </div>
+
+        <div class="settings-group-grid">
+            <section class="card" id="update-settings-card">
+                <div class="card-head">
+                    <div>
+                        <h2>Updates</h2>
+                        <p class="muted">Check GitHub for new published opnSentral releases.</p>
+                    </div>
+                    <button type="button" class="button secondary" id="update-check-now">Check now</button>
+                </div>
+
+                <label class="checkbox">
+                    <input type="checkbox" id="automatic-update-check" checked>
+                    Check GitHub automatically every 24 hours
+                </label>
+
+                <div class="update-status-grid">
+                    <div><strong>Installed version</strong><span id="installed-version">Loading…</span></div>
+                    <div><strong>Latest version</strong><span id="latest-version">Loading…</span></div>
+                    <div><strong>Last checked</strong><span id="last-update-check">Loading…</span></div>
+                    <div><strong>Status</strong><span id="update-check-status">Loading…</span></div>
+                </div>
+
+                <div id="update-check-message" class="card-message"></div>
+                <a id="release-link" class="button secondary hidden" target="_blank" rel="noopener noreferrer">View release</a>
+                <p class="muted update-privacy-note">This reads public release information from GitHub. No installation ID, firewall details, credentials, networks or VPN data are sent.</p>
+            </section>
+
+            <section class="card" id="notification-settings-card">
+                <h2><?= h(t('menu.notifications')) ?></h2>
+                <p class="muted"><?= h(t('settings.notifications_help')) ?></p>
+                <a class="button secondary" href="/notifications.php"><?= h(t('settings.open_notifications')) ?></a>
+            </section>
+        </div>
+    </section>
+
+    <section class="settings-group" aria-labelledby="settings-data-heading">
+        <div class="settings-group-heading">
+            <h2 id="settings-data-heading">Data &amp; privacy</h2>
+            <p>Anonymous statistics and opnSentral backup/restore.</p>
+        </div>
+
+        <div class="settings-group-grid">
+            <section class="card" id="telemetry-settings-card">
+                <div class="card-head">
+                    <div>
+                        <h2>Anonymous installation statistics</h2>
+                        <p class="muted">Optionally report that this opnSentral installation is active.</p>
+                    </div>
+                    <button type="button" class="button secondary" id="telemetry-send-now">Send now</button>
+                </div>
+
+                <label class="checkbox">
+                    <input type="checkbox" id="telemetry-enabled">
+                    Share anonymous installation statistics once every 24 hours
+                </label>
+
+                <div class="telemetry-status-grid">
+                    <div><strong>Last sent</strong><span id="telemetry-last-sent">Never</span></div>
+                    <div><strong>Status</strong><span id="telemetry-status">Loading…</span></div>
+                </div>
+
+                <div id="telemetry-message" class="card-message"></div>
+                <p class="muted">Sent: random anonymous installation hash, opnSentral version, CPU architecture and platform “docker”.</p>
+                <p class="muted">Never sent: firewall names or addresses, API credentials, usernames, LAN networks, VPN configuration, email addresses or the APP_KEY.</p>
+            </section>
+
+            <section class="card" id="self-backup-settings">
+                <h2>Backup &amp; Restore</h2>
+                <p class="muted">Back up opnSentral's database, application state and optionally all stored OPNsense configuration backups.</p>
+
+                <div class="backup-restore-grid">
+                    <div class="settings-subpanel">
+                        <h3>Create backup</h3>
+                        <form method="post" action="/self_backup_download.php">
+                            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+                            <label class="checkbox">
+                                <input type="checkbox" name="include_stored_backups" value="1" checked>
+                                Include stored OPNsense configuration backups
+                            </label>
+                            <p class="alert warningbox"><strong>APP_KEY is not included.</strong> Preserve the exact APP_KEY. Encrypted firewall credentials cannot be restored with a different key.</p>
+                            <button type="submit" class="remote-change-control backup-download-control">Download backup now</button>
+                        </form>
+                    </div>
+
+                    <div class="settings-subpanel">
+                        <h3>Restore</h3>
+                        <form id="self-restore-form" enctype="multipart/form-data">
+                            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+                            <label>
+                                opnSentral backup ZIP
+                                <input type="file" name="backup_file" accept=".zip,application/zip" required>
+                            </label>
+                            <label class="checkbox">
+                                <input type="checkbox" id="restore-confirmation" required>
+                                I understand that current opnSentral data will be replaced
+                            </label>
+                            <p class="muted">The archive is verified first and a persistent safety backup is created before replacing data.</p>
+                            <button type="submit" class="danger" id="restore-button">Validate and restore</button>
+                        </form>
+                        <div id="restore-result" class="alert hidden"></div>
+                    </div>
+                </div>
+            </section>
+        </div>
     </section>
 </div>
 
@@ -289,12 +262,12 @@ require __DIR__ . '/inc/header.php';
         catch(error){status.innerHTML='<span class="badge bad">Check failed</span>';message.textContent=error.message;}
         finally{checkNow.disabled=false;checkNow.textContent='Check now';}
     }
-    automatic.addEventListener('change',async function(){
+    automatic?.addEventListener('change',async function(){
         const body=new URLSearchParams();body.set('csrf',<?= json_encode(csrf_token(), JSON_UNESCAPED_SLASHES) ?>);body.set('enabled',this.checked?'1':'0');
         try{const response=await fetch('/update_settings_action.php',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body});const result=await response.json();if(!response.ok||result.ok!==true)throw new Error(result.error||'Could not save setting.');}
         catch(error){this.checked=!this.checked;alert(error.message);}
     });
-    checkNow.addEventListener('click',()=>loadUpdate(true));loadUpdate(false);
+    checkNow?.addEventListener('click',()=>loadUpdate(true));loadUpdate(false);
 
     const telemetryEnabled=document.getElementById('telemetry-enabled');
     const telemetrySendNow=document.getElementById('telemetry-send-now');
