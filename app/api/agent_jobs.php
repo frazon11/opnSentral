@@ -16,6 +16,13 @@ $pdo = db();
 try {
     $pdo->beginTransaction();
 
+    $requeue = $pdo->prepare(
+        'UPDATE agent_jobs
+         SET status = "queued", picked_at = NULL
+         WHERE agent_id = ? AND status = "running" AND picked_at < ?'
+    );
+    $requeue->execute([$agentDbId, gmdate('c', time() - 300)]);
+
     $statement = $pdo->prepare(
         'SELECT id, job_type, payload_json, created_at
          FROM agent_jobs
