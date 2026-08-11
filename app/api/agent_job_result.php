@@ -31,7 +31,7 @@ if ($resultJson === false || strlen($resultJson) > 200000) {
 $statement = db()->prepare(
     'UPDATE agent_jobs
      SET status = ?, result_json = ?, error = ?, finished_at = ?
-     WHERE id = ? AND agent_id = ? AND status = "running"'
+     WHERE id = ? AND agent_id = ? AND status = ?'
 );
 $statement->execute([
     $success ? 'completed' : 'failed',
@@ -40,6 +40,7 @@ $statement->execute([
     gmdate('c'),
     $jobId,
     (int) $agent['id'],
+    'running',
 ]);
 
 if ($statement->rowCount() !== 1) {
