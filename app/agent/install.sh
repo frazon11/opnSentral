@@ -55,7 +55,7 @@ name="opnsentral_agent"
 rcvar="opnsentral_agent_enable"
 pidfile="/var/run/opnsentral-agent.pid"
 command="/usr/sbin/daemon"
-command_args="-p ${pidfile} -f /usr/local/sbin/opnsentral-agent run"
+command_args="-P ${pidfile} -f /usr/local/sbin/opnsentral-agent run"
 
 load_rc_config "$name"
 : ${opnsentral_agent_enable:="NO"}
