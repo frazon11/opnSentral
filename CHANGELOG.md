@@ -10,6 +10,14 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.21.5
+
+- Added explicit Rename actions for existing aliases and categories in their inventory overview pages.
+- Added a choice to rename only the selected firewall copy or all matching copies across managed firewalls.
+- Added duplicate-name validation and pre-change configuration backups before remote renames.
+- Kept central alias/category definitions synchronized when all matching copies are renamed successfully.
+- When the configured managed category is renamed across all matching firewalls, its opnSentral managed-category setting is updated as well.
+
 ## 0.6.21.4
 
 - Reorganized Settings into clear Interface, OPNsense, Application, and Data & privacy sections.
