@@ -10,6 +10,15 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.21.10
+
+- Added `System → Access → Users` as a fleet-wide local-user inventory and comparison view.
+- Added `System → Access → Groups` as a fleet-wide local-group, membership and privilege comparison view.
+- Added presence/missing status per managed firewall so account and group drift is immediately visible.
+- Displays non-secret account metadata such as description, UID/GID, disabled state, group membership, assigned privileges and whether password/OTP authentication is configured.
+- Password hashes and OTP seeds are never displayed.
+- Kept Users/Groups read-only in this first Access release so the parsed configuration model can be verified before enabling authentication-critical central writes.
+
 ## 0.6.21.9
 
 - Added one-time SSH bootstrap deployment for managed firewalls with no opnSentral agent.
