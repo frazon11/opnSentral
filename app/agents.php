@@ -3,10 +3,11 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/inc/config.php';
+require_once __DIR__ . '/inc/agent_deployment.php';
 require_login();
 
 $pdo = db();
-$firewalls = $pdo->query('SELECT id, name FROM firewalls ORDER BY name')->fetchAll();
+$firewalls = $pdo->query('SELECT id, name, base_url FROM firewalls ORDER BY name')->fetchAll();
 $agents = $pdo->query(
     'SELECT a.*, f.name AS firewall_name
      FROM agents a
@@ -21,10 +22,19 @@ $jobs = $pdo->query(
      LIMIT 30'
 )->fetchAll();
 
+$agentsByFirewall = [];
+foreach ($agents as $agentRow) {
+    $fid = (int) ($agentRow['firewall_id'] ?? 0);
+    if ($fid > 0 && !isset($agentsByFirewall[$fid])) $agentsByFirewall[$fid] = $agentRow;
+}
+
+$targetAgentVersion = agent_current_version();
 $registration = $_SESSION['new_agent_registration'] ?? null;
 unset($_SESSION['new_agent_registration']);
 $legacyCredentials = $_SESSION['new_agent_credentials'] ?? null;
 unset($_SESSION['new_agent_credentials']);
+$updateResult = $_SESSION['agent_update_result'] ?? null;
+unset($_SESSION['agent_update_result']);
 
 $forwardedProto = trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0] ?? '');
 $scheme = $forwardedProto !== ''
@@ -44,6 +54,10 @@ require __DIR__ . '/inc/header.php';
         <button type="button" class="button secondary" onclick="window.location.reload()">Refresh</button>
     </div>
 </div>
+
+<?php if (is_string($updateResult) && $updateResult !== ''): ?>
+    <div class="alert goodbox"><strong>Agent update</strong><div><?= h($updateResult) ?></div></div>
+<?php endif; ?>
 
 <?php if (is_array($registration)): ?>
     <?php
@@ -80,28 +94,92 @@ require __DIR__ . '/inc/header.php';
     <div>
         <strong>Agent overview</strong>
         <div class="management-summary">
-            <?= count($agents) ?> registered agent<?= count($agents) === 1 ? '' : 's' ?>
+            <?= count($agents) ?> registered agent<?= count($agents) === 1 ? '' : 's' ?> · current package <?= h($targetAgentVersion) ?>
         </div>
     </div>
+</div>
+
+<div class="card management-card">
+    <div class="management-card-header">
+        <div>
+            <h2>Agent deployment</h2>
+            <div class="management-summary">Install missing agents by one-time SSH bootstrap; update agent 0.1.1+ through its outbound connection.</div>
+        </div>
+    </div>
+    <div class="table-scroll management-table-wrap">
+        <table class="management-table">
+            <thead><tr><th>Firewall</th><th>Installed</th><th>Target</th><th>Connection</th><th>Action</th></tr></thead>
+            <tbody>
+            <?php if (!$firewalls): ?><tr><td colspan="5">No managed firewalls configured.</td></tr><?php endif; ?>
+            <?php foreach ($firewalls as $firewall):
+                $fid = (int) $firewall['id'];
+                $agent = $agentsByFirewall[$fid] ?? null;
+                $installed = is_array($agent) ? trim((string) ($agent['last_agent_version'] ?? '')) : '';
+                $enabled = is_array($agent) && (int) ($agent['enabled'] ?? 0) === 1;
+                $last = is_array($agent) && $agent['last_seen_at'] ? (strtotime((string) $agent['last_seen_at']) ?: 0) : 0;
+                $fresh = $enabled && $last > 0 && time() - $last < 150;
+                $current = $installed !== '' && $targetAgentVersion !== 'unknown' && version_compare($installed, $targetAgentVersion, '>=');
+                $selfUpdateCapable = $installed !== '' && version_compare($installed, '0.1.1', '>=');
+            ?>
+                <tr>
+                    <td><strong><?= h((string) $firewall['name']) ?></strong><br><small><?= h((string) $firewall['base_url']) ?></small></td>
+                    <td>
+                        <?php if (!is_array($agent)): ?>
+                            <span class="badge neutral">Missing</span>
+                        <?php elseif ($installed === ''): ?>
+                            <span class="badge warning">Unknown</span>
+                        <?php elseif ($current): ?>
+                            <span class="badge good"><?= h($installed) ?> · Current</span>
+                        <?php else: ?>
+                            <span class="badge warning"><?= h($installed) ?> · Update available</span>
+                        <?php endif; ?>
+                    </td>
+                    <td><?= h($targetAgentVersion) ?></td>
+                    <td>
+                        <?php if (!is_array($agent)): ?>—
+                        <?php elseif (!$enabled): ?><span class="badge bad">Disabled</span>
+                        <?php elseif ($fresh): ?><span class="badge good">Online</span>
+                        <?php else: ?><span class="badge warning">Stale</span><?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if (!is_array($agent)): ?>
+                            <a class="button" href="/agent_bootstrap.php?firewall_id=<?= $fid ?>">Install Agent</a>
+                        <?php elseif ($current): ?>
+                            <span class="badge good">Current</span>
+                            <a class="button secondary" href="/agent_bootstrap.php?firewall_id=<?= $fid ?>">Recovery</a>
+                        <?php elseif ($selfUpdateCapable && $enabled): ?>
+                            <form method="post" action="/agents_action.php" class="management-row-actions">
+                                <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="self_update">
+                                <input type="hidden" name="id" value="<?= (int) $agent['id'] ?>">
+                                <button class="button" type="submit" onclick="return confirm('Queue agent update for <?= h(addslashes((string) $firewall['name'])) ?>?')">Update Agent</button>
+                                <a class="button secondary" href="/agent_bootstrap.php?firewall_id=<?= $fid ?>">SSH Recovery</a>
+                            </form>
+                        <?php else: ?>
+                            <a class="button" href="/agent_bootstrap.php?firewall_id=<?= $fid ?>"><?= $installed === '' ? 'Install / Recover' : 'Update via SSH' ?></a>
+                            <?php if (!$enabled): ?><small>Enable the agent for outbound self-update.</small><?php endif; ?>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">SSH passwords/private keys entered in the bootstrap form are never stored. Existing agent 0.1.1+ updates verify the SHA-256 of the replacement before activation.</p>
 </div>
 
 <div class="management-secondary-grid">
     <div class="card management-card">
         <div class="management-card-header">
             <div>
-                <h2>Register remote OPNsense</h2>
-                <div class="management-summary">
-                    Generate a short-lived, single-use enrollment token. The remote firewall connects outbound to opnSentral.
-                </div>
+                <h2>Manual registration</h2>
+                <div class="management-summary">Fallback for sites where SSH from opnSentral is not reachable.</div>
             </div>
         </div>
-
         <form method="post" action="/agents_action.php" class="management-form-grid">
             <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
             <input type="hidden" name="action" value="create_registration">
-
-            <label>
-                Existing firewall association
+            <label>Existing firewall association
                 <select name="firewall_id">
                     <option value="0">Unassigned — register first, associate later</option>
                     <?php foreach ($firewalls as $firewall): ?>
@@ -109,111 +187,53 @@ require __DIR__ . '/inc/header.php';
                     <?php endforeach; ?>
                 </select>
             </label>
-
-            <label>
-                Label
-                <input name="name" maxlength="255" placeholder="Optional customer/site label">
-            </label>
-
-            <label>
-                Token validity
+            <label>Label<input name="name" maxlength="255" placeholder="Optional customer/site label"></label>
+            <label>Token validity
                 <select name="ttl_minutes">
-                    <option value="5">5 minutes</option>
-                    <option value="10">10 minutes</option>
-                    <option value="15" selected>15 minutes</option>
-                    <option value="30">30 minutes</option>
-                    <option value="60">60 minutes</option>
+                    <option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15" selected>15 minutes</option><option value="30">30 minutes</option><option value="60">60 minutes</option>
                 </select>
             </label>
-
-            <div class="management-form-action">
-                <button class="button" type="submit">Generate registration command</button>
-            </div>
+            <div class="management-form-action"><button class="button" type="submit">Generate registration command</button></div>
         </form>
-
-        <p class="muted">
-            The registration token is stored only as a hash in opnSentral and becomes unusable after the first successful registration.
-        </p>
+        <p class="muted">The registration token is stored only as a hash and becomes unusable after the first successful registration.</p>
     </div>
 
     <div class="card management-card">
-        <div class="management-card-header">
-            <div>
-                <h2>Connection model</h2>
-                <div class="management-summary">Only outbound HTTPS from OPNsense is required.</div>
-            </div>
-        </div>
-        <pre>Remote OPNsense  ── HTTPS/443 outbound ──►  opnSentral
-       Agent      register / heartbeat / jobs / results</pre>
-        <p class="muted">
-            Agent requests use an individual secret, HMAC-SHA256 signatures, a five-minute timestamp window and one-time nonces.
-            No inbound OPNsense WebUI or API port is required for the agent channel.
-        </p>
+        <div class="management-card-header"><div><h2>Connection model</h2><div class="management-summary">Only outbound HTTPS from OPNsense is required after bootstrap.</div></div></div>
+        <pre>Initial install: opnSentral ── SSH ──► OPNsense
+Normal use:     OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
+        <p class="muted">Agent requests use an individual secret, HMAC-SHA256 signatures, a timestamp window and one-time nonces. SSH is not used for routine agent communication.</p>
     </div>
 </div>
 
 <div class="card management-card">
-    <div class="management-card-header">
-        <div>
-            <h2>Registered agents</h2>
-            <div class="management-summary">Agents report status and poll opnSentral for allow-listed jobs.</div>
-        </div>
-    </div>
-
+    <div class="management-card-header"><div><h2>Registered agents</h2><div class="management-summary">Agents report status and poll opnSentral for allow-listed jobs.</div></div></div>
     <div class="table-scroll management-table-wrap">
         <table class="management-table">
-            <thead>
-                <tr>
-                    <th>Firewall / site</th>
-                    <th>Agent</th>
-                    <th>Last seen</th>
-                    <th>OPNsense</th>
-                    <th>Status</th>
-                    <th>Remote jobs</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
+            <thead><tr><th>Firewall / site</th><th>Agent</th><th>Last seen</th><th>OPNsense</th><th>Status</th><th>Remote jobs</th><th>Actions</th></tr></thead>
             <tbody>
-            <?php if (!$agents): ?>
-                <tr><td colspan="7">No agents registered.</td></tr>
-            <?php endif; ?>
-
+            <?php if (!$agents): ?><tr><td colspan="7">No agents registered.</td></tr><?php endif; ?>
             <?php foreach ($agents as $agent):
                 $last = $agent['last_seen_at'] ? (strtotime((string) $agent['last_seen_at']) ?: 0) : 0;
                 $fresh = $last > 0 && time() - $last < 150;
             ?>
                 <tr>
-                    <td>
-                        <?= h((string) ($agent['firewall_name'] ?? $agent['name'] ?? 'Unassigned')) ?>
-                        <?php if (empty($agent['firewall_id'])): ?><br><small>Not associated with a managed firewall</small><?php endif; ?>
-                    </td>
-                    <td>
-                        <code><?= h(substr((string) $agent['agent_id'], 0, 12)) ?>…</code>
-                        <br><small><?= h((string) $agent['last_hostname']) ?></small>
-                    </td>
+                    <td><?= h((string) ($agent['firewall_name'] ?? $agent['name'] ?? 'Unassigned')) ?><?php if (empty($agent['firewall_id'])): ?><br><small>Not associated with a managed firewall</small><?php endif; ?></td>
+                    <td><code><?= h(substr((string) $agent['agent_id'], 0, 12)) ?>…</code><br><small><?= h((string) $agent['last_hostname']) ?> · v<?= h((string) ($agent['last_agent_version'] ?: 'unknown')) ?></small></td>
                     <td><?= h((string) ($agent['last_seen_at'] ?: 'Never')) ?></td>
                     <td><?= h((string) ($agent['last_opnsense_version'] ?: '—')) ?></td>
-                    <td>
-                        <span class="badge <?= $fresh && $agent['enabled'] ? 'good' : 'bad' ?>">
-                            <?= $agent['enabled'] ? ($fresh ? 'Online' : 'Stale') : 'Disabled' ?>
-                        </span>
-                    </td>
+                    <td><span class="badge <?= $fresh && $agent['enabled'] ? 'good' : 'bad' ?>"><?= $agent['enabled'] ? ($fresh ? 'Online' : 'Stale') : 'Disabled' ?></span></td>
                     <td>
                         <form method="post" action="/agents_action.php" class="management-row-actions">
-                            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
-                            <input type="hidden" name="action" value="queue_job">
-                            <input type="hidden" name="id" value="<?= (int) $agent['id'] ?>">
+                            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="queue_job"><input type="hidden" name="id" value="<?= (int) $agent['id'] ?>">
                             <button class="button secondary" name="job_type" value="inventory" <?= !$agent['enabled'] ? 'disabled' : '' ?>>Inventory</button>
                             <button class="button secondary" name="job_type" value="system_status" <?= !$agent['enabled'] ? 'disabled' : '' ?>>System status</button>
                         </form>
                     </td>
                     <td>
                         <form method="post" action="/agents_action.php" class="management-row-actions">
-                            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
-                            <input type="hidden" name="id" value="<?= (int) $agent['id'] ?>">
-                            <button class="button secondary" name="action" value="toggle">
-                                <?= $agent['enabled'] ? 'Disable' : 'Enable' ?>
-                            </button>
+                            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="id" value="<?= (int) $agent['id'] ?>">
+                            <button class="button secondary" name="action" value="toggle"><?= $agent['enabled'] ? 'Disable' : 'Enable' ?></button>
                             <button class="button danger" name="action" value="delete" onclick="return confirm('Delete this agent and its queued job history?')">Delete</button>
                         </form>
                     </td>
@@ -225,29 +245,12 @@ require __DIR__ . '/inc/header.php';
 </div>
 
 <div class="card management-card">
-    <div class="management-card-header">
-        <div>
-            <h2>Recent remote jobs</h2>
-            <div class="management-summary">Remote jobs are strictly allow-listed; Administration fleet writes are limited to supported Web GUI settings.</div>
-        </div>
-    </div>
+    <div class="management-card-header"><div><h2>Recent remote jobs</h2><div class="management-summary">Remote jobs are strictly allow-listed, including signed agent self-updates and supported Administration writes.</div></div></div>
     <div class="table-scroll management-table-wrap">
         <table class="management-table">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Agent</th>
-                    <th>Job</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    <th>Finished</th>
-                    <th>Result</th>
-                </tr>
-            </thead>
+            <thead><tr><th>ID</th><th>Agent</th><th>Job</th><th>Status</th><th>Created</th><th>Finished</th><th>Result</th></tr></thead>
             <tbody>
-            <?php if (!$jobs): ?>
-                <tr><td colspan="7">No remote jobs yet.</td></tr>
-            <?php endif; ?>
+            <?php if (!$jobs): ?><tr><td colspan="7">No remote jobs yet.</td></tr><?php endif; ?>
             <?php foreach ($jobs as $job):
                 $status = (string) $job['status'];
                 $badge = $status === 'completed' ? 'good' : ($status === 'failed' ? 'bad' : 'neutral');
@@ -259,15 +262,8 @@ require __DIR__ . '/inc/header.php';
                     <td><?= h((string) ($job['agent_name'] ?: $job['last_hostname'] ?: substr((string) $job['external_agent_id'], 0, 12))) ?></td>
                     <td><?= h((string) $job['job_type']) ?></td>
                     <td><span class="badge <?= $badge ?>"><?= h(ucfirst($status)) ?></span></td>
-                    <td><?= h((string) $job['created_at']) ?></td>
-                    <td><?= h((string) ($job['finished_at'] ?: '—')) ?></td>
-                    <td>
-                        <?php if ($error !== ''): ?>
-                            <small><?= h($error) ?></small>
-                        <?php elseif ($result !== '' && $result !== 'null'): ?>
-                            <details><summary>View</summary><pre><?= h($result) ?></pre></details>
-                        <?php else: ?>—<?php endif; ?>
-                    </td>
+                    <td><?= h((string) $job['created_at']) ?></td><td><?= h((string) ($job['finished_at'] ?: '—')) ?></td>
+                    <td><?php if ($error !== ''): ?><small><?= h($error) ?></small><?php elseif ($result !== '' && $result !== 'null'): ?><details><summary>View</summary><pre><?= h($result) ?></pre></details><?php else: ?>—<?php endif; ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
@@ -281,13 +277,8 @@ document.getElementById('copy-agent-registration')?.addEventListener('click', as
     if(!command) return;
     try{
         await navigator.clipboard.writeText(command);
-        const previous=this.textContent;
-        this.textContent='Copied';
-        window.setTimeout(()=>{this.textContent=previous;},1200);
-    }catch(error){
-        window.prompt('Copy this command:',command);
-    }
+        const previous=this.textContent;this.textContent='Copied';window.setTimeout(()=>{this.textContent=previous;},1200);
+    }catch(error){window.prompt('Copy this command:',command);}
 });
 </script>
-
 <?php require __DIR__ . '/inc/footer.php'; ?>
