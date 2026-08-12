@@ -18,7 +18,7 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Added pre-change configuration backups and per-firewall queued/running/success/failure deployment results for user changes.
 - Added agent 0.1.3 with the strictly allow-listed `set_access_user` job using OPNsense local-user and group synchronization functions.
 - Prevented opnSentral from disabling UID 0.
-- Reconciled user group membership from the authoritative group member UID lists so Access inventory does not depend only on legacy user-side group fields.
+- Reconciled user group membership from group member UID lists so Access inventory does not depend only on user-side group fields.
 
 ## 0.6.21.10
 
@@ -158,7 +158,7 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Aligned telemetry stack variables with the main stack: `BASE_PATH`, `WEB_PORT`, `IMAGE_VERSION` and `TZ`.
 - Updated both telemetry environment templates for Synology/File Station and Portainer use.
 - Replaced active telemetry branding and authentication text from `opnCentral` to `opnSentral`.
-- Renamed active update-check constants from `OPNCENTRAL_*` to `OPNSENTRAL_VERSION`.
+- Renamed active update-check constants from `OPNCENTRAL_*` to `OPNSENTRAL_*`.
 - Rewrote telemetry deployment documentation with a Portainer Git-repository example.
 
 ## 0.6.20.12
@@ -219,7 +219,6 @@ This period contains the original opnCentral/opnSentral feature build-out and ma
 - Alias and category inventory and management.
 - Configuration backup history and automatic pre-change backups.
 - WireGuard management and site-to-site VPN creation.
-- OpenVPN management and site-to-site VPN creation.
 - OpenVPN management and Roadwarrior server creation.
 - Services and agent management.
 - IDS/IPS ruleset and policy management.
