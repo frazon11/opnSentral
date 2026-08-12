@@ -10,6 +10,13 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.21.7
+
+- Added a read-only `System → Settings → General` view for managed OPNsense firewalls.
+- Added hostname, domain, time zone, language, theme, IPv4 preference, DNS servers, DNS search domains, WAN DNS override, local DNS nameserver usage and default gateway switching visibility.
+- Restructured navigation to expose `System → Settings → General` and `System → Settings → Administration` alongside `Firewall → Settings → Advanced`.
+- Updated the Administration page-local settings tree to include General and the correct System → Settings hierarchy.
+
 ## 0.6.21.6
 
 - Added explicit visual deployment results for alias and category distribution.
