@@ -36,6 +36,31 @@ function inventory_action_firewalls(array $ids): array
     return $stmt->fetchAll();
 }
 
+function inventory_action_preflight_central_name(
+    string $type,
+    string $oldName,
+    string $newName
+): void {
+    $pdo = db();
+    $table = $type === 'aliases' ? 'central_aliases' : 'central_categories';
+    $init = $type === 'aliases' ? 'central_alias_init' : 'central_category_init';
+    $init();
+
+    $old = $pdo->prepare('SELECT id FROM ' . $table . ' WHERE name = ?');
+    $old->execute([$oldName]);
+    $oldId = (int) ($old->fetchColumn() ?: 0);
+    if ($oldId <= 0) return;
+
+    $duplicate = $pdo->prepare('SELECT id FROM ' . $table . ' WHERE name = ? AND id <> ?');
+    $duplicate->execute([$newName, $oldId]);
+    if ($duplicate->fetchColumn()) {
+        throw new RuntimeException(
+            'A central ' . ($type === 'aliases' ? 'alias' : 'category') .
+            ' named "' . $newName . '" already exists.'
+        );
+    }
+}
+
 function inventory_action_sync_central_definition(
     string $type,
     string $oldName,
@@ -50,12 +75,6 @@ function inventory_action_sync_central_definition(
         $id = (int) ($check->fetchColumn() ?: 0);
         if ($id <= 0) return;
 
-        $duplicate = $pdo->prepare('SELECT id FROM central_aliases WHERE name = ? AND id <> ?');
-        $duplicate->execute([$newName, $id]);
-        if ($duplicate->fetchColumn()) {
-            throw new RuntimeException('A central alias named "' . $newName . '" already exists.');
-        }
-
         $update = $pdo->prepare('UPDATE central_aliases SET name = ?, updated_at = ? WHERE id = ?');
         $update->execute([$newName, gmdate('c'), $id]);
         return;
@@ -66,12 +85,6 @@ function inventory_action_sync_central_definition(
     $check->execute([$oldName]);
     $id = (int) ($check->fetchColumn() ?: 0);
     if ($id > 0) {
-        $duplicate = $pdo->prepare('SELECT id FROM central_categories WHERE name = ? AND id <> ?');
-        $duplicate->execute([$newName, $id]);
-        if ($duplicate->fetchColumn()) {
-            throw new RuntimeException('A central category named "' . $newName . '" already exists.');
-        }
-
         $update = $pdo->prepare('UPDATE central_categories SET name = ?, updated_at = ? WHERE id = ?');
         $update->execute([$newName, gmdate('c'), $id]);
     }
@@ -79,6 +92,36 @@ function inventory_action_sync_central_definition(
     if (strcasecmp($oldName, managed_category_name()) === 0) {
         save_managed_category_settings($newName, managed_category_color());
     }
+}
+
+function inventory_action_search_exact(
+    array $firewall,
+    string $controller,
+    string $name
+): ?array {
+    $search = opn_raw_request(
+        $firewall,
+        'firewall/' . $controller . '/search_item',
+        'POST',
+        [
+            'current' => 1,
+            'rowCount' => -1,
+            'searchPhrase' => $name,
+            'sort' => new stdClass(),
+        ],
+        25
+    );
+
+    foreach (($search['rows'] ?? []) as $row) {
+        if (
+            is_array($row)
+            && strcasecmp(trim((string) ($row['name'] ?? '')), $name) === 0
+        ) {
+            return $row;
+        }
+    }
+
+    return null;
 }
 
 try {
@@ -106,6 +149,10 @@ try {
     }
 
     $syncCentral = isset($_POST['sync_central']) && $_POST['sync_central'] === '1';
+    if ($syncCentral) {
+        inventory_action_preflight_central_name($type, $oldName, $newName);
+    }
+
     $ids = array_values(array_unique(array_filter(
         array_map('intval', (array) ($_POST['firewall_ids'] ?? [])),
         static fn (int $id): bool => $id > 0
@@ -124,45 +171,18 @@ try {
         ];
 
         try {
+            $match = inventory_action_search_exact($firewall, $controller, $oldName);
+            if ($match === null) throw new RuntimeException('Entry not found.');
+
+            $duplicate = inventory_action_search_exact($firewall, $controller, $newName);
+            if ($duplicate !== null) {
+                throw new RuntimeException('An entry named "' . $newName . '" already exists.');
+            }
+
             backup_before_change(
                 $firewall,
                 $type === 'aliases' ? 'alias-rename' : 'category-rename'
             );
-
-            $search = opn_raw_request(
-                $firewall,
-                'firewall/' . $controller . '/search_item',
-                'POST',
-                [
-                    'current' => 1,
-                    'rowCount' => -1,
-                    'searchPhrase' => $oldName,
-                    'sort' => new stdClass(),
-                ],
-                25
-            );
-
-            $rows = isset($search['rows']) && is_array($search['rows']) ? $search['rows'] : [];
-            $match = null;
-            foreach ($rows as $row) {
-                if (
-                    is_array($row)
-                    && strcasecmp(trim((string) ($row['name'] ?? '')), $oldName) === 0
-                ) {
-                    $match = $row;
-                    break;
-                }
-            }
-            if ($match === null) throw new RuntimeException('Entry not found.');
-
-            foreach ($rows as $row) {
-                if (
-                    is_array($row)
-                    && strcasecmp(trim((string) ($row['name'] ?? '')), $newName) === 0
-                ) {
-                    throw new RuntimeException('An entry named "' . $newName . '" already exists.');
-                }
-            }
 
             $uuid = trim((string) ($match['uuid'] ?? $match['id'] ?? ''));
             if ($uuid === '') throw new RuntimeException('OPNsense did not return a UUID.');
