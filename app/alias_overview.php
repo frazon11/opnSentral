@@ -29,60 +29,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $info = 'Not checked';
 
                 try {
-                    $categoryUuid =
-                        central_alias_category_uuid($firewall);
+                    $categoryUuid = central_alias_category_uuid($firewall);
 
                     if ($categoryUuid === null) {
                         $status = 'category missing';
                         $info = 'Managed category "' . managed_category_name() . '" is missing.';
                     } else {
-                        $remote = central_alias_find(
-                            $firewall,
-                            (string) $alias['name']
-                        );
+                        $remote = central_alias_find($firewall, (string) $alias['name']);
 
                         if ($remote === null) {
                             $status = 'missing';
                             $info = 'Alias does not exist.';
-                        } elseif (
-                            !central_alias_has_category(
-                                $remote,
-                                $categoryUuid
-                            )
-                        ) {
+                        } elseif (!central_alias_has_category($remote, $categoryUuid)) {
                             $status = 'unmanaged';
-                            $info =
-                                'Alias exists but is not assigned to ' .
-                                'the managed category "' . managed_category_name() . '".';
+                            $info = 'Alias exists but is not assigned to the managed category "' . managed_category_name() . '".';
                         } else {
-                            $sameType =
-                                (string) ($remote['type'] ?? '') ===
-                                (string) $alias['type'];
-                            $sameEnabled =
-                                (int) ($remote['enabled'] ?? 0) ===
-                                (int) $alias['enabled'];
-                            $sameContent =
-                                central_alias_lines(
-                                    (string) (
-                                        $remote['content'] ?? ''
-                                    )
-                                ) ===
-                                central_alias_lines(
-                                    (string) $alias['content']
-                                );
+                            $sameType = (string) ($remote['type'] ?? '') === (string) $alias['type'];
+                            $sameEnabled = (int) ($remote['enabled'] ?? 0) === (int) $alias['enabled'];
+                            $sameContent = central_alias_lines((string) ($remote['content'] ?? '')) === central_alias_lines((string) $alias['content']);
 
-                            if (
-                                $sameType &&
-                                $sameEnabled &&
-                                $sameContent
-                            ) {
+                            if ($sameType && $sameEnabled && $sameContent) {
                                 $status = 'synchronized';
                                 $info = 'Remote definition matches.';
                             } else {
                                 $status = 'different';
-                                $info =
-                                    'Type, enabled state or content ' .
-                                    'differs.';
+                                $info = 'Type, enabled state or content differs.';
                             }
                         }
                     }
@@ -112,34 +83,17 @@ require __DIR__ . '/inc/header.php';
 <div class="page-title management-page-title">
     <div>
         <h1><?= h(t('aliases.distributed')) ?></h1>
-        <p>
-            Complete alias inventory from every managed OPNsense.
-        </p>
+        <p>Complete alias inventory from every managed OPNsense.</p>
     </div>
 
     <div class="management-toolbar">
         <form method="post">
-            <input
-                type="hidden"
-                name="csrf"
-                value="<?= h(csrf_token()) ?>"
-            >
-            <button name="action" value="check">
-                <?= h(t('aliases.check_sync')) ?>
-            </button>
+            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+            <button name="action" value="check"><?= h(t('aliases.check_sync')) ?></button>
         </form>
 
-        <button
-            type="button"
-            class="button secondary"
-            id="alias-inventory-refresh"
-        >
-            Refresh
-        </button>
-
-        <a class="button" href="/aliases.php">
-            Add alias
-        </a>
+        <button type="button" class="button secondary" id="alias-inventory-refresh">Refresh</button>
+        <a class="button" href="/aliases.php">Add alias</a>
     </div>
 </div>
 
@@ -154,21 +108,17 @@ require __DIR__ . '/inc/header.php';
 <div class="management-overview-bar">
     <div>
         <strong>Alias overview</strong>
-        <div id="alias-inventory-summary" class="management-summary">
-            Loading all aliases…
-        </div>
+        <div id="alias-inventory-summary" class="management-summary">Loading all aliases…</div>
     </div>
 </div>
 
 <div id="alias-inventory-error" class="alert error hidden"></div>
 
 <div id="alias-inventory-list" class="vpn-summary-list">
-    <section class="card vpn-summary-card">
-        <p class="muted">Loading…</p>
-    </section>
+    <section class="card vpn-summary-card"><p class="muted">Loading…</p></section>
 </div>
 
-<script src="/assets/inventory-overview.js?v=06111"></script>
+<script src="/assets/inventory-overview.js?v=062115"></script>
 <script>
 window.opnCentralInventoryOverview({
     type: 'aliases',
