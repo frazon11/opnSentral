@@ -1,0 +1,98 @@
+<?php
+
+declare(strict_types=1);
+
+function agent_current_version(): string
+{
+    $path = __DIR__ . '/../agent/opnsentral-agent';
+    $content = is_file($path) ? (string) file_get_contents($path) : '';
+    if (preg_match("/const AGENT_VERSION = '([^']+)'/", $content, $match)) {
+        return (string) $match[1];
+    }
+    return 'unknown';
+}
+
+function agent_current_sha256(): string
+{
+    $path = __DIR__ . '/../agent/opnsentral-agent';
+    $hash = is_file($path) ? hash_file('sha256', $path) : false;
+    if (!is_string($hash) || !preg_match('/^[a-f0-9]{64}$/', $hash)) {
+        throw new RuntimeException('Could not calculate the current agent SHA-256.');
+    }
+    return $hash;
+}
+
+function agent_public_base_url(): string
+{
+    $forwardedProto = trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0] ?? '');
+    $scheme = $forwardedProto !== ''
+        ? strtolower($forwardedProto)
+        : ((((string) ($_SERVER['HTTPS'] ?? '')) !== '' && ($_SERVER['HTTPS'] ?? 'off') !== 'off') ? 'https' : 'http');
+    $forwardedHost = trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? ''))[0] ?? '');
+    $host = $forwardedHost !== '' ? $forwardedHost : trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    return $host !== '' ? $scheme . '://' . $host : '';
+}
+
+function agent_create_registration_token(int $firewallId, string $label = '', int $ttlMinutes = 15): array
+{
+    if ($firewallId <= 0) throw new RuntimeException('A managed firewall is required for agent bootstrap.');
+    if (!in_array($ttlMinutes, [5, 10, 15, 30, 60], true)) $ttlMinutes = 15;
+
+    $pdo = db();
+    $check = $pdo->prepare('SELECT id,name FROM firewalls WHERE id = ?');
+    $check->execute([$firewallId]);
+    $firewall = $check->fetch();
+    if (!$firewall) throw new RuntimeException('Firewall not found.');
+
+    $token = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+    $createdAt = gmdate('c');
+    $expiresAt = gmdate('c', time() + ($ttlMinutes * 60));
+
+    $cleanup = $pdo->prepare(
+        'DELETE FROM agent_registration_tokens WHERE used_at IS NOT NULL OR expires_at < ?'
+    );
+    $cleanup->execute([gmdate('c', time() - 86400)]);
+
+    $statement = $pdo->prepare(
+        'INSERT INTO agent_registration_tokens(
+            firewall_id, token_hash, token_prefix, label, created_at, expires_at
+         ) VALUES(?, ?, ?, ?, ?, ?)'
+    );
+    $statement->execute([
+        $firewallId,
+        hash('sha256', $token),
+        substr($token, 0, 8),
+        substr(trim($label), 0, 255),
+        $createdAt,
+        $expiresAt,
+    ]);
+
+    return [
+        'token' => $token,
+        'expires_at' => $expiresAt,
+        'firewall_name' => (string) $firewall['name'],
+    ];
+}
+
+function agent_queue_self_update(array $agent): int
+{
+    if ((int) ($agent['enabled'] ?? 0) !== 1) {
+        throw new RuntimeException('Agent is disabled.');
+    }
+    $payload = json_encode([
+        'sha256' => agent_current_sha256(),
+        'target_version' => agent_current_version(),
+    ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $statement = db()->prepare(
+        'INSERT INTO agent_jobs(agent_id, job_type, payload_json, status, created_at)
+         VALUES(?, ?, ?, ?, ?)'
+    );
+    $statement->execute([
+        (int) $agent['id'],
+        'self_update',
+        $payload,
+        'queued',
+        gmdate('c'),
+    ]);
+    return (int) db()->lastInsertId();
+}
