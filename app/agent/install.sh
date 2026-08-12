@@ -5,7 +5,7 @@ SERVER_URL="${1:-}"
 TOKEN="${2:-}"
 
 if [ -z "$SERVER_URL" ] || [ -z "$TOKEN" ]; then
-    echo "Usage: install.sh https://OPNSENTRAL REGISTRATION_TOKEN" >&2
+    echo "Usage: install.sh https://OPNSENTRAL REGISTRATION_TOKEN|--existing" >&2
     exit 1
 fi
 
@@ -19,6 +19,7 @@ esac
 
 SERVER_URL="${SERVER_URL%/}"
 AGENT_BIN="/usr/local/sbin/opnsentral-agent"
+AGENT_CONFIG="/usr/local/etc/opnsentral-agent.json"
 RC_SCRIPT="/usr/local/etc/rc.d/opnsentral_agent"
 RC_CONF_DIR="/etc/rc.conf.d"
 RC_CONF_FILE="$RC_CONF_DIR/opnsentral_agent"
@@ -38,10 +39,23 @@ command -v fetch >/dev/null 2>&1 || {
     exit 1
 }
 
-fetch -q -o "$AGENT_BIN" "$SERVER_URL/agent/opnsentral-agent"
-chmod 0755 "$AGENT_BIN"
+if [ "$TOKEN" = "--existing" ] && [ ! -s "$AGENT_CONFIG" ]; then
+    echo "Existing agent configuration was not found at $AGENT_CONFIG." >&2
+    exit 1
+fi
 
-"$AGENT_BIN" register "$SERVER_URL" "$TOKEN"
+TEMP_BIN="${AGENT_BIN}.new.$$"
+trap 'rm -f "$TEMP_BIN"' EXIT INT TERM
+fetch -q -o "$TEMP_BIN" "$SERVER_URL/agent/opnsentral-agent"
+chmod 0755 "$TEMP_BIN"
+mv -f "$TEMP_BIN" "$AGENT_BIN"
+trap - EXIT INT TERM
+
+if [ "$TOKEN" != "--existing" ]; then
+    "$AGENT_BIN" register "$SERVER_URL" "$TOKEN"
+else
+    echo "Existing opnSentral agent registration preserved."
+fi
 
 cat > "$RC_SCRIPT" <<'EOF'
 #!/bin/sh
@@ -73,6 +87,6 @@ service opnsentral_agent stop >/dev/null 2>&1 || true
 service opnsentral_agent start
 
 echo ""
-echo "opnSentral agent installed and started."
+echo "opnSentral agent installed/updated and started."
 echo "Configuration: /usr/local/etc/opnsentral-agent.json"
 echo "Service:       service opnsentral_agent status"
