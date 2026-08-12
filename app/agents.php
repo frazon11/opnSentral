@@ -228,7 +228,7 @@ require __DIR__ . '/inc/header.php';
     <div class="management-card-header">
         <div>
             <h2>Recent remote jobs</h2>
-            <div class="management-summary">Initial job types are intentionally limited to inventory and system status.</div>
+            <div class="management-summary">Remote jobs are strictly allow-listed; Administration fleet writes are limited to supported Web GUI settings.</div>
         </div>
     </div>
     <div class="table-scroll management-table-wrap">
