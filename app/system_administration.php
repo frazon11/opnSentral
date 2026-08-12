@@ -421,6 +421,7 @@ require __DIR__ . '/inc/header.php';
 .settings-tree a,.settings-tree span{display:block;padding:10px 16px;text-decoration:none}
 .settings-tree .tree-group{font-weight:800;background:var(--table-head)}
 .settings-tree .tree-child{padding-left:30px}
+.settings-tree .tree-subgroup{padding-left:30px;font-weight:750;color:var(--muted)}
 .settings-tree .tree-grandchild{padding-left:46px}
 .settings-tree a.active{background:#3b4851;color:#fff}
 .opn-admin-shell{border:1px solid #2e3238;border-radius:6px;overflow:hidden;background:#0d1016;color:#f3f3f3}
@@ -457,12 +458,17 @@ require __DIR__ . '/inc/header.php';
     <aside class="card settings-tree">
         <div class="settings-tree-title">Settings</div>
         <span class="tree-group">Firewall</span>
-        <a class="tree-child tree-grandchild"
+        <a class="tree-child"
            href="/firewall_advanced.php<?= $id ? '?firewall_id=' . $id : '' ?>">
             Advanced
         </a>
         <span class="tree-group">System</span>
-        <a class="tree-child tree-grandchild active"
+        <span class="tree-subgroup">Settings</span>
+        <a class="tree-grandchild"
+           href="/system_general.php<?= $id ? '?firewall_id=' . $id : '' ?>">
+            General
+        </a>
+        <a class="tree-grandchild active"
            href="/system_administration.php<?= $id ? '?firewall_id=' . $id : '' ?>">
             Administration
         </a>
