@@ -103,7 +103,7 @@ require __DIR__ . '/inc/header.php';
     <div class="management-card-header">
         <div>
             <h2>Agent deployment</h2>
-            <div class="management-summary">Install missing agents by one-time SSH bootstrap; update agent 0.1.1+ through its outbound connection.</div>
+            <div class="management-summary">Install missing agents by one-time SSH bootstrap; agent 0.1.2+ can install future updates through its outbound connection.</div>
         </div>
     </div>
     <div class="table-scroll management-table-wrap">
@@ -119,7 +119,7 @@ require __DIR__ . '/inc/header.php';
                 $last = is_array($agent) && $agent['last_seen_at'] ? (strtotime((string) $agent['last_seen_at']) ?: 0) : 0;
                 $fresh = $enabled && $last > 0 && time() - $last < 150;
                 $current = $installed !== '' && $targetAgentVersion !== 'unknown' && version_compare($installed, $targetAgentVersion, '>=');
-                $selfUpdateCapable = $installed !== '' && version_compare($installed, '0.1.1', '>=');
+                $selfUpdateCapable = $installed !== '' && version_compare($installed, '0.1.2', '>=');
             ?>
                 <tr>
                     <td><strong><?= h((string) $firewall['name']) ?></strong><br><small><?= h((string) $firewall['base_url']) ?></small></td>
@@ -157,7 +157,7 @@ require __DIR__ . '/inc/header.php';
                             </form>
                         <?php else: ?>
                             <a class="button" href="/agent_bootstrap.php?firewall_id=<?= $fid ?>"><?= $installed === '' ? 'Install / Recover' : 'Update via SSH' ?></a>
-                            <?php if (!$enabled): ?><small>Enable the agent for outbound self-update.</small><?php endif; ?>
+                            <?php if (!$enabled): ?><small>Enable agent 0.1.2+ for future outbound updates.</small><?php elseif ($installed !== '' && version_compare($installed, '0.1.2', '<')): ?><small>One SSH update is required to reach self-update capable 0.1.2.</small><?php endif; ?>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -165,7 +165,7 @@ require __DIR__ . '/inc/header.php';
             </tbody>
         </table>
     </div>
-    <p class="muted">SSH passwords/private keys entered in the bootstrap form are never stored. Existing agent 0.1.1+ updates verify the SHA-256 of the replacement before activation.</p>
+    <p class="muted">SSH passwords/private keys entered in the bootstrap form are never stored. From agent 0.1.2 onward, updates verify the SHA-256 of the replacement before activation.</p>
 </div>
 
 <div class="management-secondary-grid">
