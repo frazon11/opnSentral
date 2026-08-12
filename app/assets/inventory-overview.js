@@ -56,31 +56,44 @@ window.opnCentralInventoryOverview = function(options){
         const oldName = button.dataset.name || '';
         const firewallId = Number(button.dataset.firewallId || 0);
         const firewallName = button.dataset.firewallName || 'this firewall';
-        const newName = window.prompt('New name for "' + oldName + '":', oldName);
+        const objectLabel = options.type === 'aliases' ? 'alias' : 'category';
+        const newName = window.prompt(
+            'Rename ' + objectLabel + ' "' + oldName + '" to:',
+            oldName
+        );
         if(newName === null) return;
 
         const trimmed = newName.trim();
         if(!trimmed || trimmed === oldName) return;
+
+        if(options.type === 'aliases' && !/^[A-Za-z0-9_]+$/.test(trimmed)){
+            window.alert('Alias name may contain only letters, numbers and underscores.');
+            return;
+        }
 
         const allIds = matchingFirewallIds(oldName);
         let targetIds = [firewallId];
 
         if(allIds.length > 1){
             const renameAll = window.confirm(
-                'Rename "' + oldName + '" to "' + trimmed + '" on all ' +
+                'Rename ' + objectLabel + ' "' + oldName + '" to "' + trimmed + '" on all ' +
                 allIds.length + ' firewalls where it exists?\n\n' +
                 'OK = all matching firewalls\nCancel = only ' + firewallName
             );
             targetIds = renameAll ? allIds : [firewallId];
         }else if(!window.confirm(
-            'Rename "' + oldName + '" to "' + trimmed + '" on ' + firewallName + '?'
+            'Rename ' + objectLabel + ' "' + oldName + '" to "' + trimmed + '" on ' + firewallName + '?'
         )){
             return;
         }
 
+        const syncCentral = allIds.length > 0
+            && targetIds.length === allIds.length
+            && allIds.every(id => targetIds.includes(id));
+
         button.disabled = true;
         const originalText = button.textContent;
-        button.textContent = 'Saving…';
+        button.textContent = 'Renaming…';
 
         try{
             const payload = new FormData();
@@ -88,6 +101,7 @@ window.opnCentralInventoryOverview = function(options){
             payload.set('type', options.type);
             payload.set('old_name', oldName);
             payload.set('new_name', trimmed);
+            payload.set('sync_central', syncCentral ? '1' : '0');
             targetIds.forEach(id => payload.append('firewall_ids[]', String(id)));
 
             const response = await fetch('/alias_category_inventory_action.php', {
@@ -119,10 +133,10 @@ window.opnCentralInventoryOverview = function(options){
     }
 
     function actionButton(item, firewall){
-        return '<button type="button" class="button secondary inventory-edit"' +
+        return '<button type="button" class="button secondary inventory-rename"' +
             ' data-name="' + escapeHtml(item.name) + '"' +
             ' data-firewall-id="' + Number(firewall.id) + '"' +
-            ' data-firewall-name="' + escapeHtml(firewall.name) + '">Edit</button>';
+            ' data-firewall-name="' + escapeHtml(firewall.name) + '">Rename</button>';
     }
 
     function aliasRows(items, firewall){
@@ -275,7 +289,7 @@ window.opnCentralInventoryOverview = function(options){
             });
         });
 
-        list.querySelectorAll('.inventory-edit').forEach(function(button){
+        list.querySelectorAll('.inventory-rename').forEach(function(button){
             button.addEventListener('click', function(){ renameEntry(button); });
         });
 
