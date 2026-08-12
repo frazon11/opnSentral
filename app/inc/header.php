@@ -91,8 +91,8 @@ function nav_active(array $paths): string {
            href="/system_general.php">
             <span>General</span>
         </a>
-        <a class="nav-child<?= nav_active(['/system_administration.php']) ?>"
-           href="/system_administration.php">
+        <a class="nav-child<?= nav_active(['/system_administration_matrix.php','/system_administration.php']) ?>"
+           href="/system_administration_matrix.php">
             <span>Administration</span>
         </a>
 
