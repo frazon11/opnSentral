@@ -10,6 +10,15 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.21.12
+
+- Restructured the opnSentral sidebar around the native OPNsense hierarchy instead of the previous Firewalls / Actions grouping.
+- Grouped Users and Groups under `System → Access`, Backups under `System → Configuration`, and General/Administration under `System → Settings`.
+- Grouped Aliases, Categories and Advanced settings under `Firewall`.
+- Kept OpenVPN and WireGuard under `VPN`, Services under `Services`, and Troubleshooting under `Diagnostics`.
+- Added a dedicated `opnSentral` section for application-specific functions that have no direct OPNsense equivalent: Add Firewall, Agents, Settings and Notifications.
+- Preserved the existing page URLs so bookmarks and direct links remain valid.
+
 ## 0.6.21.11
 
 - Added controlled editing for existing `System → Access → Users` entries.
