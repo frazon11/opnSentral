@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.0';
+const AGENT_VERSION = '0.1.1';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
@@ -193,6 +193,88 @@ function report(array $config): void
     ]);
 }
 
+function run_local_command(string $command, string $label): void
+{
+    $output = [];
+    $status = 0;
+    exec($command . ' 2>&1', $output, $status);
+    if ($status !== 0) {
+        throw new RuntimeException(
+            $label . ' failed' . ($output ? ': ' . implode(' | ', array_slice($output, -5)) : '.')
+        );
+    }
+}
+
+function set_administration_settings(array $payload): array
+{
+    $requested = $payload['settings'] ?? null;
+    if (!is_array($requested) || $requested === []) {
+        throw new RuntimeException('Administration settings payload is empty.');
+    }
+
+    $allowed = [
+        'disablehttpredirect',
+        'ssl-hsts',
+        'httpaccesslog',
+        'nodnsrebindcheck',
+        'nohttpreferercheck',
+        'quietlogin',
+    ];
+
+    $changes = [];
+    foreach ($requested as $key => $value) {
+        $key = (string) $key;
+        if (!in_array($key, $allowed, true) || !is_bool($value)) {
+            throw new RuntimeException('Unsupported Administration setting: ' . $key);
+        }
+        $changes[$key] = $value;
+    }
+
+    $configFile = '/usr/local/etc/inc/config.inc';
+    if (!is_file($configFile)) {
+        throw new RuntimeException('OPNsense configuration library was not found.');
+    }
+    require_once $configFile;
+
+    global $config;
+    if (!is_array($config)) {
+        throw new RuntimeException('OPNsense configuration is unavailable.');
+    }
+    if (!isset($config['system']) || !is_array($config['system'])) {
+        $config['system'] = [];
+    }
+    if (!isset($config['system']['webgui']) || !is_array($config['system']['webgui'])) {
+        $config['system']['webgui'] = [];
+    }
+
+    $before = [];
+    foreach ($changes as $key => $enabled) {
+        $before[$key] = array_key_exists($key, $config['system']['webgui']);
+        if ($enabled) {
+            $config['system']['webgui'][$key] = '';
+        } else {
+            unset($config['system']['webgui'][$key]);
+        }
+    }
+
+    if (!function_exists('write_config')) {
+        throw new RuntimeException('OPNsense write_config() is unavailable.');
+    }
+    write_config('opnSentral: update System Settings Administration');
+
+    run_local_command('/usr/local/sbin/configctl webgui restart', 'WebGUI restart');
+    if (array_key_exists('disablehttpredirect', $changes)) {
+        run_local_command('/usr/local/sbin/configctl filter reload', 'Firewall reload');
+    }
+
+    return [
+        'message' => count($changes) . ' Administration setting' . (count($changes) === 1 ? '' : 's') . ' applied.',
+        'settings' => $changes,
+        'previous' => $before,
+        'applied_at' => gmdate('c'),
+    ];
+}
+
 function execute_job(array $job): array
 {
     $type = (string) ($job['type'] ?? '');
@@ -217,6 +299,12 @@ function execute_job(array $job): array
             'root_bytes_free' => @disk_free_space('/') ?: null,
             'checked_at' => gmdate('c'),
         ];
+    }
+
+    if ($type === 'set_administration_settings') {
+        return set_administration_settings(
+            is_array($job['payload'] ?? null) ? $job['payload'] : []
+        );
     }
 
     throw new RuntimeException('Unsupported job type: ' . $type);
