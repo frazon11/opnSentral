@@ -12,12 +12,8 @@ central_category_init();
 $message = '';
 $error = '';
 
-$categories = db()
-    ->query('SELECT * FROM central_categories ORDER BY name')
-    ->fetchAll();
-$firewalls = db()
-    ->query('SELECT * FROM firewalls ORDER BY name')
-    ->fetchAll();
+$categories = db()->query('SELECT * FROM central_categories ORDER BY name')->fetchAll();
+$firewalls = db()->query('SELECT * FROM firewalls ORDER BY name')->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
@@ -29,38 +25,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $info = 'Not checked';
 
                 try {
-                    $remote = central_category_search(
-                        $firewall,
-                        (string) $category['name']
-                    );
+                    $remote = central_category_search($firewall, (string) $category['name']);
 
                     if ($remote === null) {
                         $status = 'missing';
                         $info = 'Category does not exist.';
                     } else {
-                        $remoteColor = strtolower(
-                            (string) ($remote['color'] ?? '')
-                        );
-                        $localColor = strtolower(
-                            (string) $category['color']
-                        );
-                        $remoteAutomatic = (int) (
-                            $remote['auto'] ??
-                            $remote['automatic'] ??
-                            0
-                        );
+                        $remoteColor = strtolower((string) ($remote['color'] ?? ''));
+                        $localColor = strtolower((string) $category['color']);
+                        $remoteAutomatic = (int) ($remote['auto'] ?? $remote['automatic'] ?? 0);
 
                         if (
                             $remoteColor === $localColor &&
-                            $remoteAutomatic ===
-                                (int) $category['automatic']
+                            $remoteAutomatic === (int) $category['automatic']
                         ) {
                             $status = 'synchronized';
                             $info = 'Remote definition matches.';
                         } else {
                             $status = 'different';
-                            $info =
-                                'Color or automatic setting differs.';
+                            $info = 'Color or automatic setting differs.';
                         }
                     }
                 } catch (Throwable $exception) {
@@ -89,34 +72,17 @@ require __DIR__ . '/inc/header.php';
 <div class="page-title management-page-title">
     <div>
         <h1><?= h(t('categories.distributed')) ?></h1>
-        <p>
-            Complete category inventory from every managed OPNsense.
-        </p>
+        <p>Complete category inventory from every managed OPNsense.</p>
     </div>
 
     <div class="management-toolbar">
         <form method="post">
-            <input
-                type="hidden"
-                name="csrf"
-                value="<?= h(csrf_token()) ?>"
-            >
-            <button name="action" value="check">
-                <?= h(t('aliases.check_sync')) ?>
-            </button>
+            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+            <button name="action" value="check"><?= h(t('aliases.check_sync')) ?></button>
         </form>
 
-        <button
-            type="button"
-            class="button secondary"
-            id="category-inventory-refresh"
-        >
-            Refresh
-        </button>
-
-        <a class="button" href="/categories.php">
-            Add category
-        </a>
+        <button type="button" class="button secondary" id="category-inventory-refresh">Refresh</button>
+        <a class="button" href="/categories.php">Add category</a>
     </div>
 </div>
 
@@ -131,21 +97,17 @@ require __DIR__ . '/inc/header.php';
 <div class="management-overview-bar">
     <div>
         <strong>Category overview</strong>
-        <div id="category-inventory-summary" class="management-summary">
-            Loading all categories…
-        </div>
+        <div id="category-inventory-summary" class="management-summary">Loading all categories…</div>
     </div>
 </div>
 
 <div id="category-inventory-error" class="alert error hidden"></div>
 
 <div id="category-inventory-list" class="vpn-summary-list">
-    <section class="card vpn-summary-card">
-        <p class="muted">Loading…</p>
-    </section>
+    <section class="card vpn-summary-card"><p class="muted">Loading…</p></section>
 </div>
 
-<script src="/assets/inventory-overview.js?v=06111"></script>
+<script src="/assets/inventory-overview.js?v=062115"></script>
 <script>
 window.opnCentralInventoryOverview({
     type: 'categories',
