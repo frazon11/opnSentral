@@ -208,6 +208,7 @@ require __DIR__ . '/inc/header.php';
     const summary=document.getElementById('admin-fleet-result-summary');
     const resultGrid=document.getElementById('admin-fleet-result-grid');
     const boxes=Array.from(document.querySelectorAll('.admin-fleet-checkbox'));
+    const rows=Array.from(document.querySelectorAll('tr[data-setting]'));
 
     function dirtyBoxes(){
         return boxes.filter(box => !box.disabled && (box.checked ? '1':'0') !== box.dataset.initial);
@@ -218,29 +219,41 @@ require __DIR__ . '/inc/header.php';
         apply.disabled=!dirty;
         reset.disabled=!dirty;
     }
-    boxes.forEach(box=>box.addEventListener('change',refreshDirty));
-
-    document.querySelectorAll('.admin-fleet-row-all').forEach(all=>{
-        const row=all.closest('tr');
-        const rowBoxes=()=>Array.from(row.querySelectorAll('.admin-fleet-checkbox:not(:disabled)'));
-        function syncAll(){
-            const writable=rowBoxes();
-            if(!writable.length){all.disabled=true;all.indeterminate=false;return;}
-            const checked=writable.filter(box=>box.checked).length;
-            all.checked=checked===writable.length;
-            all.indeterminate=checked>0&&checked<writable.length;
+    function syncRowAll(row){
+        const all=row.querySelector('.admin-fleet-row-all');
+        if(!all)return;
+        const writable=Array.from(row.querySelectorAll('.admin-fleet-checkbox:not(:disabled)'));
+        if(!writable.length){
+            all.disabled=true;
+            all.checked=false;
+            all.indeterminate=false;
+            return;
         }
+        const checked=writable.filter(box=>box.checked).length;
+        all.disabled=false;
+        all.checked=checked===writable.length;
+        all.indeterminate=checked>0&&checked<writable.length;
+    }
+    function syncAllRows(){rows.forEach(syncRowAll);}
+
+    boxes.forEach(box=>box.addEventListener('change',()=>{
+        syncRowAll(box.closest('tr'));
+        refreshDirty();
+    }));
+
+    rows.forEach(row=>{
+        const all=row.querySelector('.admin-fleet-row-all');
+        if(!all)return;
         all.addEventListener('change',()=>{
-            rowBoxes().forEach(box=>{box.checked=all.checked;});
-            syncAll();refreshDirty();
+            row.querySelectorAll('.admin-fleet-checkbox:not(:disabled)').forEach(box=>{box.checked=all.checked;});
+            syncRowAll(row);
+            refreshDirty();
         });
-        row.querySelectorAll('.admin-fleet-checkbox').forEach(box=>box.addEventListener('change',syncAll));
-        syncAll();
     });
 
     reset.addEventListener('click',()=>{
         boxes.forEach(box=>{if(!box.disabled)box.checked=box.dataset.initial==='1';});
-        document.querySelectorAll('.admin-fleet-row-all').forEach(all=>all.dispatchEvent(new Event('change',{bubbles:false})));
+        syncAllRows();
         refreshDirty();
     });
 
@@ -319,6 +332,7 @@ require __DIR__ . '/inc/header.php';
     });
 
     function escapeHtml(value){const node=document.createElement('div');node.textContent=String(value??'');return node.innerHTML;}
+    syncAllRows();
     refreshDirty();
 })();
 </script>
