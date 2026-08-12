@@ -22,7 +22,6 @@ $hostKeyMode = (string) ($_POST['host_key_mode'] ?? 'accept-new');
 
 $redirect = '/agent_bootstrap.php?firewall_id=' . $firewallId;
 $keyFile = null;
-$knownHostsFile = null;
 $registration = null;
 
 try {
@@ -39,31 +38,44 @@ try {
     if ($authType === 'password' && $password === '') throw new RuntimeException('SSH password is required.');
     if ($authType === 'key' && !str_contains($privateKey, 'PRIVATE KEY')) throw new RuntimeException('A valid SSH private key is required.');
 
-    $registration = agent_create_registration_token(
-        $firewallId,
-        'SSH bootstrap for ' . (string) $firewall['name'],
-        15
+    $agentLookup = db()->prepare(
+        'SELECT * FROM agents WHERE firewall_id = ? ORDER BY id DESC LIMIT 1'
     );
-    $token = (string) $registration['token'];
+    $agentLookup->execute([$firewallId]);
+    $existingAgent = $agentLookup->fetch() ?: null;
+
+    if (is_array($existingAgent)) {
+        $installerArgument = '--existing';
+    } else {
+        $registration = agent_create_registration_token(
+            $firewallId,
+            'SSH bootstrap for ' . (string) $firewall['name'],
+            15
+        );
+        $installerArgument = (string) $registration['token'];
+    }
 
     $remoteCommand = 'fetch -q -o - ' . escapeshellarg($serverUrl . '/agent/install.sh')
         . ' | /bin/sh -s -- ' . escapeshellarg($serverUrl)
-        . ' ' . escapeshellarg($token);
+        . ' ' . escapeshellarg($installerArgument);
 
-    $ssh = ['ssh', '-p', (string) $port, '-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=5'];
-
-    if ($hostKeyMode === 'accept-new') {
-        $knownHostsFile = tempnam(sys_get_temp_dir(), 'opnsentral-known-hosts-');
-        if (!is_string($knownHostsFile)) throw new RuntimeException('Could not create temporary known_hosts file.');
-        chmod($knownHostsFile, 0600);
-        $ssh[] = '-o';
-        $ssh[] = 'StrictHostKeyChecking=accept-new';
-        $ssh[] = '-o';
-        $ssh[] = 'UserKnownHostsFile=' . $knownHostsFile;
-    } else {
-        $ssh[] = '-o';
-        $ssh[] = 'StrictHostKeyChecking=yes';
+    $knownHostsFile = DATA_DIR . '/ssh_known_hosts';
+    if (!is_dir(DATA_DIR) && !mkdir(DATA_DIR, 0770, true) && !is_dir(DATA_DIR)) {
+        throw new RuntimeException('Could not create the persistent data directory.');
     }
+    if (!is_file($knownHostsFile) && file_put_contents($knownHostsFile, '', LOCK_EX) === false) {
+        throw new RuntimeException('Could not create SSH known_hosts storage.');
+    }
+    chmod($knownHostsFile, 0600);
+
+    $ssh = [
+        'ssh',
+        '-p', (string) $port,
+        '-o', 'ConnectTimeout=12',
+        '-o', 'ServerAliveInterval=5',
+        '-o', 'UserKnownHostsFile=' . $knownHostsFile,
+        '-o', $hostKeyMode === 'strict' ? 'StrictHostKeyChecking=yes' : 'StrictHostKeyChecking=accept-new',
+    ];
 
     $env = getenv();
     if (!is_array($env)) $env = [];
@@ -113,7 +125,9 @@ try {
 
     $_SESSION['agent_bootstrap_result'] = [
         'ok' => true,
-        'message' => 'Agent installation and registration command completed for ' . (string) $firewall['name'] . '.',
+        'message' => is_array($existingAgent)
+            ? 'Agent updated/recovered over SSH while preserving its existing registration.'
+            : 'Agent installed and registered over SSH for ' . (string) $firewall['name'] . '.',
         'output' => $output,
     ];
 } catch (Throwable $exception) {
@@ -128,7 +142,6 @@ try {
     ];
 } finally {
     if (is_string($keyFile) && is_file($keyFile)) @unlink($keyFile);
-    if (is_string($knownHostsFile) && is_file($knownHostsFile)) @unlink($knownHostsFile);
     unset($password, $privateKey);
 }
 
