@@ -105,6 +105,34 @@ function access_parse_groups(SimpleXMLElement $xml): array
     return $groups;
 }
 
+function access_reconcile_memberships(array &$users, array $groups): void
+{
+    $usersByUid = [];
+    foreach ($users as $name => $user) {
+        $uid = trim((string) ($user['uid'] ?? ''));
+        if ($uid !== '') $usersByUid[$uid] = $name;
+    }
+
+    foreach ($groups as $groupName => $group) {
+        foreach (($group['members'] ?? []) as $uid) {
+            $uid = trim((string) $uid);
+            if ($uid === '' || !isset($usersByUid[$uid])) continue;
+            $userName = $usersByUid[$uid];
+            $users[$userName]['groups'][] = (string) $groupName;
+        }
+    }
+
+    foreach ($users as &$user) {
+        $user['groups'] = array_values(array_unique(array_filter(array_map(
+            static fn($value): string => trim((string) $value),
+            $user['groups'] ?? []
+        ), static fn(string $value): bool => $value !== '')));
+        natcasesort($user['groups']);
+        $user['groups'] = array_values($user['groups']);
+    }
+    unset($user);
+}
+
 function access_load_fleet_inventory(array $firewalls): array
 {
     if ($firewalls === []) return [];
@@ -143,6 +171,7 @@ function access_load_fleet_inventory(array $firewalls): array
             }
             $entry['users'] = access_parse_users($xml);
             $entry['groups'] = access_parse_groups($xml);
+            access_reconcile_memberships($entry['users'], $entry['groups']);
             $entry['ok'] = true;
         } catch (Throwable $exception) {
             $entry['error'] = $exception->getMessage();
