@@ -86,6 +86,11 @@ function nav_active(array $paths): string {
             <span>Advanced</span>
         </a>
         <span class="nav-child nav-disabled"><span>System</span></span>
+        <span class="nav-child nav-disabled"><span>Settings</span></span>
+        <a class="nav-child<?= nav_active(['/system_general.php']) ?>"
+           href="/system_general.php">
+            <span>General</span>
+        </a>
         <a class="nav-child<?= nav_active(['/system_administration.php']) ?>"
            href="/system_administration.php">
             <span>Administration</span>
