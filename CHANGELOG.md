@@ -10,6 +10,14 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.21.13
+
+- Reclassified sidebar entries according to whether they represent native OPNsense configuration areas or opnSentral fleet/application functions.
+- Moved Services to `System → Diagnostics → Services` to match the native OPNsense location.
+- Moved Backups and Troubleshooting to the `opnSentral` section because these pages provide fleet-wide opnSentral functionality rather than native single-firewall OPNsense pages.
+- Renamed the opnSentral Settings menu entry to `Application Settings` to distinguish it from `System → Settings` and `Firewall → Settings` on managed OPNsense systems.
+- Removed the obsolete standalone Services and Diagnostics sidebar groups while preserving all existing page URLs.
+
 ## 0.6.21.12
 
 - Restructured the opnSentral sidebar around the native OPNsense hierarchy instead of the previous Firewalls / Actions grouping.
