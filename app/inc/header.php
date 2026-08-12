@@ -26,6 +26,11 @@ function nav_active(array $paths): string {
     global $currentPath;
     return in_array($currentPath, $paths, true) ? ' active' : '';
 }
+function nav_active_query(string $path, string $key, string $value): string {
+    global $currentPath;
+    if ($currentPath !== $path) return '';
+    return (string) ($_GET[$key] ?? '') === $value ? ' active' : '';
+}
 ?>
 <!doctype html>
 <html lang="<?= h(current_language()) ?>">
@@ -53,7 +58,7 @@ function nav_active(array $paths): string {
 })();
 </script>
 <link rel="stylesheet" href="/assets/style.css?v=06111">
-<link rel="stylesheet" href="/assets/sidebar-menu.css?v=062114">
+<link rel="stylesheet" href="/assets/sidebar-menu.css?v=062115">
 </head>
 <body class="<?= logged_in() ? 'app-shell' : 'login-shell' ?><?= logged_in() && !configuration_unlocked() ? ' configuration-locked' : ' configuration-unlocked' ?>">
 <?php if (logged_in()): ?>
@@ -64,12 +69,7 @@ function nav_active(array $paths): string {
             <strong><?= h(app_name()) ?></strong>
             <div class="sidebar-meta">
                 <span>v<?= h(OPNSENTRAL_VERSION) ?></span><span>·</span>
-                <a
-                    href="https://buymeacoffee.com/frazon11"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Buy me a coffee"
-                >☕ Buy me a coffee</a>
+                <a href="https://buymeacoffee.com/frazon11" target="_blank" rel="noopener noreferrer" title="Buy me a coffee">☕ Buy me a coffee</a>
             </div>
         </div>
     </div>
@@ -85,6 +85,10 @@ function nav_active(array $paths): string {
                 <a class="menu-link<?= nav_active(['/system_access_users.php','/system_access_user_edit.php']) ?>" href="/system_access_users.php"><span>Users</span></a>
                 <a class="menu-link<?= nav_active(['/system_access_groups.php']) ?>" href="/system_access_groups.php"><span>Groups</span></a>
 
+                <span class="menu-level2">Firmware</span>
+                <a class="menu-link<?= nav_active(['/system_firmware_status.php']) ?>" href="/system_firmware_status.php"><span>Status</span></a>
+                <a class="menu-link<?= nav_active(['/plugins.php']) ?>" href="/plugins.php"><span>Plugins</span></a>
+
                 <span class="menu-level2">Settings</span>
                 <a class="menu-link<?= nav_active(['/system_general.php']) ?>" href="/system_general.php"><span>General</span></a>
                 <a class="menu-link<?= nav_active(['/system_administration_matrix.php','/system_administration.php']) ?>" href="/system_administration_matrix.php"><span>Administration</span></a>
@@ -96,6 +100,7 @@ function nav_active(array $paths): string {
             <section class="menu-section">
                 <span class="menu-level1">Firewall</span>
                 <a class="menu-link menu-direct<?= nav_active(['/aliases.php','/alias_overview.php']) ?>" href="/alias_overview.php"><span><?= h(t('menu.aliases')) ?></span></a>
+                <a class="menu-link menu-direct<?= nav_active(['/geoip_settings.php']) ?>" href="/geoip_settings.php"><span>GeoIP Settings</span></a>
                 <a class="menu-link menu-direct<?= nav_active(['/categories.php','/category_overview.php']) ?>" href="/category_overview.php"><span><?= h(t('menu.categories')) ?></span></a>
 
                 <span class="menu-level2">Settings</span>
@@ -113,6 +118,19 @@ function nav_active(array $paths): string {
                 <span class="menu-level2">WireGuard</span>
                 <a class="menu-link<?= nav_active(['/wireguard_overview.php']) ?>" href="/wireguard_overview.php"><span>Manage</span></a>
                 <a class="menu-link<?= nav_active(['/wireguard_create.php']) ?>" href="/wireguard_create.php"><span>Create Site-to-Site VPN</span></a>
+            </section>
+
+            <section class="menu-section">
+                <span class="menu-level1">Services</span>
+                <span class="menu-level2">Intrusion Detection</span>
+                <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','administration') ?>" href="/intrusion_detection.php?view=administration"><span>Administration</span></a>
+                <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','download') ?>" href="/intrusion_detection.php?view=download"><span>Download</span></a>
+                <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','policies') ?>" href="/intrusion_detection.php?view=policies"><span>Policies</span></a>
+                <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','rules') ?>" href="/intrusion_detection.php?view=rules"><span>Rules</span></a>
+                <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','user-defined') ?>" href="/intrusion_detection.php?view=user-defined"><span>User defined</span></a>
+                <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','alerts') ?>" href="/intrusion_detection.php?view=alerts"><span>Alerts</span></a>
+                <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','schedule') ?>" href="/intrusion_detection.php?view=schedule"><span>Schedule</span></a>
+                <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','log-file') ?>" href="/intrusion_detection.php?view=log-file"><span>Log File</span></a>
             </section>
 
             <section class="menu-section menu-opnsentral">
@@ -136,11 +154,7 @@ function nav_active(array $paths): string {
     <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation">☰</button>
     <div class="topbar-heading">
         <div class="topbar-title"><?= h(app_name()) ?></div>
-        <div
-            class="configuration-lock-state <?= configuration_unlocked() ? 'is-unlocked' : 'is-locked' ?>"
-            tabindex="0"
-            aria-describedby="configuration-lock-tooltip"
-        >
+        <div class="configuration-lock-state <?= configuration_unlocked() ? 'is-unlocked' : 'is-locked' ?>" tabindex="0" aria-describedby="configuration-lock-tooltip">
             <?= configuration_unlocked() ? 'Configuration unlocked' : 'Read-only mode' ?>
             <span id="configuration-lock-tooltip" class="configuration-lock-tooltip" role="tooltip">
                 <?= configuration_unlocked()
@@ -150,14 +164,7 @@ function nav_active(array $paths): string {
         </div>
     </div>
     <div class="topbar-right">
-        <a
-            id="configuration-support-link"
-            class="configuration-support-link"
-            href="https://www.paypal.com/paypalme/FrazoN11"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Support opnSentral via PayPal"
-        >♥ Support me</a>
+        <a id="configuration-support-link" class="configuration-support-link" href="https://www.paypal.com/paypalme/FrazoN11" target="_blank" rel="noopener noreferrer" title="Support opnSentral via PayPal">♥ Support me</a>
     </div>
 </header>
 
