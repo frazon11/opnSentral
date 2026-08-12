@@ -10,6 +10,13 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.21.6
+
+- Added explicit visual deployment results for alias and category distribution.
+- Successful targets now show a green `Successfully deployed` badge and failed targets show `Deployment failed`.
+- Added an overall deployment summary showing successful, failed, or partially successful target counts.
+- Kept the original per-firewall deployment message visible for detailed feedback.
+
 ## 0.6.21.5
 
 - Added explicit Rename actions for existing aliases and categories in their inventory overview pages.
