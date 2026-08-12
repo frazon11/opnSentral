@@ -10,6 +10,16 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.21.11
+
+- Added controlled editing for existing `System → Access → Users` entries.
+- Added editable Disabled, Login shell, Group membership and direct Privileges fields while preserving passwords, OTP seeds, authorized keys and API keys.
+- Added per-firewall target selection so one user's selected settings can be deployed to one or multiple firewalls where that user already exists.
+- Added pre-change configuration backups and per-firewall queued/running/success/failure deployment results for user changes.
+- Added agent 0.1.3 with the strictly allow-listed `set_access_user` job using OPNsense local-user and group synchronization functions.
+- Prevented opnSentral from disabling UID 0.
+- Reconciled user group membership from the authoritative group member UID lists so Access inventory does not depend only on legacy user-side group fields.
+
 ## 0.6.21.10
 
 - Added `System → Access → Users` as a fleet-wide local-user inventory and comparison view.
@@ -148,7 +158,7 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Aligned telemetry stack variables with the main stack: `BASE_PATH`, `WEB_PORT`, `IMAGE_VERSION` and `TZ`.
 - Updated both telemetry environment templates for Synology/File Station and Portainer use.
 - Replaced active telemetry branding and authentication text from `opnCentral` to `opnSentral`.
-- Renamed active update-check constants from `OPNCENTRAL_*` to `OPNSENTRAL_*`.
+- Renamed active update-check constants from `OPNCENTRAL_*` to `OPNSENTRAL_VERSION`.
 - Rewrote telemetry deployment documentation with a Portainer Git-repository example.
 
 ## 0.6.20.12
@@ -209,6 +219,7 @@ This period contains the original opnCentral/opnSentral feature build-out and ma
 - Alias and category inventory and management.
 - Configuration backup history and automatic pre-change backups.
 - WireGuard management and site-to-site VPN creation.
+- OpenVPN management and site-to-site VPN creation.
 - OpenVPN management and Roadwarrior server creation.
 - Services and agent management.
 - IDS/IPS ruleset and policy management.
