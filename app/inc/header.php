@@ -81,12 +81,12 @@ function nav_active(array $paths): string {
         <a class="nav-child<?= nav_active(['/system_access_users.php','/system_access_user_edit.php']) ?>" href="/system_access_users.php"><span>Users</span></a>
         <a class="nav-child<?= nav_active(['/system_access_groups.php']) ?>" href="/system_access_groups.php"><span>Groups</span></a>
 
-        <div class="nav-section-label">Configuration</div>
-        <a class="nav-child<?= nav_active(['/backups.php']) ?>" href="/backups.php"><span>Backups</span></a>
-
         <div class="nav-section-label">Settings</div>
         <a class="nav-child<?= nav_active(['/system_general.php']) ?>" href="/system_general.php"><span>General</span></a>
         <a class="nav-child<?= nav_active(['/system_administration_matrix.php','/system_administration.php']) ?>" href="/system_administration_matrix.php"><span>Administration</span></a>
+
+        <div class="nav-section-label">Diagnostics</div>
+        <a class="nav-child<?= nav_active(['/services.php']) ?>" href="/services.php"><span>Services</span></a>
 
         <div class="nav-group">Firewall</div>
         <a class="nav-child<?= nav_active(['/aliases.php','/alias_overview.php']) ?>" href="/alias_overview.php"><span><?= h(t('menu.aliases')) ?></span></a>
@@ -104,16 +104,12 @@ function nav_active(array $paths): string {
         <a class="nav-child<?= nav_active(['/wireguard_overview.php']) ?>" href="/wireguard_overview.php"><span>Manage</span></a>
         <a class="nav-child<?= nav_active(['/wireguard_create.php']) ?>" href="/wireguard_create.php"><span>Create Site-to-Site VPN</span></a>
 
-        <div class="nav-group">Services</div>
-        <a class="nav-child<?= nav_active(['/services.php']) ?>" href="/services.php"><span>Services</span></a>
-
-        <div class="nav-group">Diagnostics</div>
-        <a class="nav-child<?= nav_active(['/troubleshooting.php']) ?>" href="/troubleshooting.php"><span>Troubleshooting</span></a>
-
         <div class="nav-group">opnSentral</div>
         <a class="nav-child<?= nav_active(['/firewall_edit.php']) ?>" href="/firewall_edit.php"><span><?= h(t('menu.add_firewall')) ?></span></a>
         <a class="nav-child<?= nav_active(['/agents.php','/agent_bootstrap.php']) ?>" href="/agents.php"><span>Agents</span></a>
-        <a class="nav-child<?= nav_active(['/settings.php']) ?>" href="/settings.php"><span><?= h(t('menu.settings')) ?></span></a>
+        <a class="nav-child<?= nav_active(['/backups.php']) ?>" href="/backups.php"><span>Backups</span></a>
+        <a class="nav-child<?= nav_active(['/troubleshooting.php']) ?>" href="/troubleshooting.php"><span>Troubleshooting</span></a>
+        <a class="nav-child<?= nav_active(['/settings.php']) ?>" href="/settings.php"><span>Application Settings</span></a>
         <a class="nav-child<?= nav_active(['/notifications.php']) ?>" href="/notifications.php"><span><?= h(t('menu.notifications')) ?></span></a>
     </nav>
 
