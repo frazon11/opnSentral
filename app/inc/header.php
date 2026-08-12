@@ -95,6 +95,15 @@ function nav_active(array $paths): string {
            href="/system_administration_matrix.php">
             <span>Administration</span>
         </a>
+        <span class="nav-child nav-disabled"><span>Access</span></span>
+        <a class="nav-child<?= nav_active(['/system_access_users.php']) ?>"
+           href="/system_access_users.php">
+            <span>Users</span>
+        </a>
+        <a class="nav-child<?= nav_active(['/system_access_groups.php']) ?>"
+           href="/system_access_groups.php">
+            <span>Groups</span>
+        </a>
 
         <a class="<?= nav_active(['/services.php']) ?>" href="/services.php">⚙ <span>Services</span></a>
         <a class="<?= nav_active(['/agents.php']) ?>" href="/agents.php">⇄ <span>Agents</span></a>
