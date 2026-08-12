@@ -104,9 +104,9 @@ if ($action === 'create_registration') {
         exit('Agent not found.');
     }
     $current = trim((string) ($agent['last_agent_version'] ?? ''));
-    if ($current === '' || version_compare($current, '0.1.1', '<')) {
+    if ($current === '' || version_compare($current, '0.1.2', '<')) {
         http_response_code(400);
-        exit('Agent 0.1.1 or newer is required for self-update. Use SSH bootstrap/recovery instead.');
+        exit('Agent 0.1.2 or newer is required for outbound self-update. Use SSH bootstrap/recovery instead.');
     }
     $jobId = agent_queue_self_update($agent);
     $_SESSION['agent_update_result'] = 'Self-update job #' . $jobId . ' queued for ' . ((string) ($agent['name'] ?: $agent['last_hostname'] ?: $agent['agent_id'])) . '.';
