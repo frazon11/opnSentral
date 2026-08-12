@@ -10,6 +10,18 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.21.9
+
+- Added one-time SSH bootstrap deployment for managed firewalls with no opnSentral agent.
+- Added password and private-key SSH authentication for bootstrap without storing the supplied credential.
+- Added persistent SSH host-key tracking in opnSentral data so later host-key changes are detected.
+- Added agent deployment status for every managed firewall, including Missing, Current, Update available, Online and Stale states.
+- Added agent 0.1.2 with a strictly allow-listed, SHA-256-verified self-update job for future outbound agent upgrades.
+- Preserved the existing agent identity and secret during SSH recovery/update so an upgrade does not create duplicate agent registrations.
+- Added an installer recovery/update mode that rebuilds the service while keeping `/usr/local/etc/opnsentral-agent.json` intact.
+- Added `openssh-client` and `sshpass` to the opnSentral image for one-time SSH bootstrap operations.
+- Kept the existing manual one-line registration command as a fallback when SSH from opnSentral cannot reach the remote firewall.
+
 ## 0.6.21.8
 
 - Added a side-by-side `System → Settings → Administration` fleet matrix with settings as rows and managed firewalls as columns.
