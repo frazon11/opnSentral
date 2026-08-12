@@ -76,57 +76,45 @@ function nav_active(array $paths): string {
     <nav class="side-nav">
         <a class="<?= nav_active(['/','/index.php']) ?>" href="/">▦ <span><?= h(t('menu.dashboard')) ?></span></a>
 
-        <div class="nav-group">Firewalls</div>
-        <a class="<?= nav_active(['/firewall_edit.php']) ?>" href="/firewall_edit.php">＋ <span><?= h(t('menu.add_firewall')) ?></span></a>
+        <div class="nav-group">System</div>
+        <div class="nav-section-label">Access</div>
+        <a class="nav-child<?= nav_active(['/system_access_users.php','/system_access_user_edit.php']) ?>" href="/system_access_users.php"><span>Users</span></a>
+        <a class="nav-child<?= nav_active(['/system_access_groups.php']) ?>" href="/system_access_groups.php"><span>Groups</span></a>
+
+        <div class="nav-section-label">Configuration</div>
+        <a class="nav-child<?= nav_active(['/backups.php']) ?>" href="/backups.php"><span>Backups</span></a>
 
         <div class="nav-section-label">Settings</div>
-        <span class="nav-child nav-disabled"><span>Firewall</span></span>
-        <a class="nav-child<?= nav_active(['/firewall_advanced.php']) ?>"
-           href="/firewall_advanced.php?firewall_id=1">
-            <span>Advanced</span>
-        </a>
-        <span class="nav-child nav-disabled"><span>System</span></span>
-        <span class="nav-child nav-disabled"><span>Settings</span></span>
-        <a class="nav-child<?= nav_active(['/system_general.php']) ?>"
-           href="/system_general.php">
-            <span>General</span>
-        </a>
-        <a class="nav-child<?= nav_active(['/system_administration_matrix.php','/system_administration.php']) ?>"
-           href="/system_administration_matrix.php">
-            <span>Administration</span>
-        </a>
-        <span class="nav-child nav-disabled"><span>Access</span></span>
-        <a class="nav-child<?= nav_active(['/system_access_users.php']) ?>"
-           href="/system_access_users.php">
-            <span>Users</span>
-        </a>
-        <a class="nav-child<?= nav_active(['/system_access_groups.php']) ?>"
-           href="/system_access_groups.php">
-            <span>Groups</span>
-        </a>
+        <a class="nav-child<?= nav_active(['/system_general.php']) ?>" href="/system_general.php"><span>General</span></a>
+        <a class="nav-child<?= nav_active(['/system_administration_matrix.php','/system_administration.php']) ?>" href="/system_administration_matrix.php"><span>Administration</span></a>
 
-        <a class="<?= nav_active(['/services.php']) ?>" href="/services.php">⚙ <span>Services</span></a>
-        <a class="<?= nav_active(['/agents.php']) ?>" href="/agents.php">⇄ <span>Agents</span></a>
+        <div class="nav-group">Firewall</div>
+        <a class="nav-child<?= nav_active(['/aliases.php','/alias_overview.php']) ?>" href="/alias_overview.php"><span><?= h(t('menu.aliases')) ?></span></a>
+        <a class="nav-child<?= nav_active(['/categories.php','/category_overview.php']) ?>" href="/category_overview.php"><span><?= h(t('menu.categories')) ?></span></a>
+        <div class="nav-section-label">Settings</div>
+        <a class="nav-child<?= nav_active(['/firewall_advanced.php']) ?>" href="/firewall_advanced.php?firewall_id=1"><span>Advanced</span></a>
 
         <div class="nav-group">VPN</div>
-        <div class="nav-section-label">WireGuard</div>
-        <a class="nav-child<?= nav_active(['/wireguard_overview.php']) ?>" href="/wireguard_overview.php"><span>Manage</span></a>
-        <a class="nav-child<?= nav_active(['/wireguard_create.php']) ?>" href="/wireguard_create.php"><span>Create Site-to-Site VPN</span></a>
-
         <div class="nav-section-label">OpenVPN</div>
         <a class="nav-child<?= nav_active(['/openvpn_manage.php']) ?>" href="/openvpn_manage.php"><span>Manage</span></a>
         <span class="nav-child nav-disabled" aria-disabled="true"><span>Create Site-to-Site VPN</span><small>coming soon</small></span>
         <a class="nav-child<?= nav_active(['/openvpn_roadwarrior_create.php']) ?>" href="/openvpn_roadwarrior_create.php"><span>Create Roadwarrior Server</span></a>
 
-        <div class="nav-group"><?= h(t('menu.actions')) ?></div>
-        <a class="<?= nav_active(['/troubleshooting.php']) ?>" href="/troubleshooting.php">⎇ <span>Troubleshooting</span></a>
-        <a class="<?= nav_active(['/aliases.php','/alias_overview.php']) ?>" href="/alias_overview.php">≡ <span><?= h(t('menu.aliases')) ?></span></a>
-        <a class="<?= nav_active(['/categories.php','/category_overview.php']) ?>" href="/category_overview.php">▤ <span><?= h(t('menu.categories')) ?></span></a>
-        <a class="<?= nav_active(['/backups.php']) ?>" href="/backups.php">⬇ <span>Backups</span></a>
+        <div class="nav-section-label">WireGuard</div>
+        <a class="nav-child<?= nav_active(['/wireguard_overview.php']) ?>" href="/wireguard_overview.php"><span>Manage</span></a>
+        <a class="nav-child<?= nav_active(['/wireguard_create.php']) ?>" href="/wireguard_create.php"><span>Create Site-to-Site VPN</span></a>
 
-        <div class="nav-group"><?= h(t('menu.settings')) ?></div>
-        <a class="<?= nav_active(['/settings.php']) ?>" href="/settings.php">⚙ <span><?= h(t('menu.settings')) ?></span></a>
-        <a class="<?= nav_active(['/notifications.php']) ?>" href="/notifications.php">● <span><?= h(t('menu.notifications')) ?></span></a>
+        <div class="nav-group">Services</div>
+        <a class="nav-child<?= nav_active(['/services.php']) ?>" href="/services.php"><span>Services</span></a>
+
+        <div class="nav-group">Diagnostics</div>
+        <a class="nav-child<?= nav_active(['/troubleshooting.php']) ?>" href="/troubleshooting.php"><span>Troubleshooting</span></a>
+
+        <div class="nav-group">opnSentral</div>
+        <a class="nav-child<?= nav_active(['/firewall_edit.php']) ?>" href="/firewall_edit.php"><span><?= h(t('menu.add_firewall')) ?></span></a>
+        <a class="nav-child<?= nav_active(['/agents.php','/agent_bootstrap.php']) ?>" href="/agents.php"><span>Agents</span></a>
+        <a class="nav-child<?= nav_active(['/settings.php']) ?>" href="/settings.php"><span><?= h(t('menu.settings')) ?></span></a>
+        <a class="nav-child<?= nav_active(['/notifications.php']) ?>" href="/notifications.php"><span><?= h(t('menu.notifications')) ?></span></a>
     </nav>
 
     <div class="sidebar-footer-actions">
