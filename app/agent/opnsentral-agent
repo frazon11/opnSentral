@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.2';
+const AGENT_VERSION = '0.1.3';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
@@ -200,6 +200,96 @@ function set_administration_settings(array $payload): array
     ];
 }
 
+function normalize_string_list(mixed $value, int $limit): array
+{
+    if (!is_array($value)) return [];
+    $result = [];
+    foreach ($value as $item) {
+        $item = trim((string)$item);
+        if ($item === '') continue;
+        if (!preg_match('/^[A-Za-z0-9_.:\/@+-]{1,160}$/', $item)) throw new RuntimeException('Invalid Access list value: ' . $item);
+        $result[] = $item;
+    }
+    $result = array_values(array_unique($result));
+    if (count($result) > $limit) throw new RuntimeException('Access list contains too many values.');
+    return $result;
+}
+
+function set_access_user(array $payload): array
+{
+    $name = trim((string)($payload['user'] ?? ''));
+    $disabled = $payload['disabled'] ?? null;
+    $shell = trim((string)($payload['shell'] ?? ''));
+    $groups = normalize_string_list($payload['groups'] ?? [], 100);
+    $privileges = normalize_string_list($payload['privileges'] ?? [], 250);
+
+    if ($name === '' || !preg_match('/^[^\x00-\x1F\x7F]{1,128}$/u', $name)) throw new RuntimeException('Invalid user name.');
+    if (!is_bool($disabled)) throw new RuntimeException('Disabled state must be boolean.');
+    $allowedShells = ['', '/bin/csh', '/bin/tcsh', '/bin/sh', '/sbin/nologin', '/usr/local/bin/scponly', '/usr/local/sbin/scponlyc', '/usr/local/sbin/ssh_tunnel_shell'];
+    if (!in_array($shell, $allowedShells, true)) throw new RuntimeException('Unsupported login shell.');
+
+    $configFile = '/usr/local/etc/inc/config.inc';
+    $authFile = '/usr/local/etc/inc/auth.inc';
+    if (!is_file($configFile) || !is_file($authFile)) throw new RuntimeException('OPNsense Access libraries were not found.');
+    require_once $configFile;
+    require_once $authFile;
+
+    global $config;
+    if (!is_array($config) || !isset($config['system']['user']) || !is_array($config['system']['user'])) {
+        throw new RuntimeException('OPNsense user configuration is unavailable.');
+    }
+
+    $index = null;
+    foreach ($config['system']['user'] as $key => $candidate) {
+        if (is_array($candidate) && (string)($candidate['name'] ?? '') === $name) {
+            $index = $key;
+            break;
+        }
+    }
+    if ($index === null) throw new RuntimeException('User not found: ' . $name);
+
+    $user = $config['system']['user'][$index];
+    $uid = (string)($user['uid'] ?? '');
+    if ($uid === '0' && $disabled) throw new RuntimeException('UID 0 cannot be disabled through opnSentral.');
+
+    $groupNames = [];
+    foreach (($config['system']['group'] ?? []) as $group) {
+        if (is_array($group) && trim((string)($group['name'] ?? '')) !== '') $groupNames[] = (string)$group['name'];
+    }
+    foreach ($groups as $group) {
+        if (!in_array($group, $groupNames, true)) throw new RuntimeException('Group does not exist: ' . $group);
+    }
+
+    if ($disabled) $user['disabled'] = '1';
+    else unset($user['disabled']);
+    if ($shell !== '') $user['shell'] = $shell;
+    else unset($user['shell']);
+    if ($privileges !== []) $user['priv'] = $privileges;
+    else unset($user['priv']);
+
+    $config['system']['user'][$index] = $user;
+
+    if (!function_exists('local_user_set_groups') || !function_exists('local_user_set') || !function_exists('write_config')) {
+        throw new RuntimeException('Required OPNsense local-user functions are unavailable.');
+    }
+
+    $groupSelection = array_values(array_unique(array_merge(['all'], $groups)));
+    local_user_set_groups($user, $groupSelection);
+    $config['system']['user'][$index] = $user;
+    write_config('opnSentral: update System Access user ' . $name);
+    local_user_set($user);
+
+    return [
+        'message' => 'User ' . $name . ' updated.',
+        'user' => $name,
+        'disabled' => $disabled,
+        'shell' => $shell,
+        'groups' => $groups,
+        'privileges' => $privileges,
+        'applied_at' => gmdate('c'),
+    ];
+}
+
 function self_update(array $config, array $payload): array
 {
     $expected = strtolower(trim((string) ($payload['sha256'] ?? '')));
@@ -258,6 +348,9 @@ function execute_job(array $job, array $config): array
     }
     if ($type === 'set_administration_settings') {
         return set_administration_settings(is_array($job['payload'] ?? null) ? $job['payload'] : []);
+    }
+    if ($type === 'set_access_user') {
+        return set_access_user(is_array($job['payload'] ?? null) ? $job['payload'] : []);
     }
     if ($type === 'self_update') {
         return self_update($config, is_array($job['payload'] ?? null) ? $job['payload'] : []);
