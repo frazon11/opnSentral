@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.1';
+const AGENT_VERSION = '0.1.2';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
@@ -21,9 +21,7 @@ function opnsense_version(): string
     ];
     foreach ($candidates as $command) {
         $output = trim((string) shell_exec($command));
-        if ($output !== '') {
-            return substr($output, 0, 128);
-        }
+        if ($output !== '') return substr($output, 0, 128);
     }
     return 'unknown';
 }
@@ -36,10 +34,19 @@ function hostname_value(): string
 
 function json_body(array $payload): string
 {
-    return json_encode(
-        $payload,
-        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
-    );
+    return json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+}
+
+function http_context(bool $verifyTls, array $http = []): resource
+{
+    return stream_context_create([
+        'http' => array_replace(['ignore_errors' => true, 'timeout' => 20], $http),
+        'ssl' => [
+            'verify_peer' => $verifyTls,
+            'verify_peer_name' => $verifyTls,
+            'allow_self_signed' => !$verifyTls,
+        ],
+    ]);
 }
 
 function http_post(string $url, string $body, array $headers, bool $verifyTls = true): array
@@ -50,60 +57,31 @@ function http_post(string $url, string $body, array $headers, bool $verifyTls = 
         'User-Agent: opnSentral-agent/' . AGENT_VERSION,
         'Content-Length: ' . strlen($body),
     ], $headers);
-
-    $context = stream_context_create([
-        'http' => [
-            'method' => 'POST',
-            'header' => implode("\r\n", $headerLines),
-            'content' => $body,
-            'ignore_errors' => true,
-            'timeout' => 20,
-        ],
-        'ssl' => [
-            'verify_peer' => $verifyTls,
-            'verify_peer_name' => $verifyTls,
-            'allow_self_signed' => !$verifyTls,
-        ],
+    $context = http_context($verifyTls, [
+        'method' => 'POST',
+        'header' => implode("\r\n", $headerLines),
+        'content' => $body,
     ]);
-
     $response = @file_get_contents($url, false, $context);
     $headersOut = $http_response_header ?? [];
     $status = 0;
-    if (isset($headersOut[0]) && preg_match('/\s(\d{3})\s/', $headersOut[0], $match)) {
-        $status = (int) $match[1];
-    }
-
-    if (!is_string($response)) {
-        throw new RuntimeException('HTTP request failed for ' . $url);
-    }
-
+    if (isset($headersOut[0]) && preg_match('/\s(\d{3})\s/', $headersOut[0], $match)) $status = (int) $match[1];
+    if (!is_string($response)) throw new RuntimeException('HTTP request failed for ' . $url);
     $decoded = json_decode($response, true);
-    if (!is_array($decoded)) {
-        throw new RuntimeException('Server returned invalid JSON (HTTP ' . $status . ').');
-    }
-
+    if (!is_array($decoded)) throw new RuntimeException('Server returned invalid JSON (HTTP ' . $status . ').');
     if ($status < 200 || $status >= 300 || ($decoded['ok'] ?? false) !== true) {
-        throw new RuntimeException(
-            (string) ($decoded['error'] ?? ('Server returned HTTP ' . $status . '.'))
-        );
+        throw new RuntimeException((string) ($decoded['error'] ?? ('Server returned HTTP ' . $status . '.')));
     }
-
     return $decoded;
 }
 
 function load_config(): array
 {
-    if (!is_file(CONFIG_PATH)) {
-        fail('Not registered. Run: opnsentral-agent register SERVER_URL TOKEN');
-    }
+    if (!is_file(CONFIG_PATH)) fail('Not registered. Run: opnsentral-agent register SERVER_URL TOKEN');
     $decoded = json_decode((string) file_get_contents(CONFIG_PATH), true);
-    if (!is_array($decoded)) {
-        fail('Configuration file is invalid.');
-    }
+    if (!is_array($decoded)) fail('Configuration file is invalid.');
     foreach (['server_url', 'agent_id', 'agent_secret'] as $key) {
-        if (trim((string) ($decoded[$key] ?? '')) === '') {
-            fail('Configuration is missing ' . $key . '.');
-        }
+        if (trim((string) ($decoded[$key] ?? '')) === '') fail('Configuration is missing ' . $key . '.');
     }
     return $decoded;
 }
@@ -111,13 +89,9 @@ function load_config(): array
 function save_config(array $config): void
 {
     $directory = dirname(CONFIG_PATH);
-    if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
-        fail('Could not create configuration directory.');
-    }
+    if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) fail('Could not create configuration directory.');
     $json = json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-    if (file_put_contents(CONFIG_PATH, $json . "\n", LOCK_EX) === false) {
-        fail('Could not write configuration.');
-    }
+    if (file_put_contents(CONFIG_PATH, $json . "\n", LOCK_EX) === false) fail('Could not write configuration.');
     chmod(CONFIG_PATH, 0600);
 }
 
@@ -128,7 +102,6 @@ function signed_post(array $config, string $path, array $payload): array
     $nonce = bin2hex(random_bytes(16));
     $canonical = $timestamp . "\n" . $nonce . "\n" . hash('sha256', $body);
     $signature = hash_hmac('sha256', $canonical, (string) $config['agent_secret']);
-
     return http_post(
         rtrim((string) $config['server_url'], '/') . $path,
         $body,
@@ -156,20 +129,9 @@ function registration_payload(string $token): array
 function register_agent(string $serverUrl, string $token): void
 {
     $serverUrl = rtrim(trim($serverUrl), '/');
-    if (!preg_match('#^https://#i', $serverUrl)) {
-        fail('Registration requires an https:// opnSentral URL.');
-    }
-    if (!preg_match('/^[A-Za-z0-9_-]{40,128}$/', $token)) {
-        fail('Registration token format is invalid.');
-    }
-
-    $response = http_post(
-        $serverUrl . '/api/agent_register.php',
-        json_body(registration_payload($token)),
-        [],
-        true
-    );
-
+    if (!preg_match('#^https://#i', $serverUrl)) fail('Registration requires an https:// opnSentral URL.');
+    if (!preg_match('/^[A-Za-z0-9_-]{40,128}$/', $token)) fail('Registration token format is invalid.');
+    $response = http_post($serverUrl . '/api/agent_register.php', json_body(registration_payload($token)), [], true);
     save_config([
         'server_url' => $serverUrl,
         'agent_id' => (string) $response['agent_id'],
@@ -177,7 +139,6 @@ function register_agent(string $serverUrl, string $token): void
         'verify_tls' => true,
         'poll_interval' => max(30, (int) ($response['poll_interval'] ?? 60)),
     ]);
-
     fwrite(STDOUT, "Registered with opnSentral as {$response['agent_id']}\n");
 }
 
@@ -199,74 +160,38 @@ function run_local_command(string $command, string $label): void
     $status = 0;
     exec($command . ' 2>&1', $output, $status);
     if ($status !== 0) {
-        throw new RuntimeException(
-            $label . ' failed' . ($output ? ': ' . implode(' | ', array_slice($output, -5)) : '.')
-        );
+        throw new RuntimeException($label . ' failed' . ($output ? ': ' . implode(' | ', array_slice($output, -5)) : '.'));
     }
 }
 
 function set_administration_settings(array $payload): array
 {
     $requested = $payload['settings'] ?? null;
-    if (!is_array($requested) || $requested === []) {
-        throw new RuntimeException('Administration settings payload is empty.');
-    }
-
-    $allowed = [
-        'disablehttpredirect',
-        'ssl-hsts',
-        'httpaccesslog',
-        'nodnsrebindcheck',
-        'nohttpreferercheck',
-        'quietlogin',
-    ];
-
+    if (!is_array($requested) || $requested === []) throw new RuntimeException('Administration settings payload is empty.');
+    $allowed = ['disablehttpredirect', 'ssl-hsts', 'httpaccesslog', 'nodnsrebindcheck', 'nohttpreferercheck', 'quietlogin'];
     $changes = [];
     foreach ($requested as $key => $value) {
         $key = (string) $key;
-        if (!in_array($key, $allowed, true) || !is_bool($value)) {
-            throw new RuntimeException('Unsupported Administration setting: ' . $key);
-        }
+        if (!in_array($key, $allowed, true) || !is_bool($value)) throw new RuntimeException('Unsupported Administration setting: ' . $key);
         $changes[$key] = $value;
     }
-
     $configFile = '/usr/local/etc/inc/config.inc';
-    if (!is_file($configFile)) {
-        throw new RuntimeException('OPNsense configuration library was not found.');
-    }
+    if (!is_file($configFile)) throw new RuntimeException('OPNsense configuration library was not found.');
     require_once $configFile;
-
     global $config;
-    if (!is_array($config)) {
-        throw new RuntimeException('OPNsense configuration is unavailable.');
-    }
-    if (!isset($config['system']) || !is_array($config['system'])) {
-        $config['system'] = [];
-    }
-    if (!isset($config['system']['webgui']) || !is_array($config['system']['webgui'])) {
-        $config['system']['webgui'] = [];
-    }
-
+    if (!is_array($config)) throw new RuntimeException('OPNsense configuration is unavailable.');
+    if (!isset($config['system']) || !is_array($config['system'])) $config['system'] = [];
+    if (!isset($config['system']['webgui']) || !is_array($config['system']['webgui'])) $config['system']['webgui'] = [];
     $before = [];
     foreach ($changes as $key => $enabled) {
         $before[$key] = array_key_exists($key, $config['system']['webgui']);
-        if ($enabled) {
-            $config['system']['webgui'][$key] = '';
-        } else {
-            unset($config['system']['webgui'][$key]);
-        }
+        if ($enabled) $config['system']['webgui'][$key] = '';
+        else unset($config['system']['webgui'][$key]);
     }
-
-    if (!function_exists('write_config')) {
-        throw new RuntimeException('OPNsense write_config() is unavailable.');
-    }
+    if (!function_exists('write_config')) throw new RuntimeException('OPNsense write_config() is unavailable.');
     write_config('opnSentral: update System Settings Administration');
-
     run_local_command('/usr/local/sbin/configctl webgui restart', 'WebGUI restart');
-    if (array_key_exists('disablehttpredirect', $changes)) {
-        run_local_command('/usr/local/sbin/configctl filter reload', 'Firewall reload');
-    }
-
+    if (array_key_exists('disablehttpredirect', $changes)) run_local_command('/usr/local/sbin/configctl filter reload', 'Firewall reload');
     return [
         'message' => count($changes) . ' Administration setting' . (count($changes) === 1 ? '' : 's') . ' applied.',
         'settings' => $changes,
@@ -275,10 +200,42 @@ function set_administration_settings(array $payload): array
     ];
 }
 
-function execute_job(array $job): array
+function self_update(array $config, array $payload): array
+{
+    $expected = strtolower(trim((string) ($payload['sha256'] ?? '')));
+    if (!preg_match('/^[a-f0-9]{64}$/', $expected)) throw new RuntimeException('Self-update SHA-256 is missing or invalid.');
+    $server = rtrim((string) $config['server_url'], '/');
+    if (!preg_match('#^https://#i', $server)) throw new RuntimeException('Self-update requires the registered HTTPS server URL.');
+    $url = $server . '/agent/opnsentral-agent';
+    $verifyTls = ($config['verify_tls'] ?? true) !== false;
+    $binary = @file_get_contents($url, false, http_context($verifyTls, ['method' => 'GET']));
+    if (!is_string($binary) || strlen($binary) < 1000) throw new RuntimeException('Could not download the replacement agent.');
+    if (!str_starts_with($binary, '#!/usr/local/bin/php')) throw new RuntimeException('Downloaded agent has an invalid file signature.');
+    $actual = hash('sha256', $binary);
+    if (!hash_equals($expected, $actual)) throw new RuntimeException('Downloaded agent SHA-256 does not match the deployment request.');
+    if (!preg_match("/const AGENT_VERSION = '([^']+)'/", $binary, $match)) throw new RuntimeException('Downloaded agent does not declare a version.');
+    $newVersion = (string) $match[1];
+    if (version_compare($newVersion, AGENT_VERSION, '<')) throw new RuntimeException('Refusing to downgrade agent from ' . AGENT_VERSION . ' to ' . $newVersion . '.');
+    $target = '/usr/local/sbin/opnsentral-agent';
+    $temp = $target . '.new-' . bin2hex(random_bytes(4));
+    if (file_put_contents($temp, $binary, LOCK_EX) === false) throw new RuntimeException('Could not write replacement agent.');
+    chmod($temp, 0755);
+    if (!rename($temp, $target)) {
+        @unlink($temp);
+        throw new RuntimeException('Could not activate replacement agent.');
+    }
+    return [
+        'message' => 'Agent ' . AGENT_VERSION . ' updated to ' . $newVersion . '.',
+        'previous_version' => AGENT_VERSION,
+        'new_version' => $newVersion,
+        'sha256' => $actual,
+        '_restart_agent' => true,
+    ];
+}
+
+function execute_job(array $job, array $config): array
 {
     $type = (string) ($job['type'] ?? '');
-
     if ($type === 'inventory') {
         return [
             'hostname' => hostname_value(),
@@ -288,7 +245,6 @@ function execute_job(array $job): array
             'agent_version' => AGENT_VERSION,
         ];
     }
-
     if ($type === 'system_status') {
         $load = function_exists('sys_getloadavg') ? sys_getloadavg() : [];
         return [
@@ -300,36 +256,37 @@ function execute_job(array $job): array
             'checked_at' => gmdate('c'),
         ];
     }
-
     if ($type === 'set_administration_settings') {
-        return set_administration_settings(
-            is_array($job['payload'] ?? null) ? $job['payload'] : []
-        );
+        return set_administration_settings(is_array($job['payload'] ?? null) ? $job['payload'] : []);
     }
-
+    if ($type === 'self_update') {
+        return self_update($config, is_array($job['payload'] ?? null) ? $job['payload'] : []);
+    }
     throw new RuntimeException('Unsupported job type: ' . $type);
+}
+
+function schedule_self_restart(): void
+{
+    shell_exec("/bin/sh -c '(sleep 2; /usr/sbin/service opnsentral_agent restart) >/dev/null 2>&1 &' >/dev/null 2>&1");
 }
 
 function poll_job(array $config): void
 {
     $response = signed_post($config, '/api/agent_jobs.php', []);
     $job = $response['job'] ?? null;
-    if (!is_array($job)) {
-        return;
-    }
-
+    if (!is_array($job)) return;
     $jobId = (int) ($job['id'] ?? 0);
-    if ($jobId <= 0) {
-        return;
-    }
-
+    if ($jobId <= 0) return;
     try {
-        $result = execute_job($job);
+        $result = execute_job($job, $config);
+        $restart = ($result['_restart_agent'] ?? false) === true;
+        unset($result['_restart_agent']);
         signed_post($config, '/api/agent_job_result.php', [
             'job_id' => $jobId,
             'success' => true,
             'result' => $result,
         ]);
+        if ($restart) schedule_self_restart();
     } catch (Throwable $exception) {
         signed_post($config, '/api/agent_job_result.php', [
             'job_id' => $jobId,
@@ -347,26 +304,17 @@ function run_once(array $config): void
 }
 
 $command = $argv[1] ?? 'run';
-
 if ($command === 'register') {
-    if (count($argv) < 4) {
-        fail('Usage: opnsentral-agent register https://OPNSENTRAL TOKEN');
-    }
+    if (count($argv) < 4) fail('Usage: opnsentral-agent register https://OPNSENTRAL TOKEN');
     register_agent((string) $argv[2], (string) $argv[3]);
     exit(0);
 }
-
 $config = load_config();
-
 if ($command === 'once') {
     run_once($config);
     exit(0);
 }
-
-if ($command !== 'run') {
-    fail('Supported commands: register, once, run');
-}
-
+if ($command !== 'run') fail('Supported commands: register, once, run');
 $interval = max(30, (int) ($config['poll_interval'] ?? 60));
 while (true) {
     try {
