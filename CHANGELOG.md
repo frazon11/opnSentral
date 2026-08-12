@@ -10,6 +10,17 @@ Historical releases remain summarized here and in published GitHub releases. The
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
 
+## 0.6.21.8
+
+- Added a side-by-side `System → Settings → Administration` fleet matrix with settings as rows and managed firewalls as columns.
+- Added per-firewall checkboxes plus an `All` checkbox on each row for supported Web GUI boolean settings.
+- Added write support for Disable HTTP redirect rule, HSTS, WebGUI access logging, DNS rebind-check disablement, HTTP_REFERER enforcement disablement and Quiet login.
+- Added opnSentral agent 0.1.1 with a strictly allow-listed Administration-settings job; arbitrary configuration paths and shell commands are not exposed.
+- Added an automatic pre-change OPNsense configuration backup for every firewall before its Administration job is queued.
+- Added queued, running, successful and failed deployment feedback per target firewall.
+- Kept direct-API-only firewalls readable in the matrix while requiring an associated agent 0.1.1 or newer for Administration writes.
+- Kept the detailed single-firewall Administration page accessible from each firewall column.
+
 ## 0.6.21.7
 
 - Added a read-only `System → Settings → General` view for managed OPNsense firewalls.
