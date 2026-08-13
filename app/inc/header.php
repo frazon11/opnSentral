@@ -58,7 +58,7 @@ function nav_active_query(string $path, string $key, string $value): string {
 })();
 </script>
 <link rel="stylesheet" href="/assets/style.css?v=06111">
-<link rel="stylesheet" href="/assets/sidebar-menu.css?v=062115">
+<link rel="stylesheet" href="/assets/sidebar-menu.css?v=062119">
 </head>
 <body class="<?= logged_in() ? 'app-shell' : 'login-shell' ?><?= logged_in() && !configuration_unlocked() ? ' configuration-locked' : ' configuration-unlocked' ?>">
 <?php if (logged_in()): ?>
