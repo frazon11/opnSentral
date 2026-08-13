@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+# PROVIDE: opnsentral_agent
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="opnsentral_agent"
+rcvar="${name}_enable"
+pidfile="/var/run/${name}.pid"
+command="/usr/sbin/daemon"
+command_args="-P ${pidfile} -r -f /usr/local/sbin/opnsentral-agent run"
+start_precmd="opnsentral_agent_precmd"
+
+opnsentral_agent_precmd()
+{
+    [ -x /usr/local/sbin/opnsentral-agent ] || return 1
+    [ -f /usr/local/etc/opnsentral-agent.json ] || {
+        echo "opnSentral agent is not registered."
+        return 1
+    }
+}
+
+load_rc_config "${name}"
+: ${opnsentral_agent_enable:="YES"}
+
+run_rc_command "$1"
