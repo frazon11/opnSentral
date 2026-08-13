@@ -41,6 +41,19 @@ if ($hostname === '' || strlen($hostname) > 255) {
     registration_fail(400, 'A valid hostname is required.');
 }
 
+$agentBinaryPath = dirname(__DIR__) . '/agent/opnsentral-agent';
+if (!is_file($agentBinaryPath) || !is_readable($agentBinaryPath)) {
+    registration_fail(503, 'The canonical opnSentral agent binary is unavailable.');
+}
+$agentSha256 = hash_file('sha256', $agentBinaryPath);
+if (!is_string($agentSha256) || !preg_match('/^[a-f0-9]{64}$/', $agentSha256)) {
+    registration_fail(503, 'The canonical opnSentral agent checksum is unavailable.');
+}
+$agentSize = filesize($agentBinaryPath);
+if (!is_int($agentSize) || $agentSize < 1000) {
+    registration_fail(503, 'The canonical opnSentral agent binary is invalid.');
+}
+
 $tokenHash = hash('sha256', $token);
 $now = gmdate('c');
 $pdo = db();
@@ -109,6 +122,9 @@ try {
         'ok' => true,
         'agent_id' => $agentId,
         'agent_secret' => $secret,
+        'agent_url' => '/agent/opnsentral-agent',
+        'agent_sha256' => $agentSha256,
+        'agent_size' => $agentSize,
         'report_url' => '/api/agent_report.php',
         'jobs_url' => '/api/agent_jobs.php',
         'job_result_url' => '/api/agent_job_result.php',
