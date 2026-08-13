@@ -85,6 +85,9 @@ function nav_active_query(string $path, string $key, string $value): string {
                 <a class="menu-link<?= nav_active(['/system_access_users.php','/system_access_user_edit.php']) ?>" href="/system_access_users.php"><span>Users</span></a>
                 <a class="menu-link<?= nav_active(['/system_access_groups.php']) ?>" href="/system_access_groups.php"><span>Groups</span></a>
 
+                <span class="menu-level2">Configuration</span>
+                <a class="menu-link<?= nav_active(['/backups.php']) ?>" href="/backups.php"><span>Backups</span></a>
+
                 <span class="menu-level2">Firmware</span>
                 <a class="menu-link<?= nav_active(['/system_firmware_status.php']) ?>" href="/system_firmware_status.php"><span>Status</span></a>
                 <a class="menu-link<?= nav_active(['/plugins.php']) ?>" href="/plugins.php"><span>Plugins</span></a>
@@ -137,7 +140,6 @@ function nav_active_query(string $path, string $key, string $value): string {
                 <span class="menu-level1">opnSentral</span>
                 <a class="menu-link<?= nav_active(['/firewall_edit.php']) ?>" href="/firewall_edit.php"><span><?= h(t('menu.add_firewall')) ?></span></a>
                 <a class="menu-link<?= nav_active(['/agents.php','/agent_bootstrap.php']) ?>" href="/agents.php"><span>Agents</span></a>
-                <a class="menu-link<?= nav_active(['/backups.php']) ?>" href="/backups.php"><span>Backups</span></a>
                 <a class="menu-link<?= nav_active(['/troubleshooting.php']) ?>" href="/troubleshooting.php"><span>Troubleshooting</span></a>
                 <a class="menu-link<?= nav_active(['/settings.php']) ?>" href="/settings.php"><span>Application Settings</span></a>
                 <a class="menu-link<?= nav_active(['/notifications.php']) ?>" href="/notifications.php"><span><?= h(t('menu.notifications')) ?></span></a>
