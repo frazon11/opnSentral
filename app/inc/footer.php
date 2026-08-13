@@ -3,6 +3,7 @@
 <footer class="app-footer"><?= h(t('footer')) ?></footer>
 <link rel="stylesheet" href="/assets/topbar-controls.css?v=06215">
 <link rel="stylesheet" href="/assets/ids-bulk-actions.css?v=06215">
+<script src="/assets/sidebar-collapse.js?v=062117"></script>
 <script src="/assets/sidebar-scroll.js?v=062116"></script>
 <script src="/assets/ids-write-label.js?v=06215"></script>
 <script src="/assets/ids-bulk-actions.js?v=06215"></script>
