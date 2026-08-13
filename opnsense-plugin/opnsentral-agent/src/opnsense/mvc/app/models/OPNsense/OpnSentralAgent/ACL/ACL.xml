@@ -1,0 +1,9 @@
+<acl>
+    <page-services-opnsentral-agent>
+        <name>Services: opnSentral Agent</name>
+        <patterns>
+            <pattern>ui/opnsentralagent/*</pattern>
+            <pattern>api/opnsentralagent/*</pattern>
+        </patterns>
+    </page-services-opnsentral-agent>
+</acl>
