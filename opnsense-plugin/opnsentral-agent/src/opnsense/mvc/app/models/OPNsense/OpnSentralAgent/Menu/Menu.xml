@@ -1,0 +1,7 @@
+<menu>
+    <Services>
+        <OpnSentralAgent VisibleName="opnSentral Agent" cssClass="fa fa-exchange fa-fw">
+            <General VisibleName="General" order="10" url="/ui/opnsentralagent"/>
+        </OpnSentralAgent>
+    </Services>
+</menu>
