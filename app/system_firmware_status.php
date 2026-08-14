@@ -22,6 +22,15 @@ require __DIR__ . '/inc/header.php';
 .audit-option input{margin-top:3px}
 .audit-option strong,.audit-option small{display:block}
 .audit-option small{margin-top:3px;color:var(--muted)}
+.firmware-meta{margin-top:14px;padding-top:12px;border-top:1px solid rgba(127,127,127,.18)}
+.firmware-meta[hidden]{display:none}
+.firmware-meta-grid{display:grid;grid-template-columns:minmax(120px,180px) minmax(0,1fr);gap:7px 18px;margin:0}
+.firmware-meta-grid dt{font-weight:700;color:var(--muted)}
+.firmware-meta-grid dd{margin:0;min-width:0;overflow-wrap:anywhere}
+@media (max-width:720px){
+  .firmware-meta-grid{grid-template-columns:1fr;gap:3px}
+  .firmware-meta-grid dd{margin-bottom:8px}
+}
 </style>
 <div class="page-title management-page-title">
   <div><h1>System → Firmware → Status</h1><p>Check for updates, start supported firmware updates and run firmware audits across managed OPNsense firewalls.</p></div>
@@ -41,6 +50,9 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
   <div class="firmware-details muted">No firmware information loaded.</div>
+  <div class="firmware-meta" hidden>
+    <dl class="firmware-meta-grid"></dl>
+  </div>
   <details class="audit-result" hidden>
     <summary>
       <span class="audit-result-head">
@@ -83,6 +95,65 @@ require __DIR__ . '/inc/header.php';
  const runButton=document.getElementById('firmware-audit-run');
  let auditCard=null;
  const auditLabels={security:'Security audit',health:'Health audit',connectivity:'Connectivity audit',cleanup:'Cleanup audit',upgrade_log:'Upgrade log'};
+ function firstValue(source,paths){
+   for(const path of paths){
+     let value=source;
+     for(const part of path.split('.')){
+       if(value===null||typeof value!=='object'||!(part in value)){value=undefined;break;}
+       value=value[part];
+     }
+     if(value!==undefined&&value!==null&&String(value).trim()!=='') return value;
+   }
+   return '';
+ }
+ function repositoriesText(value){
+   if(!value) return '';
+   if(typeof value==='string') return value;
+   if(Array.isArray(value)){
+     return value.map(repo=>{
+       if(typeof repo==='string') return repo;
+       if(!repo||typeof repo!=='object') return '';
+       const name=repo.name??repo.repository??repo.id??repo.repo??'';
+       const priority=repo.priority??repo.prio??'';
+       return name ? String(name)+(priority!==''?' (Priority: '+priority+')':'') : '';
+     }).filter(Boolean).join(', ');
+   }
+   if(typeof value==='object'){
+     return Object.entries(value).map(([name,repo])=>{
+       if(repo&&typeof repo==='object'){
+         const label=repo.name??name;
+         const priority=repo.priority??repo.prio??'';
+         return String(label)+(priority!==''?' (Priority: '+priority+')':'');
+       }
+       return String(name);
+     }).join(', ');
+   }
+   return String(value);
+ }
+ function renderFirmwareMeta(card,value){
+   const panel=card.querySelector('.firmware-meta');
+   const grid=card.querySelector('.firmware-meta-grid');
+   if(!panel||!grid) return;
+   const rows=[
+     ['Type',firstValue(value,['product.product_name','product.product_type','product_name','product_type','type'])],
+     ['Version',firstValue(value,['product.product_version','product_version','version'])],
+     ['Architecture',firstValue(value,['product.product_arch','product.product_architecture','product_arch','product_architecture','architecture'])],
+     ['Commit',firstValue(value,['product.product_hash','product.product_commit','product_hash','product_commit','commit','hash'])],
+     ['Mirror',firstValue(value,['product.product_mirror','product_mirror','mirror','repository_url'])],
+     ['Repositories',repositoriesText(firstValue(value,['product.product_repositories','product.repositories','product_repositories','repositories','repos']))],
+     ['Updated on',firstValue(value,['product.product_updated','product.product_updated_on','product_updated','product_updated_on','updated','updated_on','last_update'])],
+     ['Checked on',firstValue(value,['product.product_checked','product.product_checked_on','product_checked','product_checked_on','checked','checked_on','last_check'])]
+   ].filter(([,val])=>String(val??'').trim()!=='');
+   grid.replaceChildren();
+   for(const [label,val] of rows){
+     const dt=document.createElement('dt');
+     const dd=document.createElement('dd');
+     dt.textContent=label;
+     dd.textContent=String(val);
+     grid.append(dt,dd);
+   }
+   panel.hidden=rows.length===0;
+ }
  function show(text,bad=false){message.textContent=text;message.className='alert '+(bad?'error':'goodbox');}
  function storageKey(id){return 'opnsentral-firmware-audit-'+id;}
  function renderAudit(card,record){
@@ -109,7 +180,20 @@ require __DIR__ . '/inc/header.php';
  async function check(card){
    const state=card.querySelector('.firmware-state'), details=card.querySelector('.firmware-details'), update=card.querySelector('.firmware-update');
    state.textContent='Checking…'; state.className='firmware-state badge neutral'; update.classList.add('hidden');
-   try{const data=await action(card,'firmware_check'); const s=data.summary||{}; state.textContent=s.update_available?'Update available':'Up to date'; state.className='firmware-state badge '+(s.update_available?'warning':'good'); details.textContent=s.message||s.status||'Firmware status loaded.'; if(s.update_available&&s.action){update.dataset.action=s.action; update.textContent=s.action==='firmware_upgrade'?'Upgrade now':'Update now'; update.classList.remove('hidden');}}
+   card.querySelector('.firmware-meta')?.setAttribute('hidden','');
+   try{
+     const data=await action(card,'firmware_check');
+     const s=data.summary||{};
+     state.textContent=s.update_available?'Update available':'Up to date';
+     state.className='firmware-state badge '+(s.update_available?'warning':'good');
+     details.textContent=s.message||s.status||'Firmware status loaded.';
+     renderFirmwareMeta(card,data.value||{});
+     if(s.update_available&&s.action){
+       update.dataset.action=s.action;
+       update.textContent=s.action==='firmware_upgrade'?'Upgrade now':'Update now';
+       update.classList.remove('hidden');
+     }
+   }
    catch(e){state.textContent='Failed';state.className='firmware-state badge bad';details.textContent=e.message;}
  }
  async function pollAudit(card,type){
