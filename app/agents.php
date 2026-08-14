@@ -52,20 +52,21 @@ require __DIR__ . '/inc/header.php';
 <?php if (is_array($registration)): ?>
     <?php
         $token = (string) ($registration['token'] ?? '');
-        $command = '/usr/local/bin/php /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/bootstrap.php register '
-            . escapeshellarg($publicBase)
+        $installUrl = $publicBase . '/agent/install-plugin.sh';
+        $command = 'fetch -o - ' . escapeshellarg($installUrl)
+            . ' | sh -s -- ' . escapeshellarg($publicBase)
             . ' ' . escapeshellarg($token);
     ?>
     <div class="alert warningbox" data-presentation-exempt="true">
-        <strong>Plugin registration token</strong>
+        <strong>One-command plugin installation</strong>
         <p>
-            The <code>os-opnsentral-agent</code> plugin must already be installed on OPNsense.
-            Run the registration command as <strong>root</strong> before
+            Run this command as <strong>root</strong> on the target OPNsense firewall before
             <?= h((string) ($registration['expires_at'] ?? 'the token expires')) ?>.
+            It installs the opnSentral plugin files, registers the firewall, downloads and verifies the worker, starts the service and checks that it is online.
             The token is single-use and cannot be displayed again after leaving this page.
         </p>
         <?php if ($publicBase === '' || $scheme !== 'https'): ?>
-            <p><strong>HTTPS is required.</strong> Open opnSentral through its public HTTPS URL and generate a new registration token.</p>
+            <p><strong>HTTPS is required.</strong> Open opnSentral through its public HTTPS URL and generate a new installation command.</p>
         <?php else: ?>
             <pre id="agent-registration-command"><?= h($command) ?></pre>
             <button type="button" class="button secondary" id="copy-agent-registration">Copy command</button>
@@ -86,8 +87,8 @@ require __DIR__ . '/inc/header.php';
     <div class="card management-card">
         <div class="management-card-header">
             <div>
-                <h2>Plugin registration</h2>
-                <div class="management-summary">Generate a short-lived token for an installed <code>os-opnsentral-agent</code> plugin.</div>
+                <h2>Install agent</h2>
+                <div class="management-summary">Generate a short-lived token and one command for the target OPNsense firewall.</div>
             </div>
         </div>
         <form method="post" action="/agents_action.php" class="management-form-grid">
@@ -107,17 +108,16 @@ require __DIR__ . '/inc/header.php';
                     <option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15" selected>15 minutes</option><option value="30">30 minutes</option><option value="60">60 minutes</option>
                 </select>
             </label>
-            <div class="management-form-action"><button class="button" type="submit">Generate plugin registration token</button></div>
+            <div class="management-form-action"><button class="button" type="submit">Generate install command</button></div>
         </form>
         <p class="muted">The token is stored only as a hash and becomes unusable after the first successful registration.</p>
     </div>
 
     <div class="card management-card">
-        <div class="management-card-header"><div><h2>Plugin connection model</h2><div class="management-summary">After installation and registration, only outbound HTTPS from OPNsense is required.</div></div></div>
-        <pre>Install:       OPNsense pkg ──► os-opnsentral-agent
-Register:      OPNsense ── HTTPS/443 outbound ──► opnSentral
-Normal use:    OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
-        <p class="muted">The plugin manages service/bootstrap integration. The worker reports status and polls opnSentral for strictly allow-listed jobs.</p>
+        <div class="management-card-header"><div><h2>Connection model</h2><div class="management-summary">Installation, registration and normal operation require only outbound HTTPS from OPNsense.</div></div></div>
+        <pre>Install/register: OPNsense ── HTTPS/443 outbound ──► opnSentral
+Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
+        <p class="muted">The installer deploys the native plugin integration. The worker reports status and polls opnSentral for strictly allow-listed jobs.</p>
     </div>
 </div>
 
