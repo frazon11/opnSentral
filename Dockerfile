@@ -37,6 +37,7 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY app/ /var/www/html/
+COPY opnsense-plugin/opnsentral-agent/src/ /opt/opnsentral-agent-plugin/
 COPY apache.conf /etc/apache2/conf-available/opnsentral.conf
 COPY entrypoint.sh /usr/local/bin/opnsentral-entrypoint
 
