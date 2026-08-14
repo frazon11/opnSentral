@@ -48,7 +48,7 @@ require __DIR__ . '/inc/header.php';
 <div class="page-title management-page-title">
     <div>
         <h1>Agents</h1>
-        <p>Outbound OPNsense agents for remote sites without inbound management access.</p>
+        <p>Outbound management agents. Native OPNsense plugin deployment is the target path; legacy standalone deployment is retained only for migration and recovery.</p>
     </div>
     <div class="management-toolbar">
         <button type="button" class="button secondary" onclick="window.location.reload()">Refresh</button>
@@ -68,9 +68,10 @@ require __DIR__ . '/inc/header.php';
             . ' ' . escapeshellarg($token);
     ?>
     <div class="alert warningbox" data-presentation-exempt="true">
-        <strong>One-time remote registration command</strong>
+        <strong>Legacy standalone registration command</strong>
         <p>
-            Run this as <strong>root</strong> on the remote OPNsense system before
+            This command installs/registers the standalone agent worker; it does <strong>not</strong> install the native <code>os-opnsentral-agent</code> plugin.
+            Run it as <strong>root</strong> on the remote OPNsense system before
             <?= h((string) ($registration['expires_at'] ?? 'the token expires')) ?>.
             The token cannot be displayed again after leaving this page.
         </p>
@@ -94,7 +95,7 @@ require __DIR__ . '/inc/header.php';
     <div>
         <strong>Agent overview</strong>
         <div class="management-summary">
-            <?= count($agents) ?> registered agent<?= count($agents) === 1 ? '' : 's' ?> · current package <?= h($targetAgentVersion) ?>
+            <?= count($agents) ?> registered agent<?= count($agents) === 1 ? '' : 's' ?> · current worker <?= h($targetAgentVersion) ?>
         </div>
     </div>
 </div>
@@ -102,8 +103,8 @@ require __DIR__ . '/inc/header.php';
 <div class="card management-card">
     <div class="management-card-header">
         <div>
-            <h2>Agent deployment</h2>
-            <div class="management-summary">Install missing agents by one-time SSH bootstrap; agent 0.1.2+ can install future updates through its outbound connection.</div>
+            <h2>Legacy standalone deployment / recovery</h2>
+            <div class="management-summary">Existing SSH bootstrap for the standalone worker only. These controls do not install the native <code>os-opnsentral-agent</code> plugin.</div>
         </div>
     </div>
     <div class="table-scroll management-table-wrap">
@@ -143,20 +144,20 @@ require __DIR__ . '/inc/header.php';
                     </td>
                     <td>
                         <?php if (!is_array($agent)): ?>
-                            <a class="button" href="/agent_bootstrap.php?firewall_id=<?= $fid ?>">Install Agent</a>
+                            <a class="button" href="/agent_bootstrap.php?firewall_id=<?= $fid ?>">Legacy SSH install</a>
                         <?php elseif ($current): ?>
                             <span class="badge good">Current</span>
-                            <a class="button secondary" href="/agent_bootstrap.php?firewall_id=<?= $fid ?>">Recovery</a>
+                            <a class="button secondary" href="/agent_bootstrap.php?firewall_id=<?= $fid ?>">SSH Recovery</a>
                         <?php elseif ($selfUpdateCapable && $enabled): ?>
                             <form method="post" action="/agents_action.php" class="management-row-actions">
                                 <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
                                 <input type="hidden" name="action" value="self_update">
                                 <input type="hidden" name="id" value="<?= (int) $agent['id'] ?>">
-                                <button class="button" type="submit" onclick="return confirm('Queue agent update for <?= h(addslashes((string) $firewall['name'])) ?>?')">Update Agent</button>
+                                <button class="button" type="submit" onclick="return confirm('Queue agent update for <?= h(addslashes((string) $firewall['name'])) ?>?')">Update Worker</button>
                                 <a class="button secondary" href="/agent_bootstrap.php?firewall_id=<?= $fid ?>">SSH Recovery</a>
                             </form>
                         <?php else: ?>
-                            <a class="button" href="/agent_bootstrap.php?firewall_id=<?= $fid ?>"><?= $installed === '' ? 'Install / Recover' : 'Update via SSH' ?></a>
+                            <a class="button" href="/agent_bootstrap.php?firewall_id=<?= $fid ?>"><?= $installed === '' ? 'Legacy Install / Recover' : 'Update via SSH' ?></a>
                             <?php if (!$enabled): ?><small>Enable agent 0.1.2+ for future outbound updates.</small><?php elseif ($installed !== '' && version_compare($installed, '0.1.2', '<')): ?><small>One SSH update is required to reach self-update capable 0.1.2.</small><?php endif; ?>
                         <?php endif; ?>
                     </td>
@@ -165,15 +166,15 @@ require __DIR__ . '/inc/header.php';
             </tbody>
         </table>
     </div>
-    <p class="muted">SSH passwords/private keys entered in the bootstrap form are never stored. From agent 0.1.2 onward, updates verify the SHA-256 of the replacement before activation.</p>
+    <p class="muted">Legacy/recovery path only. SSH passwords/private keys entered in the bootstrap form are never stored. From agent 0.1.2 onward, worker updates verify the SHA-256 of the replacement before activation.</p>
 </div>
 
 <div class="management-secondary-grid">
     <div class="card management-card">
         <div class="management-card-header">
             <div>
-                <h2>Manual registration</h2>
-                <div class="management-summary">Fallback for sites where SSH from opnSentral is not reachable.</div>
+                <h2>Legacy manual registration</h2>
+                <div class="management-summary">Standalone-worker fallback for sites where SSH from opnSentral is not reachable.</div>
             </div>
         </div>
         <form method="post" action="/agents_action.php" class="management-form-grid">
@@ -193,14 +194,14 @@ require __DIR__ . '/inc/header.php';
                     <option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15" selected>15 minutes</option><option value="30">30 minutes</option><option value="60">60 minutes</option>
                 </select>
             </label>
-            <div class="management-form-action"><button class="button" type="submit">Generate registration command</button></div>
+            <div class="management-form-action"><button class="button" type="submit">Generate legacy registration command</button></div>
         </form>
-        <p class="muted">The registration token is stored only as a hash and becomes unusable after the first successful registration.</p>
+        <p class="muted">The registration token is stored only as a hash and becomes unusable after the first successful standalone-agent registration.</p>
     </div>
 
     <div class="card management-card">
-        <div class="management-card-header"><div><h2>Connection model</h2><div class="management-summary">Only outbound HTTPS from OPNsense is required after bootstrap.</div></div></div>
-        <pre>Initial install: opnSentral ── SSH ──► OPNsense
+        <div class="management-card-header"><div><h2>Legacy connection model</h2><div class="management-summary">Current standalone worker uses SSH only for bootstrap/recovery; normal communication is outbound HTTPS.</div></div></div>
+        <pre>Legacy install: opnSentral ── SSH ──► OPNsense
 Normal use:     OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
         <p class="muted">Agent requests use an individual secret, HMAC-SHA256 signatures, a timestamp window and one-time nonces. SSH is not used for routine agent communication.</p>
     </div>
