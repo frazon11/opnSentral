@@ -13,8 +13,6 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
-        openssh-client \
-        sshpass \
         libcurl4t64 \
         libsqlite3-0 \
         libcurl4-openssl-dev \
@@ -33,7 +31,7 @@ RUN set -eux; \
         'max_input_time=600' \
         > /usr/local/etc/php/conf.d/opnsentral-uploads.ini; \
     a2enmod rewrite headers; \
-    apt-mark manual ca-certificates curl openssh-client sshpass libcurl4t64 libsqlite3-0 libzip5; \
+    apt-mark manual ca-certificates curl libcurl4t64 libsqlite3-0 libzip5; \
     apt-get purge -y --auto-remove libcurl4-openssl-dev libsqlite3-dev libzip-dev; \
     php -r 'if (!class_exists("ZipArchive")) { fwrite(STDERR, "ZipArchive lost after cleanup\\n"); exit(1); }'; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
