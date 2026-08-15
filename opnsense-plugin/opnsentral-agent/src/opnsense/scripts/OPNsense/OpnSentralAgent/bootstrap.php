@@ -17,7 +17,7 @@ function json_body(array $payload): string
     return json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 }
 
-function https_context(array $http = []): resource
+function https_context(array $http = [])
 {
     return stream_context_create([
         'http' => array_replace([
