@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.3';
+const AGENT_VERSION = '0.1.4';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
@@ -37,16 +37,78 @@ function json_body(array $payload): string
     return json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 }
 
-function http_context(bool $verifyTls, array $http = []): resource
+function curl_binary(): string
 {
-    return stream_context_create([
-        'http' => array_replace(['ignore_errors' => true, 'timeout' => 20], $http),
-        'ssl' => [
-            'verify_peer' => $verifyTls,
-            'verify_peer_name' => $verifyTls,
-            'allow_self_signed' => !$verifyTls,
-        ],
-    ]);
+    foreach (['/usr/local/bin/curl', '/usr/bin/curl'] as $candidate) {
+        if (is_file($candidate) && is_executable($candidate)) return $candidate;
+    }
+    $resolved = trim((string) shell_exec('command -v curl 2>/dev/null'));
+    if ($resolved !== '' && is_executable($resolved)) return $resolved;
+    throw new RuntimeException('curl is required but was not found on OPNsense.');
+}
+
+function run_process(array $command, ?string $stdin = null): array
+{
+    $descriptors = [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $process = proc_open($command, $descriptors, $pipes);
+    if (!is_resource($process)) throw new RuntimeException('Could not start HTTPS client.');
+
+    if ($stdin !== null && $stdin !== '') fwrite($pipes[0], $stdin);
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $status = proc_close($process);
+
+    return [
+        'status' => $status,
+        'stdout' => is_string($stdout) ? $stdout : '',
+        'stderr' => is_string($stderr) ? $stderr : '',
+    ];
+}
+
+function curl_request(string $url, string $method = 'GET', ?string $body = null, array $headers = [], bool $verifyTls = true): string
+{
+    if (!preg_match('#^https://#i', $url)) throw new RuntimeException('Refusing non-HTTPS request: ' . $url);
+
+    $command = [
+        curl_binary(),
+        '--silent',
+        '--show-error',
+        '--location',
+        '--fail',
+        '--connect-timeout', '10',
+        '--max-time', '30',
+        '--proto', '=https',
+        '--user-agent', 'opnSentral-agent/' . AGENT_VERSION,
+    ];
+    if (!$verifyTls) $command[] = '--insecure';
+
+    foreach ($headers as $header) {
+        $command[] = '--header';
+        $command[] = (string) $header;
+    }
+
+    if (strtoupper($method) === 'POST') {
+        $command[] = '--request';
+        $command[] = 'POST';
+        $command[] = '--data-binary';
+        $command[] = '@-';
+    }
+
+    $command[] = $url;
+    $result = run_process($command, $body);
+    if ((int) $result['status'] !== 0) {
+        $detail = trim((string) $result['stderr']);
+        if ($detail === '') $detail = trim((string) $result['stdout']);
+        throw new RuntimeException('HTTPS request failed for ' . $url . ($detail !== '' ? ': ' . substr($detail, 0, 500) : '.'));
+    }
+    return (string) $result['stdout'];
 }
 
 function http_post(string $url, string $body, array $headers, bool $verifyTls = true): array
@@ -54,23 +116,12 @@ function http_post(string $url, string $body, array $headers, bool $verifyTls = 
     $headerLines = array_merge([
         'Content-Type: application/json',
         'Accept: application/json',
-        'User-Agent: opnSentral-agent/' . AGENT_VERSION,
-        'Content-Length: ' . strlen($body),
     ], $headers);
-    $context = http_context($verifyTls, [
-        'method' => 'POST',
-        'header' => implode("\r\n", $headerLines),
-        'content' => $body,
-    ]);
-    $response = @file_get_contents($url, false, $context);
-    $headersOut = $http_response_header ?? [];
-    $status = 0;
-    if (isset($headersOut[0]) && preg_match('/\s(\d{3})\s/', $headersOut[0], $match)) $status = (int) $match[1];
-    if (!is_string($response)) throw new RuntimeException('HTTP request failed for ' . $url);
+    $response = curl_request($url, 'POST', $body, $headerLines, $verifyTls);
     $decoded = json_decode($response, true);
-    if (!is_array($decoded)) throw new RuntimeException('Server returned invalid JSON (HTTP ' . $status . ').');
-    if ($status < 200 || $status >= 300 || ($decoded['ok'] ?? false) !== true) {
-        throw new RuntimeException((string) ($decoded['error'] ?? ('Server returned HTTP ' . $status . '.')));
+    if (!is_array($decoded)) throw new RuntimeException('Server returned invalid JSON.');
+    if (($decoded['ok'] ?? false) !== true) {
+        throw new RuntimeException((string) ($decoded['error'] ?? 'Server rejected the request.'));
     }
     return $decoded;
 }
@@ -298,8 +349,8 @@ function self_update(array $config, array $payload): array
     if (!preg_match('#^https://#i', $server)) throw new RuntimeException('Self-update requires the registered HTTPS server URL.');
     $url = $server . '/agent/opnsentral-agent';
     $verifyTls = ($config['verify_tls'] ?? true) !== false;
-    $binary = @file_get_contents($url, false, http_context($verifyTls, ['method' => 'GET']));
-    if (!is_string($binary) || strlen($binary) < 1000) throw new RuntimeException('Could not download the replacement agent.');
+    $binary = curl_request($url, 'GET', null, [], $verifyTls);
+    if (strlen($binary) < 1000) throw new RuntimeException('Could not download the replacement agent.');
     if (!str_starts_with($binary, '#!/usr/local/bin/php')) throw new RuntimeException('Downloaded agent has an invalid file signature.');
     $actual = hash('sha256', $binary);
     if (!hash_equals($expected, $actual)) throw new RuntimeException('Downloaded agent SHA-256 does not match the deployment request.');
