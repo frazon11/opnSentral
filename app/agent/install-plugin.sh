@@ -24,6 +24,10 @@ command -v fetch >/dev/null 2>&1 || {
     echo "FreeBSD fetch is required." >&2
     exit 1
 }
+command -v curl >/dev/null 2>&1 || {
+    echo "curl is required on OPNsense." >&2
+    exit 1
+}
 [ -x /usr/local/bin/php ] || {
     echo "/usr/local/bin/php is required." >&2
     exit 1
