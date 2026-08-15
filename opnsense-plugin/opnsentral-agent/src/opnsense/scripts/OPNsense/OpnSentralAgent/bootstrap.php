@@ -5,6 +5,7 @@ declare(strict_types=1);
 
 const AGENT_TARGET = '/usr/local/sbin/opnsentral-agent';
 const CONFIG_TARGET = '/usr/local/etc/opnsentral-agent.json';
+const BOOTSTRAP_VERSION = '0.1.1';
 
 function fail(string $message, int $code = 1): never
 {
@@ -17,65 +18,99 @@ function json_body(array $payload): string
     return json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 }
 
-function https_context(array $http = [])
+function curl_binary(): string
 {
-    return stream_context_create([
-        'http' => array_replace([
-            'ignore_errors' => true,
-            'timeout' => 20,
-        ], $http),
-        'ssl' => [
-            'verify_peer' => true,
-            'verify_peer_name' => true,
-            'allow_self_signed' => false,
-        ],
-    ]);
+    foreach (['/usr/local/bin/curl', '/usr/bin/curl'] as $candidate) {
+        if (is_file($candidate) && is_executable($candidate)) return $candidate;
+    }
+    $resolved = trim((string) shell_exec('command -v curl 2>/dev/null'));
+    if ($resolved !== '' && is_executable($resolved)) return $resolved;
+    fail('curl is required but was not found on OPNsense.');
 }
 
-function response_status(array $headers): int
+function run_process(array $command, ?string $stdin = null): array
 {
-    if (isset($headers[0]) && preg_match('/\s(\d{3})\s/', (string) $headers[0], $match)) {
-        return (int) $match[1];
-    }
-    return 0;
+    $descriptors = [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $process = proc_open($command, $descriptors, $pipes);
+    if (!is_resource($process)) fail('Could not start HTTPS client.');
+
+    if ($stdin !== null && $stdin !== '') fwrite($pipes[0], $stdin);
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $status = proc_close($process);
+
+    return [
+        'status' => $status,
+        'stdout' => is_string($stdout) ? $stdout : '',
+        'stderr' => is_string($stderr) ? $stderr : '',
+    ];
 }
 
-function decode_json_response(string $url, string|false $response, array $headers): array
+function curl_request(string $url, string $method = 'GET', ?string $body = null, array $headers = []): string
 {
-    $status = response_status($headers);
-    if (!is_string($response)) fail('HTTPS request failed for ' . $url . '.');
-    $decoded = json_decode($response, true);
-    if (!is_array($decoded)) fail('Server returned invalid JSON (HTTP ' . $status . ').');
-    if ($status < 200 || $status >= 300 || ($decoded['ok'] ?? false) !== true) {
-        fail((string) ($decoded['error'] ?? ('Server returned HTTP ' . $status . '.')));
+    if (!preg_match('#^https://#i', $url)) fail('Refusing non-HTTPS request: ' . $url);
+
+    $command = [
+        curl_binary(),
+        '--silent',
+        '--show-error',
+        '--location',
+        '--fail',
+        '--connect-timeout', '10',
+        '--max-time', '30',
+        '--proto', '=https',
+        '--user-agent', 'os-opnsentral-agent-bootstrap/' . BOOTSTRAP_VERSION,
+    ];
+
+    foreach ($headers as $header) {
+        $command[] = '--header';
+        $command[] = (string) $header;
     }
-    return $decoded;
+
+    if (strtoupper($method) === 'POST') {
+        $command[] = '--request';
+        $command[] = 'POST';
+        $command[] = '--data-binary';
+        $command[] = '@-';
+    }
+
+    $command[] = $url;
+    $result = run_process($command, $body);
+    if ((int) $result['status'] !== 0) {
+        $detail = trim((string) $result['stderr']);
+        if ($detail === '') $detail = trim((string) $result['stdout']);
+        fail('HTTPS request failed for ' . $url . ($detail !== '' ? ': ' . substr($detail, 0, 500) : '.'));
+    }
+    return (string) $result['stdout'];
 }
 
 function get_json(string $url): array
 {
-    $response = @file_get_contents($url, false, https_context([
-        'method' => 'GET',
-        'header' => "Accept: application/json\r\nUser-Agent: os-opnsentral-agent-bootstrap/0.1.0",
-    ]));
-    return decode_json_response($url, $response, $http_response_header ?? []);
+    $response = curl_request($url, 'GET', null, ['Accept: application/json']);
+    $decoded = json_decode($response, true);
+    if (!is_array($decoded)) fail('Server returned invalid JSON for ' . $url . '.');
+    if (($decoded['ok'] ?? false) !== true) fail((string) ($decoded['error'] ?? 'Server rejected the request.'));
+    return $decoded;
 }
 
 function post_json(string $url, array $payload): array
 {
     $body = json_body($payload);
-    $context = https_context([
-        'method' => 'POST',
-        'header' => implode("\r\n", [
-            'Content-Type: application/json',
-            'Accept: application/json',
-            'User-Agent: os-opnsentral-agent-bootstrap/0.1.0',
-            'Content-Length: ' . strlen($body),
-        ]),
-        'content' => $body,
+    $response = curl_request($url, 'POST', $body, [
+        'Content-Type: application/json',
+        'Accept: application/json',
     ]);
-    $response = @file_get_contents($url, false, $context);
-    return decode_json_response($url, $response, $http_response_header ?? []);
+    $decoded = json_decode($response, true);
+    if (!is_array($decoded)) fail('Server returned invalid JSON for ' . $url . '.');
+    if (($decoded['ok'] ?? false) !== true) fail((string) ($decoded['error'] ?? 'Server rejected the request.'));
+    return $decoded;
 }
 
 function hostname_value(): string
@@ -113,12 +148,7 @@ function validate_manifest(array $manifest): array
 function install_worker(string $serverUrl, array $manifest): string
 {
     $manifest = validate_manifest($manifest);
-    $binary = @file_get_contents(
-        rtrim($serverUrl, '/') . $manifest['agent_url'],
-        false,
-        https_context(['method' => 'GET'])
-    );
-    if (!is_string($binary)) fail('Could not download the canonical opnSentral agent.');
+    $binary = curl_request(rtrim($serverUrl, '/') . $manifest['agent_url']);
     if (strlen($binary) !== $manifest['agent_size']) fail('Downloaded agent size does not match the manifest.');
     if (!str_starts_with($binary, '#!/usr/local/bin/php')) fail('Downloaded agent has an invalid file signature.');
     $actualSha = hash('sha256', $binary);
@@ -239,7 +269,7 @@ $registration = post_json($serverUrl . '/api/agent_register.php', [
     'hostname' => hostname_value(),
     'opnsense_version' => opnsense_version(),
     'architecture' => php_uname('m'),
-    'agent_version' => 'plugin-bootstrap/0.1.0',
+    'agent_version' => 'plugin-bootstrap/' . BOOTSTRAP_VERSION,
 ]);
 
 save_agent_config($serverUrl, $registration);
