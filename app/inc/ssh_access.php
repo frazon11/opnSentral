@@ -130,11 +130,14 @@ function ssh_access_alias_status(array $firewall, string $source, ?string $categ
 {
     $alias = central_alias_find($firewall, SSH_ACCESS_ALIAS);
     $present = is_array($alias);
-    $categoryOk = $present && $categoryUuid !== null && central_alias_has_category($alias, $categoryUuid);
-    $content = $present ? central_alias_lines((string) ($alias['content'] ?? '')) : [];
+    $categories = $present ? ssh_access_selected_values($alias['categories'] ?? '') : [];
+    $content = $present ? ssh_access_selected_values($alias['content'] ?? '') : [];
+    $type = $present ? ssh_access_single_value($alias['type'] ?? '') : '';
+    $enabledValue = $present ? ssh_access_single_value($alias['enabled'] ?? '1') : '0';
+    $categoryOk = $present && $categoryUuid !== null && in_array($categoryUuid, $categories, true);
     $contentOk = count($content) === 1 && strcasecmp($content[0], $source) === 0;
-    $typeOk = $present && (string) ($alias['type'] ?? '') === 'host';
-    $enabled = $present && !in_array((string) ($alias['enabled'] ?? '1'), ['0', 'false'], true);
+    $typeOk = $type === 'host';
+    $enabled = $present && !in_array($enabledValue, ['0', 'false'], true);
     return [
         'present' => $present,
         'enabled' => $enabled,
@@ -152,13 +155,15 @@ function ssh_access_ensure_alias(array $firewall, string $source, string $catego
     if ($existing !== null) {
         $uuid = trim((string) ($existing['uuid'] ?? ''));
         if ($uuid === '') throw new RuntimeException('Existing opnSentral alias has no UUID.');
+        $categories = ssh_access_selected_values($existing['categories'] ?? '');
+        if (!in_array($categoryUuid, $categories, true)) $categories[] = $categoryUuid;
         opn_request($firewall, 'firewall/alias/set_item/' . rawurlencode($uuid), 'POST', ['alias' => [
             'enabled' => '1',
             'name' => SSH_ACCESS_ALIAS,
             'type' => 'host',
             'content' => $source,
             'description' => SSH_ACCESS_ALIAS_DESCRIPTION,
-            'categories' => central_alias_merge_category($existing['categories_uuid'] ?? $existing['categories'] ?? '', $categoryUuid),
+            'categories' => implode(',', $categories),
         ]], 25);
     } else {
         opn_request($firewall, 'firewall/alias/add_item', 'POST', ['alias' => [
@@ -202,7 +207,7 @@ function ssh_access_rule_status(array $firewall, ?string $categoryUuid): array
     $action = $present ? ssh_access_single_value($rule['action'] ?? '') : '';
     $protocol = $present ? strtolower(ssh_access_single_value($rule['protocol'] ?? '')) : '';
     $direction = $present ? ssh_access_single_value($rule['direction'] ?? '') : '';
-    $source = $present ? ssh_access_single_value($rule['source_net'] ?? '') : '';
+    $sourceNet = $present ? ssh_access_single_value($rule['source_net'] ?? '') : '';
     $destination = $present ? ssh_access_single_value($rule['destination_net'] ?? '') : '';
     $port = $present ? ssh_access_single_value($rule['destination_port'] ?? '') : '';
     $replyTo = $present ? ssh_access_single_value($rule['disablereplyto'] ?? '0') : '0';
@@ -220,13 +225,13 @@ function ssh_access_rule_status(array $firewall, ?string $categoryUuid): array
         'protocol_ok' => $protocol === 'tcp',
         'direction_ok' => $direction === 'in',
         'interface_ok' => $interfaceOk,
-        'source_ok' => $source === SSH_ACCESS_ALIAS,
+        'source_ok' => $sourceNet === SSH_ACCESS_ALIAS,
         'destination_ok' => $destination === '(self)',
         'port_ok' => $port === '22',
         'category_ok' => $categoryOk,
         'reply_to_disabled' => $replyTo === '1',
         'ok' => $present && $enabled && $action === 'pass' && $protocol === 'tcp' && $direction === 'in'
-            && $interfaceOk && $source === SSH_ACCESS_ALIAS && $destination === '(self)' && $port === '22'
+            && $interfaceOk && $sourceNet === SSH_ACCESS_ALIAS && $destination === '(self)' && $port === '22'
             && $categoryOk && $replyTo === '1',
     ];
 }
