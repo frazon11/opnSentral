@@ -63,7 +63,7 @@ try {
                 throw new RuntimeException('No enabled opnSentral agent is associated with this firewall.');
             }
 
-            $agentVersion = trim((string) ($agent['last_agent_version'] ?? ''));
+            $agentVersion = trim((string) ($agent['last_version'] ?? ''));
             if ($agentVersion === '' || version_compare($agentVersion, '0.1.1', '<')) {
                 throw new RuntimeException('Agent 0.1.1 or newer is required for Administration writes.');
             }
