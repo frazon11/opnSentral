@@ -7,6 +7,85 @@ require_once __DIR__ . '/inc/distribution_targets.php';
 require_login();
 central_alias_init();
 
+function alias_assert_api_success(array $response, string $operation): void
+{
+    $validations = $response['validations'] ?? null;
+    if (is_array($validations) && $validations !== []) {
+        throw new RuntimeException(
+            'OPNsense rejected alias ' . $operation . ': ' .
+            json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        );
+    }
+
+    foreach (['result', 'status'] as $field) {
+        if (!array_key_exists($field, $response)) {
+            continue;
+        }
+
+        $value = $response[$field];
+        if ($value === false || $value === 0 || $value === '0') {
+            throw new RuntimeException(
+                'OPNsense rejected alias ' . $operation . ': ' .
+                json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+            );
+        }
+
+        if (is_string($value)) {
+            $normalized = strtolower(trim($value));
+            if (in_array($normalized, ['failed', 'failure', 'error', 'invalid', 'rejected'], true)) {
+                throw new RuntimeException(
+                    'OPNsense rejected alias ' . $operation . ': ' .
+                    json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                );
+            }
+        }
+    }
+}
+
+function alias_verify_remote_state(
+    array $firewall,
+    string $name,
+    string $type,
+    array $expectedLines,
+    string $categoryUuid
+): void {
+    $verified = central_alias_find($firewall, $name);
+    if ($verified === null) {
+        throw new RuntimeException(
+            'OPNsense returned success, but alias "' . $name . '" was not found after deployment.'
+        );
+    }
+
+    if (strcasecmp((string) ($verified['name'] ?? ''), $name) !== 0) {
+        throw new RuntimeException(
+            'Alias verification failed: remote alias name does not match "' . $name . '".'
+        );
+    }
+
+    if (strcasecmp((string) ($verified['type'] ?? ''), $type) !== 0) {
+        throw new RuntimeException(
+            'Alias verification failed for "' . $name . '": remote type is "' .
+            (string) ($verified['type'] ?? '') . '", expected "' . $type . '".'
+        );
+    }
+
+    $remoteLines = central_alias_lines((string) ($verified['content'] ?? ''));
+    $expected = array_values($expectedLines);
+    sort($expected, SORT_NATURAL | SORT_FLAG_CASE);
+
+    if ($remoteLines !== $expected) {
+        throw new RuntimeException(
+            'Alias verification failed for "' . $name . '": remote content does not match the deployed content.'
+        );
+    }
+
+    if (!central_alias_has_category($verified, $categoryUuid)) {
+        throw new RuntimeException(
+            'Alias verification failed for "' . $name . '": managed category is missing on the remote alias.'
+        );
+    }
+}
+
 $managedCategoryName = managed_category_name();
 $firewalls = db()->query('SELECT * FROM firewalls ORDER BY name')->fetchAll();
 $results = [];
@@ -60,6 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $existing = central_alias_find($firewall, $name);
                 $finalLines = $lines;
                 $action = 'Created';
+                $writeResponse = [];
 
                 if ($existing !== null) {
                     if ($mode === 'create') {
@@ -106,15 +186,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $action .= ' and taken over';
                     }
 
-                    opn_request(
+                    $writeResponse = opn_request(
                         $firewall,
                         'firewall/alias/set_item/' . rawurlencode((string) $existing['uuid']),
                         'POST',
                         ['alias' => $payload],
                         25
                     );
+                    alias_assert_api_success($writeResponse, 'update');
                 } else {
-                    opn_request(
+                    $writeResponse = opn_request(
                         $firewall,
                         'firewall/alias/add_item',
                         'POST',
@@ -128,11 +209,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ]],
                         25
                     );
+                    alias_assert_api_success($writeResponse, 'creation');
                 }
 
-                opn_request($firewall, 'firewall/alias/reconfigure', 'POST', [], 30);
-                central_alias_target_status($aliasId, (int) $firewall['id'], 'synchronized', $action . ' and applied.');
-                $results[] = ['ok' => true, 'name' => $firewall['name'], 'message' => $action . ' and applied.'];
+                $reconfigureResponse = opn_request(
+                    $firewall,
+                    'firewall/alias/reconfigure',
+                    'POST',
+                    [],
+                    30
+                );
+                alias_assert_api_success($reconfigureResponse, 'reconfigure');
+
+                alias_verify_remote_state(
+                    $firewall,
+                    $name,
+                    $type,
+                    $finalLines,
+                    $categoryUuid
+                );
+
+                central_alias_target_status(
+                    $aliasId,
+                    (int) $firewall['id'],
+                    'synchronized',
+                    $action . ' and verified.'
+                );
+                $results[] = [
+                    'ok' => true,
+                    'name' => $firewall['name'],
+                    'message' => $action . ' and verified.',
+                ];
             } catch (Throwable $exception) {
                 central_alias_target_status($aliasId, (int) $firewall['id'], 'error', $exception->getMessage());
                 $results[] = ['ok' => false, 'name' => $firewall['name'], 'message' => $exception->getMessage()];
