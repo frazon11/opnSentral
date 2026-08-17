@@ -78,7 +78,7 @@ function plugin_live(array $firewalls): array {
 try{
     $force=($_GET['force']??'')==='1';
     $firewallId=(int)($_GET['firewall_id']??0);
-    $all=db()->query('SELECT id,name,base_url,api_key,api_secret,verify_tls FROM firewalls ORDER BY name')->fetchAll();
+    $all=db()->query('SELECT id,name,base_url,api_key_enc,api_secret_enc,verify_tls FROM firewalls ORDER BY name')->fetchAll();
     if($firewallId>0){$selected=[firewall_by_id($firewallId)];}else{$selected=$all;}
     if($selected===[]) throw new RuntimeException('No firewalls configured.');
 
