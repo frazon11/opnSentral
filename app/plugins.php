@@ -9,119 +9,109 @@ $firewalls = db()
     ->query('SELECT id,name,base_url FROM firewalls ORDER BY name')
     ->fetchAll();
 
-$firewallId = (int) ($_GET['firewall_id'] ?? 0);
-
-$selectedFirewall = null;
-foreach ($firewalls as $firewall) {
-    if ((int) $firewall['id'] === $firewallId) {
-        $selectedFirewall = $firewall;
-        break;
-    }
-}
-
 require __DIR__ . '/inc/header.php';
 ?>
 
-<div class="page-title plugin-page-title">
+<style>
+.plugin-fleet-toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.plugin-fleet-toolbar .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.plugin-fleet-search{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.plugin-fleet-search input[type=search]{min-width:260px;margin:0}
+.plugin-fleet-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--card)}
+.plugin-fleet-table{border-collapse:separate;border-spacing:0;min-width:max(1050px,100%);width:100%}
+.plugin-fleet-table th,.plugin-fleet-table td{padding:10px 12px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);vertical-align:middle;text-align:center}
+.plugin-fleet-table th:last-child,.plugin-fleet-table td:last-child{border-right:0}
+.plugin-fleet-table tr:last-child td{border-bottom:0}
+.plugin-fleet-table thead th{position:sticky;top:0;z-index:3;background:var(--table-head)}
+.plugin-fleet-table .plugin-col{position:sticky;left:0;z-index:2;text-align:left;min-width:310px;background:var(--card)}
+.plugin-fleet-table thead .plugin-col{z-index:4;background:var(--table-head)}
+.plugin-fleet-table .all-col{min-width:120px}
+.plugin-fleet-firewall{min-width:150px}
+.plugin-fleet-firewall strong{display:block}
+.plugin-fleet-firewall small{display:block;margin-top:3px;color:var(--muted);font-weight:400}
+.plugin-meta strong{display:block}.plugin-meta small{display:block;margin-top:4px;color:var(--muted);font-weight:400;line-height:1.3}
+.plugin-cell{min-width:150px}
+.plugin-cell .version{display:block;margin-top:4px;font-size:.76rem;color:var(--muted)}
+.plugin-install{white-space:nowrap}
+.plugin-result{margin-top:14px}.plugin-result-grid{display:grid;gap:7px;margin-top:8px}
+.plugin-result-item{padding:9px 11px;border-radius:6px;background:rgba(127,127,127,.08)}
+.plugin-result-item.good{border-left:4px solid #2aa84a}.plugin-result-item.bad{border-left:4px solid #d74747}
+@media(max-width:850px){.plugin-fleet-toolbar{align-items:flex-start;flex-direction:column}.plugin-fleet-search input[type=search]{min-width:0;width:100%}}
+</style>
+
+<div class="page-title">
     <div>
-        <h1>
-            <?= $selectedFirewall
-                ? h((string) $selectedFirewall['name']) . ' · Plugins'
-                : 'Plugins' ?>
-        </h1>
-        <p>
-            <?= $selectedFirewall
-                ? h((string) $selectedFirewall['base_url'])
-                : 'No firewall configured.' ?>
-        </p>
-    </div>
-
-    <div class="plugin-toolbar">
-        <?php if ($selectedFirewall): ?>
-            <a
-                class="button secondary"
-                href="/firewall_view.php?id=<?= (int) $selectedFirewall['id'] ?>"
-            >
-                Back to details
-            </a>
-        <?php endif; ?>
-
-        <button type="button" class="button secondary" id="refresh">
-            Check for plugins
-        </button>
+        <h1>System → Firmware → Plugins</h1>
+        <p>Compare installed OPNsense plugins across all managed firewalls and install a plugin on one or all compatible targets.</p>
     </div>
 </div>
 
-<?php if (!$selectedFirewall): ?>
-    <div class="empty">No firewall configured.</div>
-<?php else: ?>
+<div class="alert warningbox">
+    <strong>Plugin installation creates a pre-change backup.</strong>
+    Only OPNsense packages beginning with <code>os-</code> are managed. The <strong>Install on all</strong> action targets only firewalls where the plugin is available and not already installed.
+</div>
 
-<div class="plugin-list-card card">
-    <div class="plugin-list-toolbar">
-        <div>
-            <strong>Plugins</strong>
-            <span id="plugin-summary" class="muted">Loading…</span>
-        </div>
-
-        <label class="plugin-search">
-            <span>Search</span>
-            <input
-                type="search"
-                id="plugin-search"
-                placeholder="Filter plugins"
-                autocomplete="off"
-            >
-        </label>
+<div class="plugin-fleet-toolbar">
+    <div class="plugin-fleet-search">
+        <input type="search" id="plugin-search" placeholder="Search plugins" autocomplete="off">
+        <label><input type="checkbox" id="plugin-installed-only"> Installed somewhere only</label>
+        <span id="plugin-summary" class="muted">Loading…</span>
     </div>
-
-    <div id="plugin-error" class="alert error hidden"></div>
-
-    <div class="table-scroll">
-        <table class="opnsense-plugin-table">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Version</th>
-                    <th>Comment</th>
-                    <th>Status</th>
-                    <th class="plugin-action-column">Actions</th>
-                </tr>
-            </thead>
-            <tbody id="plugin-body">
-                <tr>
-                    <td colspan="5">Loading plugin inventory…</td>
-                </tr>
-            </tbody>
-        </table>
+    <div class="actions">
+        <button type="button" class="button secondary" id="plugin-refresh">Check for plugins</button>
     </div>
 </div>
 
-<div class="alert warning plugin-safety">
-    Install, reinstall and remove create a configuration backup first.
-    Only packages beginning with <code>os-</code> can be managed.
+<div id="plugin-error" class="alert error hidden"></div>
+
+<div class="plugin-fleet-table-wrap">
+<table class="plugin-fleet-table">
+    <thead>
+        <tr>
+            <th class="plugin-col">Plugin</th>
+            <th class="all-col">All</th>
+            <?php foreach ($firewalls as $firewall): ?>
+                <th class="plugin-fleet-firewall">
+                    <strong><?= h((string) $firewall['name']) ?></strong>
+                    <small><?= h((string) $firewall['base_url']) ?></small>
+                </th>
+            <?php endforeach; ?>
+        </tr>
+    </thead>
+    <tbody id="plugin-body">
+        <tr><td colspan="<?= count($firewalls) + 2 ?>">Loading plugin inventory…</td></tr>
+    </tbody>
+</table>
 </div>
 
-<div class="card">
-    <h2>Recent plugin jobs</h2>
-    <div id="jobs">Loading…</div>
+<div id="plugin-result" class="plugin-result hidden">
+    <div id="plugin-result-summary" class="alert"></div>
+    <div id="plugin-result-grid" class="plugin-result-grid"></div>
 </div>
 
 <script>
 (function(){
-    const firewallId = <?= (int) $firewallId ?>;
-    const csrf = <?= json_encode(
-        csrf_token(),
-        JSON_UNESCAPED_SLASHES
-    ) ?>;
+    const csrf = <?= json_encode(csrf_token(), JSON_UNESCAPED_SLASHES) ?>;
+    const firewallOrder = <?= json_encode(array_map(
+        static fn(array $fw): array => [
+            'id' => (int) $fw['id'],
+            'name' => (string) $fw['name'],
+        ],
+        $firewalls
+    ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 
     const body = document.getElementById('plugin-body');
     const summary = document.getElementById('plugin-summary');
     const errorBox = document.getElementById('plugin-error');
-    const refresh = document.getElementById('refresh');
+    const refresh = document.getElementById('plugin-refresh');
     const search = document.getElementById('plugin-search');
-    const jobs = document.getElementById('jobs');
+    const installedOnly = document.getElementById('plugin-installed-only');
+    const result = document.getElementById('plugin-result');
+    const resultSummary = document.getElementById('plugin-result-summary');
+    const resultGrid = document.getElementById('plugin-result-grid');
 
-    let plugins = [];
+    let inventory = [];
+    let catalog = [];
 
     function escapeHtml(value){
         const node = document.createElement('div');
@@ -129,176 +119,121 @@ require __DIR__ . '/inc/header.php';
         return node.innerHTML;
     }
 
-    function statusMarkup(plugin){
-        if(plugin.locked){
-            return '<span class="badge warning">Locked</span>';
+    function pluginFor(firewall, packageName){
+        return (firewall.plugins || []).find(plugin => plugin.name === packageName) || null;
+    }
+
+    function cellMarkup(firewall, packageName){
+        if(firewall.ok !== true){
+            return '<span class="badge bad">Unavailable</span><span class="version">Inventory read failed</span>';
+        }
+
+        const plugin = pluginFor(firewall, packageName);
+        if(!plugin){
+            return '<span class="badge neutral">Not offered</span>';
         }
 
         if(plugin.installed){
-            return '<span class="badge good">Installed</span>';
+            const version = plugin.version || 'installed';
+            const update = plugin.available_version && plugin.available_version !== plugin.version
+                ? '<span class="version">Available: '+escapeHtml(plugin.available_version)+'</span>'
+                : '';
+            return '<span class="badge good">Installed</span><span class="version">'+escapeHtml(version)+'</span>'+update;
         }
 
-        return '<span class="badge neutral">Available</span>';
+        return '<button type="button" class="button secondary plugin-install" data-package="'+escapeHtml(packageName)+'" data-firewall-ids="['+Number(firewall.id)+']">Install</button>' +
+            (plugin.available_version ? '<span class="version">'+escapeHtml(plugin.available_version)+'</span>' : '');
     }
 
-    function actionMarkup(plugin){
-        const pkg = escapeHtml(plugin.name);
+    function allMarkup(packageName){
+        const targets = inventory
+            .filter(fw => fw.ok === true)
+            .filter(fw => {
+                const plugin = pluginFor(fw, packageName);
+                return plugin && !plugin.installed;
+            })
+            .map(fw => Number(fw.id));
 
-        if(!plugin.installed){
-            return `
-                <button
-                    class="plugin-icon-action install"
-                    data-op="install"
-                    data-pkg="${pkg}"
-                    title="Install"
-                    aria-label="Install ${pkg}"
-                >＋</button>
-            `;
+        if(!targets.length){
+            return '<span class="badge good">Installed / N/A</span>';
         }
 
-        return `
-            <button
-                class="plugin-icon-action"
-                data-op="reinstall"
-                data-pkg="${pkg}"
-                title="Reinstall"
-                aria-label="Reinstall ${pkg}"
-            >↻</button>
-            <button
-                class="plugin-icon-action"
-                data-op="${plugin.locked ? 'unlock' : 'lock'}"
-                data-pkg="${pkg}"
-                title="${plugin.locked ? 'Unlock' : 'Lock'}"
-                aria-label="${plugin.locked ? 'Unlock' : 'Lock'} ${pkg}"
-            >${plugin.locked ? '🔓' : '🔒'}</button>
-            <button
-                class="plugin-icon-action remove"
-                data-op="remove"
-                data-pkg="${pkg}"
-                title="Remove"
-                aria-label="Remove ${pkg}"
-            >×</button>
-        `;
+        return '<button type="button" class="button plugin-install" data-package="'+escapeHtml(packageName)+'" data-firewall-ids="'+escapeHtml(JSON.stringify(targets))+'">Install on all ('+targets.length+')</button>';
     }
 
     function render(){
         const phrase = search.value.trim().toLowerCase();
+        const onlyInstalled = installedOnly.checked;
 
-        const filtered = plugins.filter(function(plugin){
-            return (
-                String(plugin.name || '').toLowerCase().includes(phrase) ||
-                String(plugin.description || '').toLowerCase().includes(phrase)
-            );
+        const filtered = catalog.filter(plugin => {
+            const name = String(plugin.name || '').toLowerCase();
+            const description = String(plugin.description || '').toLowerCase();
+            if(phrase && !name.includes(phrase) && !description.includes(phrase)) return false;
+            if(onlyInstalled){
+                return inventory.some(fw => {
+                    const item = pluginFor(fw, plugin.name);
+                    return item && item.installed;
+                });
+            }
+            return true;
         });
 
-        summary.textContent =
-            filtered.length === plugins.length
-                ? `${plugins.length} entries`
-                : `${filtered.length} of ${plugins.length} entries`;
+        const installedPackages = catalog.filter(plugin =>
+            inventory.some(fw => {
+                const item = pluginFor(fw, plugin.name);
+                return item && item.installed;
+            })
+        ).length;
 
-        body.innerHTML = filtered.length
-            ? filtered.map(function(plugin){
-                const installedVersion = plugin.installed
-                    ? (plugin.version || 'installed')
-                    : '—';
+        summary.textContent = filtered.length+' shown · '+installedPackages+' installed plugin'+(installedPackages===1?'':'s')+' across fleet';
 
-                const availableVersion =
-                    plugin.available_version &&
-                    plugin.available_version !== plugin.version
-                        ? `<small>Available: ${
-                            escapeHtml(plugin.available_version)
-                        }</small>`
-                        : '';
+        if(!filtered.length){
+            body.innerHTML = '<tr><td colspan="'+(firewallOrder.length+2)+'">No matching plugins.</td></tr>';
+            return;
+        }
 
-                return `
-                    <tr>
-                        <td class="plugin-name">
-                            <strong>${escapeHtml(plugin.name)}</strong>
-                        </td>
-                        <td>
-                            ${escapeHtml(installedVersion)}
-                            ${availableVersion}
-                        </td>
-                        <td>${escapeHtml(plugin.description || '')}</td>
-                        <td>${statusMarkup(plugin)}</td>
-                        <td class="plugin-row-actions">
-                            ${actionMarkup(plugin)}
-                        </td>
-                    </tr>
-                `;
-            }).join('')
-            : '<tr><td colspan="5">No matching plugins.</td></tr>';
+        body.innerHTML = filtered.map(plugin => {
+            const cells = firewallOrder.map(ref => {
+                const fw = inventory.find(item => Number(item.id) === Number(ref.id));
+                return '<td class="plugin-cell">'+(fw ? cellMarkup(fw, plugin.name) : '<span class="badge bad">No data</span>')+'</td>';
+            }).join('');
 
-        body.querySelectorAll('[data-op]').forEach(function(button){
-            button.addEventListener('click', function(){
-                runAction(button);
-            });
+            return '<tr>'+
+                '<td class="plugin-col plugin-meta"><strong>'+escapeHtml(plugin.name)+'</strong><small>'+escapeHtml(plugin.description || '')+'</small></td>'+
+                '<td class="all-col">'+allMarkup(plugin.name)+'</td>'+
+                cells+
+                '</tr>';
+        }).join('');
+
+        body.querySelectorAll('.plugin-install').forEach(button => {
+            button.addEventListener('click', () => installPlugin(button));
         });
     }
 
     async function readJson(response){
         const raw = await response.text();
-
-        try{
-            return JSON.parse(raw);
-        }catch(parseError){
-            throw new Error(
-                'Server returned invalid JSON: ' +
-                raw.replace(/\s+/g, ' ').trim().slice(0, 700)
-            );
+        try{return JSON.parse(raw);}catch(error){
+            throw new Error('Server returned invalid JSON: '+raw.replace(/\s+/g,' ').trim().slice(0,700));
         }
     }
 
     async function load(force){
         refresh.disabled = true;
-
+        errorBox.classList.add('hidden');
         try{
-            const url = new URL(
-                '/plugins_data.php',
-                window.location.origin
-            );
-            url.searchParams.set('firewall_id', String(firewallId));
-
-            if(force){
-                url.searchParams.set('force', '1');
-            }
-
-            const response = await fetch(url, {
-                credentials: 'same-origin',
-                cache: 'no-store'
-            });
+            const url = new URL('/plugins_data.php', window.location.origin);
+            if(force) url.searchParams.set('force','1');
+            const response = await fetch(url,{credentials:'same-origin',cache:'no-store'});
             const data = await readJson(response);
-
-            if(!response.ok || data.ok !== true){
-                throw new Error(data.error || 'Plugin inventory failed.');
-            }
-
-            const firewall = data.firewalls?.[0];
-
-            if(!firewall){
-                throw new Error('No plugin inventory returned.');
-            }
-
-            if(firewall.ok !== true){
-                throw new Error(firewall.error || 'Firewall unavailable.');
-            }
-
-            plugins = Array.isArray(firewall.plugins)
-                ? firewall.plugins
-                : [];
-
+            if(!response.ok || data.ok !== true) throw new Error(data.error || 'Plugin inventory failed.');
+            inventory = Array.isArray(data.firewalls) ? data.firewalls : [];
+            catalog = Array.isArray(data.catalog) ? data.catalog : [];
             render();
-            errorBox.classList.add('hidden');
-            errorBox.textContent = '';
-
             if(data.cache?.refresh_recommended){
-                window.setTimeout(function(){
-                    load(true);
-                }, 200);
+                window.setTimeout(()=>load(true),200);
             }
         }catch(error){
-            body.innerHTML =
-                '<tr><td colspan="5">Could not load plugin inventory.</td></tr>';
+            body.innerHTML = '<tr><td colspan="'+(firewallOrder.length+2)+'">Could not load plugin inventory.</td></tr>';
             errorBox.textContent = error.message;
             errorBox.classList.remove('hidden');
         }finally{
@@ -306,133 +241,64 @@ require __DIR__ . '/inc/header.php';
         }
     }
 
-    async function runAction(button){
-        const operation = button.dataset.op;
-        const packageName = button.dataset.pkg;
-        const backupRequired = [
-            'install',
-            'reinstall',
-            'remove'
-        ].includes(operation);
+    async function installPlugin(button){
+        const packageName = button.dataset.package || '';
+        let firewallIds = [];
+        try{firewallIds = JSON.parse(button.dataset.firewallIds || '[]');}catch(error){}
+        firewallIds = firewallIds.map(Number).filter(id => id > 0);
+        if(!packageName || !firewallIds.length) return;
 
-        const prompt =
-            operation.toUpperCase() + ' ' + packageName + '?' +
-            (backupRequired
-                ? '\n\nA configuration backup will be created first.'
-                : '');
-
-        if(!confirm(prompt)){
-            return;
-        }
+        const names = firewallIds.map(id => firewallOrder.find(fw => Number(fw.id)===id)?.name || ('#'+id));
+        const targetText = firewallIds.length === 1 ? names[0] : firewallIds.length+' firewalls';
+        if(!confirm('Install '+packageName+' on '+targetText+'?\n\nA configuration backup will be created on every target first.')) return;
 
         button.disabled = true;
+        result.classList.remove('hidden');
+        resultSummary.className = 'alert warningbox';
+        resultSummary.textContent = 'Creating backups and starting plugin installation…';
+        resultGrid.innerHTML = '';
 
-        const form = new URLSearchParams({
-            csrf,
-            firewall_id: String(firewallId),
-            package: packageName,
-            operation
-        });
+        const form = new URLSearchParams();
+        form.set('csrf', csrf);
+        form.set('package', packageName);
+        form.set('operation', 'install');
+        form.set('firewall_ids', JSON.stringify(firewallIds));
 
         try{
-            const response = await fetch('/plugin_action.php', {
-                method: 'POST',
-                credentials: 'same-origin',
-                cache: 'no-store',
-                headers: {
-                    'Content-Type':
-                        'application/x-www-form-urlencoded;charset=UTF-8'
-                },
-                body: form
+            const response = await fetch('/plugin_action.php',{
+                method:'POST',credentials:'same-origin',cache:'no-store',
+                headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+                body:form
             });
             const data = await readJson(response);
+            if(!response.ok || data.ok !== true) throw new Error(data.error || 'Plugin installation failed.');
 
-            if(!response.ok || data.ok !== true){
-                throw new Error(data.error || 'Plugin action failed.');
-            }
+            const rows = Array.isArray(data.results) ? data.results : [];
+            rows.forEach(item => {
+                const node = document.createElement('div');
+                node.className = 'plugin-result-item '+(item.ok ? 'good' : 'bad');
+                node.innerHTML = '<strong>'+escapeHtml(item.firewall_name || ('#'+item.firewall_id))+'</strong> '+
+                    '<span class="badge '+(item.ok?'good':'bad')+'">'+(item.ok?'Started':'Failed')+'</span><br>'+
+                    escapeHtml(item.ok ? (item.message || 'Installation started.') : (item.error || 'Installation failed.'));
+                resultGrid.appendChild(node);
+            });
 
-            alert(data.message);
-            await load(true);
-            await loadJobs();
+            resultSummary.className = data.failure_count ? 'alert warningbox' : 'alert goodbox';
+            resultSummary.textContent = data.message || 'Plugin installation submitted.';
+            window.setTimeout(()=>load(true),2500);
         }catch(error){
-            alert(error.message);
+            resultSummary.className = 'alert error';
+            resultSummary.textContent = error.message;
         }finally{
             button.disabled = false;
         }
     }
 
-    async function loadJobs(){
-        try{
-            const url = new URL(
-                '/plugin_jobs_data.php',
-                window.location.origin
-            );
-            url.searchParams.set('firewall_id', String(firewallId));
-
-            const response = await fetch(url, {
-                credentials: 'same-origin',
-                cache: 'no-store'
-            });
-            const data = await readJson(response);
-
-            if(!response.ok || data.ok !== true){
-                throw new Error(data.error || 'Could not load jobs.');
-            }
-
-            jobs.innerHTML = data.jobs.length
-                ? `
-                    <div class="table-scroll">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Time</th>
-                                    <th>Operation</th>
-                                    <th>Plugin</th>
-                                    <th>Status</th>
-                                    <th>Backup</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${data.jobs.map(function(job){
-                                    return `
-                                        <tr>
-                                            <td>${escapeHtml(job.created_at)}</td>
-                                            <td>${escapeHtml(job.operation)}</td>
-                                            <td>
-                                                <code>${
-                                                    escapeHtml(job.package_name)
-                                                }</code>
-                                            </td>
-                                            <td>${escapeHtml(job.status)}</td>
-                                            <td>${
-                                                job.backup_id
-                                                    ? '#' + Number(job.backup_id)
-                                                    : '—'
-                                            }</td>
-                                        </tr>
-                                    `;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                `
-                : 'No plugin jobs for this firewall.';
-        }catch(error){
-            jobs.textContent = error.message;
-        }
-    }
-
-    search.addEventListener('input', render);
-    refresh.addEventListener('click', function(){
-        load(true);
-    });
-
+    search.addEventListener('input',render);
+    installedOnly.addEventListener('change',render);
+    refresh.addEventListener('click',()=>load(true));
     load(false);
-    loadJobs();
-    window.setInterval(loadJobs, 10000);
 })();
 </script>
-
-<?php endif; ?>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>
