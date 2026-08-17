@@ -83,7 +83,7 @@ if ($action === 'create_registration') {
         http_response_code(404);
         exit('Agent not found.');
     }
-    $current = trim((string) ($agent['last_agent_version'] ?? ''));
+    $current = trim((string) ($agent['last_version'] ?? ''));
     if ($current === '' || version_compare($current, '0.1.2', '<')) {
         http_response_code(400);
         exit('Agent 0.1.2 or newer is required for outbound self-update.');
