@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.4';
+const AGENT_VERSION = '0.1.5';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
@@ -215,6 +215,16 @@ function run_local_command(string $command, string $label): void
     }
 }
 
+function load_opnsense_config(): array
+{
+    $configFile = '/usr/local/etc/inc/config.inc';
+    if (!is_file($configFile)) throw new RuntimeException('OPNsense configuration library was not found.');
+    require_once $configFile;
+    global $config;
+    if (!is_array($config)) throw new RuntimeException('OPNsense configuration is unavailable.');
+    return $config;
+}
+
 function set_administration_settings(array $payload): array
 {
     $requested = $payload['settings'] ?? null;
@@ -226,11 +236,8 @@ function set_administration_settings(array $payload): array
         if (!in_array($key, $allowed, true) || !is_bool($value)) throw new RuntimeException('Unsupported Administration setting: ' . $key);
         $changes[$key] = $value;
     }
-    $configFile = '/usr/local/etc/inc/config.inc';
-    if (!is_file($configFile)) throw new RuntimeException('OPNsense configuration library was not found.');
-    require_once $configFile;
+    load_opnsense_config();
     global $config;
-    if (!is_array($config)) throw new RuntimeException('OPNsense configuration is unavailable.');
     if (!isset($config['system']) || !is_array($config['system'])) $config['system'] = [];
     if (!isset($config['system']['webgui']) || !is_array($config['system']['webgui'])) $config['system']['webgui'] = [];
     $before = [];
@@ -341,6 +348,84 @@ function set_access_user(array $payload): array
     ];
 }
 
+function ssh_access_status(): array
+{
+    load_opnsense_config();
+    global $config;
+    $system = is_array($config['system'] ?? null) ? $config['system'] : [];
+    $ssh = is_array($system['ssh'] ?? null) ? $system['ssh'] : [];
+
+    $sshEnabled = (string) ($ssh['enabled'] ?? '') === 'enabled';
+    $port = trim((string) ($ssh['port'] ?? '22'));
+    if ($port === '') $port = '22';
+    $sshGroup = trim((string) ($ssh['group'] ?? 'admins'));
+    if ($sshGroup === '') $sshGroup = 'admins';
+    $sudoMode = trim((string) ($system['sudo_allow_wheel'] ?? ''));
+    $sudoGroup = trim((string) ($system['sudo_allow_group'] ?? ''));
+    $sudoEnabled = in_array($sudoMode, ['1', '2'], true);
+
+    $daemonOutput = [];
+    $daemonStatus = 0;
+    exec('/usr/bin/pgrep -x sshd 2>/dev/null', $daemonOutput, $daemonStatus);
+    $daemonRunning = $daemonStatus === 0 && $daemonOutput !== [];
+
+    $ok = $sshEnabled
+        && $daemonRunning
+        && $port === '22'
+        && $sshGroup === 'admins'
+        && $sudoEnabled
+        && $sudoGroup === 'admins';
+
+    return [
+        'ssh_enabled' => $sshEnabled,
+        'daemon_running' => $daemonRunning,
+        'port' => $port,
+        'ssh_group' => $sshGroup,
+        'sudo_enabled' => $sudoEnabled,
+        'sudo_mode' => $sudoMode,
+        'sudo_group' => $sudoGroup,
+        'ok' => $ok,
+        'checked_at' => gmdate('c'),
+    ];
+}
+
+function ensure_ssh_access(array $payload): array
+{
+    $port = (int) ($payload['port'] ?? 22);
+    $sudoMode = trim((string) ($payload['sudo_mode'] ?? '1'));
+    $sudoGroup = trim((string) ($payload['sudo_group'] ?? 'admins'));
+    if ($port !== 22) throw new RuntimeException('Managed SSH access only permits TCP port 22.');
+    if (!in_array($sudoMode, ['1', '2'], true)) throw new RuntimeException('Unsupported sudo mode.');
+    if ($sudoGroup !== 'admins') throw new RuntimeException('Managed SSH access requires sudo group admins.');
+
+    load_opnsense_config();
+    global $config;
+    if (!isset($config['system']) || !is_array($config['system'])) $config['system'] = [];
+    if (!isset($config['system']['ssh']) || !is_array($config['system']['ssh'])) $config['system']['ssh'] = [];
+
+    $before = ssh_access_status();
+    $config['system']['ssh']['noauto'] = 1;
+    $config['system']['ssh']['enabled'] = 'enabled';
+    $config['system']['ssh']['port'] = '22';
+    $config['system']['ssh']['group'] = 'admins';
+    $config['system']['sudo_allow_wheel'] = $sudoMode;
+    $config['system']['sudo_allow_group'] = 'admins';
+
+    if (!function_exists('write_config')) throw new RuntimeException('OPNsense write_config() is unavailable.');
+    write_config('Managed by opnSentral - Enable SSH management');
+    run_local_command('/usr/local/sbin/configctl openssh restart', 'OpenSSH restart');
+    usleep(500000);
+    $after = ssh_access_status();
+    if (($after['ok'] ?? false) !== true) {
+        throw new RuntimeException('SSH settings were written but post-change verification is not ready.');
+    }
+
+    $after['message'] = 'Managed SSH access enabled and verified.';
+    $after['previous'] = $before;
+    $after['applied_at'] = gmdate('c');
+    return $after;
+}
+
 function self_update(array $config, array $payload): array
 {
     $expected = strtolower(trim((string) ($payload['sha256'] ?? '')));
@@ -402,6 +487,12 @@ function execute_job(array $job, array $config): array
     }
     if ($type === 'set_access_user') {
         return set_access_user(is_array($job['payload'] ?? null) ? $job['payload'] : []);
+    }
+    if ($type === 'ssh_access_status') {
+        return ssh_access_status();
+    }
+    if ($type === 'ensure_ssh_access') {
+        return ensure_ssh_access(is_array($job['payload'] ?? null) ? $job['payload'] : []);
     }
     if ($type === 'self_update') {
         return self_update($config, is_array($job['payload'] ?? null) ? $job['payload'] : []);
