@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
 
-const DEFAULT_MANAGED_CATEGORY_NAME = 'managed by opnSentral';
+const DEFAULT_MANAGED_CATEGORY_NAME = 'Managed by opnSentral';
 const DEFAULT_MANAGED_CATEGORY_COLOR = 'F0AD4E';
 
 function managed_category_prepare_database(): void
