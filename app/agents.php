@@ -25,6 +25,8 @@ $registration = $_SESSION['new_agent_registration'] ?? null;
 unset($_SESSION['new_agent_registration']);
 $updateResult = $_SESSION['agent_update_result'] ?? null;
 unset($_SESSION['agent_update_result']);
+$associationResult = $_SESSION['agent_association_result'] ?? null;
+unset($_SESSION['agent_association_result']);
 
 $forwardedProto = trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0] ?? '');
 $scheme = $forwardedProto !== ''
@@ -47,6 +49,13 @@ require __DIR__ . '/inc/header.php';
 
 <?php if (is_string($updateResult) && $updateResult !== ''): ?>
     <div class="alert goodbox"><strong>Agent update</strong><div><?= h($updateResult) ?></div></div>
+<?php endif; ?>
+
+<?php if (is_array($associationResult)): ?>
+    <div class="alert <?= !empty($associationResult['ok']) ? 'goodbox' : 'error' ?>">
+        <strong>Firewall association</strong>
+        <div><?= h((string) ($associationResult['message'] ?? '')) ?></div>
+    </div>
 <?php endif; ?>
 
 <?php if (is_array($registration)): ?>
@@ -122,7 +131,7 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
 </div>
 
 <div class="card management-card">
-    <div class="management-card-header"><div><h2>Registered agents</h2><div class="management-summary">Agents report status and poll opnSentral for allow-listed jobs.</div></div></div>
+    <div class="management-card-header"><div><h2>Registered agents</h2><div class="management-summary">Agents report status, poll opnSentral for allow-listed jobs, and can be associated with an existing managed firewall without reinstalling.</div></div></div>
     <div class="table-scroll management-table-wrap">
         <table class="management-table">
             <thead><tr><th>Firewall / site</th><th>Agent</th><th>Last seen</th><th>OPNsense</th><th>Status</th><th>Remote jobs</th><th>Actions</th></tr></thead>
@@ -131,9 +140,13 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
             <?php foreach ($agents as $agent):
                 $last = !empty($agent['last_seen_at']) ? (strtotime((string) $agent['last_seen_at']) ?: 0) : 0;
                 $fresh = $last > 0 && time() - $last < 150;
+                $currentFirewallId = (int) ($agent['firewall_id'] ?? 0);
             ?>
                 <tr>
-                    <td><?= h((string) ($agent['firewall_name'] ?? $agent['name'] ?? 'Unassigned')) ?><?php if (empty($agent['firewall_id'])): ?><br><small>Not associated with a managed firewall</small><?php endif; ?></td>
+                    <td>
+                        <?= h((string) ($agent['firewall_name'] ?? $agent['name'] ?? 'Unassigned')) ?>
+                        <?php if (empty($agent['firewall_id'])): ?><br><small>Not associated with a managed firewall</small><?php endif; ?>
+                    </td>
                     <td><code><?= h(substr((string) ($agent['agent_id'] ?? ''), 0, 12)) ?>…</code><br><small><?= h((string) ($agent['last_hostname'] ?? '')) ?> · v<?= h((string) (($agent['last_version'] ?? '') !== '' ? $agent['last_version'] : 'unknown')) ?></small></td>
                     <td><?= h((string) (($agent['last_seen_at'] ?? '') !== '' ? $agent['last_seen_at'] : 'Never')) ?></td>
                     <td><?= h((string) (($agent['last_opnsense_version'] ?? '') !== '' ? $agent['last_opnsense_version'] : '—')) ?></td>
@@ -146,7 +159,19 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
                         </form>
                     </td>
                     <td>
-                        <div class="management-row-actions">
+                        <div class="management-row-actions" style="align-items:center;flex-wrap:wrap">
+                            <form method="post" action="/agents_action.php" class="management-row-actions">
+                                <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="associate">
+                                <input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
+                                <select name="firewall_id" aria-label="Managed firewall association">
+                                    <option value="0" <?= $currentFirewallId === 0 ? 'selected' : '' ?>>Unassigned</option>
+                                    <?php foreach ($firewalls as $firewall): ?>
+                                        <option value="<?= (int) $firewall['id'] ?>" <?= $currentFirewallId === (int) $firewall['id'] ? 'selected' : '' ?>><?= h((string) $firewall['name']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <button class="button secondary" type="submit"><?= $currentFirewallId > 0 ? 'Change association' : 'Associate' ?></button>
+                            </form>
                             <?php if (!empty($agent['firewall_id'])): ?><a class="button secondary" href="/ssh_access.php?firewall_id=<?= (int) $agent['firewall_id'] ?>">SSH access</a><?php endif; ?>
                             <form method="post" action="/agents_action.php" class="management-row-actions">
                                 <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
