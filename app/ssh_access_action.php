@@ -73,7 +73,7 @@ try {
                 $results[] = [
                     'ok' => true,
                     'firewall' => $firewallName,
-                    'message' => 'Backup #' . (int) ($backup['id'] ?? 0) . ' created; WAN rule verified; SSH repair job #' . $jobId . ' queued.',
+                    'message' => 'Backup #' . (int) ($backup['id'] ?? 0) . ' created; management rule verified; SSH repair job #' . $jobId . ' queued.',
                 ];
             } else {
                 $objects = ssh_access_objects_status($firewall, $source);
