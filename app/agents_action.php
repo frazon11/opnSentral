@@ -55,6 +55,52 @@ if ($action === 'create_registration') {
             'label' => $label,
         ];
     }
+} elseif ($action === 'associate') {
+    $agentId = (int) ($_POST['id'] ?? 0);
+    $firewallId = (int) ($_POST['firewall_id'] ?? 0);
+
+    $agentStatement = $pdo->prepare('SELECT id, name, last_hostname, agent_id, firewall_id FROM agents WHERE id = ?');
+    $agentStatement->execute([$agentId]);
+    $agent = $agentStatement->fetch();
+    if (!$agent) {
+        http_response_code(404);
+        exit('Agent not found.');
+    }
+
+    $agentLabel = (string) ($agent['name'] ?: $agent['last_hostname'] ?: $agent['agent_id']);
+
+    if ($firewallId === 0) {
+        $pdo->prepare('UPDATE agents SET firewall_id = NULL WHERE id = ?')->execute([$agentId]);
+        $_SESSION['agent_association_result'] = [
+            'ok' => true,
+            'message' => 'Agent ' . $agentLabel . ' is now unassigned.',
+        ];
+    } else {
+        $firewallStatement = $pdo->prepare('SELECT id, name FROM firewalls WHERE id = ?');
+        $firewallStatement->execute([$firewallId]);
+        $firewall = $firewallStatement->fetch();
+        if (!$firewall) {
+            http_response_code(404);
+            exit('Managed firewall not found.');
+        }
+
+        $conflictStatement = $pdo->prepare('SELECT id, name, last_hostname, agent_id FROM agents WHERE firewall_id = ? AND id <> ? LIMIT 1');
+        $conflictStatement->execute([$firewallId, $agentId]);
+        $conflict = $conflictStatement->fetch();
+        if ($conflict) {
+            $conflictLabel = (string) ($conflict['name'] ?: $conflict['last_hostname'] ?: $conflict['agent_id']);
+            $_SESSION['agent_association_result'] = [
+                'ok' => false,
+                'message' => 'Firewall ' . (string) $firewall['name'] . ' is already associated with agent ' . $conflictLabel . '. Unassign or delete that agent first.',
+            ];
+        } else {
+            $pdo->prepare('UPDATE agents SET firewall_id = ? WHERE id = ?')->execute([$firewallId, $agentId]);
+            $_SESSION['agent_association_result'] = [
+                'ok' => true,
+                'message' => 'Agent ' . $agentLabel . ' associated with firewall ' . (string) $firewall['name'] . '.',
+            ];
+        }
+    }
 } elseif ($action === 'queue_job') {
     $agentId = (int) ($_POST['id'] ?? 0);
     $jobType = (string) ($_POST['job_type'] ?? '');
