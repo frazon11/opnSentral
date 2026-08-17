@@ -68,6 +68,7 @@ function ssh_access_category_uuid(array $firewall, bool $create): ?string
         'category' => [
             'name' => SSH_ACCESS_CATEGORY,
             'color' => managed_category_color(),
+            'auto' => '0',
         ],
     ], 20);
 
@@ -135,16 +136,17 @@ function ssh_access_ensure_alias(array $firewall, string $source, string $catego
 
 function ssh_access_find_rule(array $firewall): ?array
 {
-    $response = opn_request($firewall, 'firewall/filter/search_rule', 'GET', [
+    $query = http_build_query([
         'current' => 1,
         'rowCount' => 500,
         'searchPhrase' => SSH_ACCESS_RULE_DESCRIPTION,
-    ], 20);
+    ], '', '&', PHP_QUERY_RFC3986);
+    $response = opn_request($firewall, 'firewall/filter/search_rule?' . $query, 'GET', null, 20);
     foreach (($response['rows'] ?? []) as $row) {
         if ((string) ($row['description'] ?? '') !== SSH_ACCESS_RULE_DESCRIPTION) continue;
         $uuid = trim((string) ($row['uuid'] ?? ''));
         if ($uuid === '') return $row;
-        $item = opn_request($firewall, 'firewall/filter/get_rule/' . rawurlencode($uuid), 'GET', [], 20);
+        $item = opn_request($firewall, 'firewall/filter/get_rule/' . rawurlencode($uuid), 'GET', null, 20);
         $rule = is_array($item['rule'] ?? null) ? $item['rule'] : $item;
         $rule['uuid'] = $uuid;
         return $rule;
