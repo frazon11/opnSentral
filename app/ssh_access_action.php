@@ -37,6 +37,7 @@ try {
 
     $source = ssh_access_public_source();
     if ($action === 'ensure') {
+        require_configuration_unlocked(false);
         backup_before_change($firewall, 'managed-ssh-access');
         $objects = ssh_access_ensure_objects($firewall, $source);
         if (($objects['ok'] ?? false) !== true) {
