@@ -17,12 +17,8 @@ const SSH_ACCESS_AGENT_MIN_VERSION = '0.1.5';
 function ssh_access_public_source(): string
 {
     $raw = trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? ''))[0] ?? '');
-    if ($raw === '') {
-        $raw = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
-    }
-    if ($raw === '') {
-        throw new RuntimeException('Could not determine the public opnSentral FQDN/IP.');
-    }
+    if ($raw === '') $raw = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    if ($raw === '') throw new RuntimeException('Could not determine the public opnSentral FQDN/IP.');
 
     $host = parse_url('https://' . $raw, PHP_URL_HOST);
     $host = is_string($host) ? trim($host, '[]') : '';
@@ -34,9 +30,7 @@ function ssh_access_public_source(): string
 
 function ssh_access_agent(int $firewallId): ?array
 {
-    $statement = db()->prepare(
-        'SELECT * FROM agents WHERE firewall_id = ? AND enabled = 1 ORDER BY id DESC LIMIT 1'
-    );
+    $statement = db()->prepare('SELECT * FROM agents WHERE firewall_id = ? AND enabled = 1 ORDER BY id DESC LIMIT 1');
     $statement->execute([$firewallId]);
     $row = $statement->fetch();
     return is_array($row) ? $row : null;
@@ -49,6 +43,43 @@ function ssh_access_agent_ready(?array $agent): bool
     return $version !== '' && version_compare($version, SSH_ACCESS_AGENT_MIN_VERSION, '>=');
 }
 
+function ssh_access_selected_values(mixed $value): array
+{
+    if (is_string($value) || is_int($value)) {
+        return array_values(array_filter(
+            preg_split('/[\s,;]+/', trim((string) $value)) ?: [],
+            static fn(string $item): bool => $item !== ''
+        ));
+    }
+    if (!is_array($value)) return [];
+
+    $result = [];
+    foreach ($value as $key => $item) {
+        if (is_array($item)) {
+            $selected = $item['selected'] ?? false;
+            if (in_array($selected, [1, '1', true, 'true', 'selected'], true)) {
+                $candidate = is_string($key) && !ctype_digit($key)
+                    ? $key
+                    : trim((string) ($item['value'] ?? ''));
+                if ($candidate !== '') $result[] = $candidate;
+            }
+        } elseif (is_int($key)) {
+            $candidate = trim((string) $item);
+            if ($candidate !== '') $result[] = $candidate;
+        } elseif (in_array($item, [1, '1', true, 'true', 'selected'], true)) {
+            $result[] = (string) $key;
+        }
+    }
+    return array_values(array_unique($result));
+}
+
+function ssh_access_single_value(mixed $value): string
+{
+    if (is_string($value) || is_int($value)) return trim((string) $value);
+    $selected = ssh_access_selected_values($value);
+    return $selected[0] ?? '';
+}
+
 function ssh_access_category_uuid(array $firewall, bool $create): ?string
 {
     $response = opn_request($firewall, 'firewall/category/search_item', 'POST', [
@@ -57,10 +88,19 @@ function ssh_access_category_uuid(array $firewall, bool $create): ?string
         'searchPhrase' => SSH_ACCESS_CATEGORY,
     ], 20);
     foreach (($response['rows'] ?? []) as $row) {
-        if (strcasecmp((string) ($row['name'] ?? ''), SSH_ACCESS_CATEGORY) === 0) {
-            $uuid = trim((string) ($row['uuid'] ?? ''));
-            if ($uuid !== '') return $uuid;
+        if (!is_array($row) || strcasecmp(trim((string) ($row['name'] ?? '')), SSH_ACCESS_CATEGORY) !== 0) continue;
+        $uuid = trim((string) ($row['uuid'] ?? ''));
+        if ($uuid === '') continue;
+        if ($create && (string) ($row['name'] ?? '') !== SSH_ACCESS_CATEGORY) {
+            opn_request($firewall, 'firewall/category/set_item/' . rawurlencode($uuid), 'POST', [
+                'category' => [
+                    'name' => SSH_ACCESS_CATEGORY,
+                    'color' => trim((string) ($row['color'] ?? managed_category_color())),
+                    'auto' => (string) ($row['auto'] ?? '0'),
+                ],
+            ], 20);
         }
+        return $uuid;
     }
     if (!$create) return null;
 
@@ -78,7 +118,7 @@ function ssh_access_category_uuid(array $firewall, bool $create): ?string
         'searchPhrase' => SSH_ACCESS_CATEGORY,
     ], 20);
     foreach (($response['rows'] ?? []) as $row) {
-        if (strcasecmp((string) ($row['name'] ?? ''), SSH_ACCESS_CATEGORY) === 0) {
+        if (is_array($row) && (string) ($row['name'] ?? '') === SSH_ACCESS_CATEGORY) {
             $uuid = trim((string) ($row['uuid'] ?? ''));
             if ($uuid !== '') return $uuid;
         }
@@ -110,17 +150,16 @@ function ssh_access_ensure_alias(array $firewall, string $source, string $catego
 {
     $existing = central_alias_find($firewall, SSH_ACCESS_ALIAS);
     if ($existing !== null) {
-        $payload = $existing;
-        $uuid = (string) ($payload['uuid'] ?? '');
+        $uuid = trim((string) ($existing['uuid'] ?? ''));
         if ($uuid === '') throw new RuntimeException('Existing opnSentral alias has no UUID.');
-        unset($payload['uuid']);
-        $payload['enabled'] = '1';
-        $payload['name'] = SSH_ACCESS_ALIAS;
-        $payload['type'] = 'host';
-        $payload['content'] = $source;
-        $payload['description'] = SSH_ACCESS_ALIAS_DESCRIPTION;
-        $payload['categories'] = central_alias_merge_category($existing['categories'] ?? '', $categoryUuid);
-        opn_request($firewall, 'firewall/alias/set_item/' . rawurlencode($uuid), 'POST', ['alias' => $payload], 25);
+        opn_request($firewall, 'firewall/alias/set_item/' . rawurlencode($uuid), 'POST', ['alias' => [
+            'enabled' => '1',
+            'name' => SSH_ACCESS_ALIAS,
+            'type' => 'host',
+            'content' => $source,
+            'description' => SSH_ACCESS_ALIAS_DESCRIPTION,
+            'categories' => central_alias_merge_category($existing['categories_uuid'] ?? $existing['categories'] ?? '', $categoryUuid),
+        ]], 25);
     } else {
         opn_request($firewall, 'firewall/alias/add_item', 'POST', ['alias' => [
             'enabled' => '1',
@@ -143,7 +182,7 @@ function ssh_access_find_rule(array $firewall): ?array
     ], '', '&', PHP_QUERY_RFC3986);
     $response = opn_request($firewall, 'firewall/filter/search_rule?' . $query, 'GET', null, 20);
     foreach (($response['rows'] ?? []) as $row) {
-        if ((string) ($row['description'] ?? '') !== SSH_ACCESS_RULE_DESCRIPTION) continue;
+        if (!is_array($row) || (string) ($row['description'] ?? '') !== SSH_ACCESS_RULE_DESCRIPTION) continue;
         $uuid = trim((string) ($row['uuid'] ?? ''));
         if ($uuid === '') return $row;
         $item = opn_request($firewall, 'firewall/filter/get_rule/' . rawurlencode($uuid), 'GET', null, 20);
@@ -158,47 +197,45 @@ function ssh_access_rule_status(array $firewall, ?string $categoryUuid): array
 {
     $rule = ssh_access_find_rule($firewall);
     $present = is_array($rule);
-    $categories = $present ? ($rule['categories'] ?? '') : '';
-    $parts = is_array($categories)
-        ? array_map('strval', $categories)
-        : (preg_split('/[\s,;]+/', (string) $categories) ?: []);
-    $categoryOk = $present && $categoryUuid !== null && in_array($categoryUuid, $parts, true);
-    $interface = $present ? $rule['interface'] ?? '' : '';
-    $interfaceOk = $interface === 'any' || (is_array($interface) && in_array('any', array_map('strval', $interface), true));
+    $categories = $present ? ssh_access_selected_values($rule['categories'] ?? '') : [];
+    $interfaces = $present ? ssh_access_selected_values($rule['interface'] ?? '') : [];
+    $action = $present ? ssh_access_single_value($rule['action'] ?? '') : '';
+    $protocol = $present ? strtolower(ssh_access_single_value($rule['protocol'] ?? '')) : '';
+    $direction = $present ? ssh_access_single_value($rule['direction'] ?? '') : '';
+    $source = $present ? ssh_access_single_value($rule['source_net'] ?? '') : '';
+    $destination = $present ? ssh_access_single_value($rule['destination_net'] ?? '') : '';
+    $port = $present ? ssh_access_single_value($rule['destination_port'] ?? '') : '';
+    $replyTo = $present ? ssh_access_single_value($rule['disablereplyto'] ?? '0') : '0';
+    $enabledValue = $present ? ssh_access_single_value($rule['enabled'] ?? '1') : '0';
+
+    $interfaceOk = in_array('any', $interfaces, true)
+        || ($interfaces === [] && ssh_access_single_value($rule['interface'] ?? '') === 'any');
+    $categoryOk = $present && $categoryUuid !== null && in_array($categoryUuid, $categories, true);
+    $enabled = $present && !in_array($enabledValue, ['0', 'false'], true);
+
     return [
         'present' => $present,
-        'enabled' => $present && !in_array((string) ($rule['enabled'] ?? '1'), ['0', 'false'], true),
-        'action_ok' => $present && (string) ($rule['action'] ?? '') === 'pass',
-        'protocol_ok' => $present && strtolower((string) ($rule['protocol'] ?? '')) === 'tcp',
-        'direction_ok' => $present && (string) ($rule['direction'] ?? '') === 'in',
+        'enabled' => $enabled,
+        'action_ok' => $action === 'pass',
+        'protocol_ok' => $protocol === 'tcp',
+        'direction_ok' => $direction === 'in',
         'interface_ok' => $interfaceOk,
-        'source_ok' => $present && (string) ($rule['source_net'] ?? '') === SSH_ACCESS_ALIAS,
-        'destination_ok' => $present && (string) ($rule['destination_net'] ?? '') === '(self)',
-        'port_ok' => $present && (string) ($rule['destination_port'] ?? '') === '22',
+        'source_ok' => $source === SSH_ACCESS_ALIAS,
+        'destination_ok' => $destination === '(self)',
+        'port_ok' => $port === '22',
         'category_ok' => $categoryOk,
-        'reply_to_disabled' => $present && (string) ($rule['disablereplyto'] ?? '0') === '1',
-        'ok' => $present
-            && !in_array((string) ($rule['enabled'] ?? '1'), ['0', 'false'], true)
-            && (string) ($rule['action'] ?? '') === 'pass'
-            && strtolower((string) ($rule['protocol'] ?? '')) === 'tcp'
-            && (string) ($rule['direction'] ?? '') === 'in'
-            && $interfaceOk
-            && (string) ($rule['source_net'] ?? '') === SSH_ACCESS_ALIAS
-            && (string) ($rule['destination_net'] ?? '') === '(self)'
-            && (string) ($rule['destination_port'] ?? '') === '22'
-            && $categoryOk
-            && (string) ($rule['disablereplyto'] ?? '0') === '1',
+        'reply_to_disabled' => $replyTo === '1',
+        'ok' => $present && $enabled && $action === 'pass' && $protocol === 'tcp' && $direction === 'in'
+            && $interfaceOk && $source === SSH_ACCESS_ALIAS && $destination === '(self)' && $port === '22'
+            && $categoryOk && $replyTo === '1',
     ];
 }
 
 function ssh_access_ensure_rule(array $firewall, string $categoryUuid): void
 {
     $existing = ssh_access_find_rule($firewall);
-    $payload = is_array($existing) ? $existing : [];
-    $uuid = trim((string) ($payload['uuid'] ?? ''));
-    unset($payload['uuid'], $payload['sort_order'], $payload['prio_group']);
-
-    $payload = array_replace($payload, [
+    $uuid = is_array($existing) ? trim((string) ($existing['uuid'] ?? '')) : '';
+    $payload = [
         'enabled' => '1',
         'statetype' => 'keep',
         'action' => 'pass',
@@ -219,9 +256,9 @@ function ssh_access_ensure_rule(array $firewall, string $categoryUuid): void
         'allowopts' => '0',
         'nosync' => '0',
         'nopfsync' => '0',
-        'categories' => central_alias_merge_category($payload['categories'] ?? '', $categoryUuid),
+        'categories' => $categoryUuid,
         'description' => SSH_ACCESS_RULE_DESCRIPTION,
-    ]);
+    ];
 
     $savepoint = opn_request($firewall, 'firewall/filter_base/savepoint', 'POST', [], 20);
     $revision = trim((string) ($savepoint['revision'] ?? ''));
@@ -265,12 +302,8 @@ function ssh_access_ensure_objects(array $firewall, string $source): array
 
 function ssh_access_queue_job(array $agent, string $type, array $payload = []): int
 {
-    if (!in_array($type, ['ssh_access_status', 'ensure_ssh_access'], true)) {
-        throw new RuntimeException('Unsupported SSH access job.');
-    }
-    $statement = db()->prepare(
-        'INSERT INTO agent_jobs(agent_id, job_type, payload_json, status, created_at) VALUES(?, ?, ?, ?, ?)'
-    );
+    if (!in_array($type, ['ssh_access_status', 'ensure_ssh_access'], true)) throw new RuntimeException('Unsupported SSH access job.');
+    $statement = db()->prepare('INSERT INTO agent_jobs(agent_id, job_type, payload_json, status, created_at) VALUES(?, ?, ?, ?, ?)');
     $statement->execute([
         (int) $agent['id'],
         $type,
@@ -283,9 +316,7 @@ function ssh_access_queue_job(array $agent, string $type, array $payload = []): 
 
 function ssh_access_latest_job(int $agentId): ?array
 {
-    $statement = db()->prepare(
-        "SELECT * FROM agent_jobs WHERE agent_id = ? AND job_type IN ('ssh_access_status','ensure_ssh_access') ORDER BY id DESC LIMIT 1"
-    );
+    $statement = db()->prepare("SELECT * FROM agent_jobs WHERE agent_id = ? AND job_type IN ('ssh_access_status','ensure_ssh_access') ORDER BY id DESC LIMIT 1");
     $statement->execute([$agentId]);
     $row = $statement->fetch();
     return is_array($row) ? $row : null;
