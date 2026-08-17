@@ -129,26 +129,26 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
             <tbody>
             <?php if (!$agents): ?><tr><td colspan="7">No agents registered.</td></tr><?php endif; ?>
             <?php foreach ($agents as $agent):
-                $last = $agent['last_seen_at'] ? (strtotime((string) $agent['last_seen_at']) ?: 0) : 0;
+                $last = !empty($agent['last_seen_at']) ? (strtotime((string) $agent['last_seen_at']) ?: 0) : 0;
                 $fresh = $last > 0 && time() - $last < 150;
             ?>
                 <tr>
                     <td><?= h((string) ($agent['firewall_name'] ?? $agent['name'] ?? 'Unassigned')) ?><?php if (empty($agent['firewall_id'])): ?><br><small>Not associated with a managed firewall</small><?php endif; ?></td>
-                    <td><code><?= h(substr((string) $agent['agent_id'], 0, 12)) ?>…</code><br><small><?= h((string) $agent['last_hostname']) ?> · v<?= h((string) ($agent['last_agent_version'] ?: 'unknown')) ?></small></td>
-                    <td><?= h((string) ($agent['last_seen_at'] ?: 'Never')) ?></td>
-                    <td><?= h((string) ($agent['last_opnsense_version'] ?: '—')) ?></td>
-                    <td><span class="badge <?= $fresh && $agent['enabled'] ? 'good' : 'bad' ?>"><?= $agent['enabled'] ? ($fresh ? 'Online' : 'Stale') : 'Disabled' ?></span></td>
+                    <td><code><?= h(substr((string) ($agent['agent_id'] ?? ''), 0, 12)) ?>…</code><br><small><?= h((string) ($agent['last_hostname'] ?? '')) ?> · v<?= h((string) (($agent['last_version'] ?? '') !== '' ? $agent['last_version'] : 'unknown')) ?></small></td>
+                    <td><?= h((string) (($agent['last_seen_at'] ?? '') !== '' ? $agent['last_seen_at'] : 'Never')) ?></td>
+                    <td><?= h((string) (($agent['last_opnsense_version'] ?? '') !== '' ? $agent['last_opnsense_version'] : '—')) ?></td>
+                    <td><span class="badge <?= $fresh && !empty($agent['enabled']) ? 'good' : 'bad' ?>"><?= !empty($agent['enabled']) ? ($fresh ? 'Online' : 'Stale') : 'Disabled' ?></span></td>
                     <td>
                         <form method="post" action="/agents_action.php" class="management-row-actions">
-                            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="queue_job"><input type="hidden" name="id" value="<?= (int) $agent['id'] ?>">
-                            <button class="button secondary" name="job_type" value="inventory" <?= !$agent['enabled'] ? 'disabled' : '' ?>>Inventory</button>
-                            <button class="button secondary" name="job_type" value="system_status" <?= !$agent['enabled'] ? 'disabled' : '' ?>>System status</button>
+                            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="queue_job"><input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
+                            <button class="button secondary" name="job_type" value="inventory" <?= empty($agent['enabled']) ? 'disabled' : '' ?>>Inventory</button>
+                            <button class="button secondary" name="job_type" value="system_status" <?= empty($agent['enabled']) ? 'disabled' : '' ?>>System status</button>
                         </form>
                     </td>
                     <td>
                         <form method="post" action="/agents_action.php" class="management-row-actions">
-                            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="id" value="<?= (int) $agent['id'] ?>">
-                            <button class="button secondary" name="action" value="toggle"><?= $agent['enabled'] ? 'Disable' : 'Enable' ?></button>
+                            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
+                            <button class="button secondary" name="action" value="toggle"><?= !empty($agent['enabled']) ? 'Disable' : 'Enable' ?></button>
                             <button class="button danger" name="action" value="delete" onclick="return confirm('Delete this agent and its queued job history?')">Delete</button>
                         </form>
                     </td>
