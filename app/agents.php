@@ -146,11 +146,15 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
                         </form>
                     </td>
                     <td>
-                        <form method="post" action="/agents_action.php" class="management-row-actions">
-                            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
-                            <button class="button secondary" name="action" value="toggle"><?= !empty($agent['enabled']) ? 'Disable' : 'Enable' ?></button>
-                            <button class="button danger" name="action" value="delete" onclick="return confirm('Delete this agent and its queued job history?')">Delete</button>
-                        </form>
+                        <div class="management-row-actions">
+                            <?php if (!empty($agent['firewall_id'])): ?><a class="button secondary" href="/ssh_access.php?firewall_id=<?= (int) $agent['firewall_id'] ?>">SSH access</a><?php endif; ?>
+                            <form method="post" action="/agents_action.php" class="management-row-actions">
+                                <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
+                                <button class="button secondary" name="action" value="self_update" <?= empty($agent['enabled']) ? 'disabled' : '' ?>>Update agent</button>
+                                <button class="button secondary" name="action" value="toggle"><?= !empty($agent['enabled']) ? 'Disable' : 'Enable' ?></button>
+                                <button class="button danger" name="action" value="delete" onclick="return confirm('Delete this agent and its queued job history?')">Delete</button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
             <?php endforeach; ?>
