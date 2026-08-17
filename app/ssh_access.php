@@ -14,6 +14,8 @@ $agent = $firewallId > 0 ? ssh_access_agent($firewallId) : null;
 $source = '';
 $objects = null;
 $error = '';
+$tcpReachable = false;
+$tcpTarget = '';
 $latestJob = $agent !== null ? ssh_access_latest_job((int) $agent['id']) : null;
 $flash = $_SESSION['ssh_access_result'] ?? null;
 unset($_SESSION['ssh_access_result']);
@@ -22,6 +24,16 @@ if ($firewall !== null) {
     try {
         $source = ssh_access_public_source();
         $objects = ssh_access_objects_status($firewall, $source);
+        $targetHost = parse_url((string) ($firewall['base_url'] ?? ''), PHP_URL_HOST);
+        if (is_string($targetHost) && $targetHost !== '') {
+            $tcpTarget = $targetHost . ':22';
+            $socketHost = filter_var($targetHost, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) ? '[' . $targetHost . ']' : $targetHost;
+            $socket = @stream_socket_client('tcp://' . $socketHost . ':22', $socketError, $socketMessage, 2.0, STREAM_CLIENT_CONNECT);
+            if (is_resource($socket)) {
+                $tcpReachable = true;
+                fclose($socket);
+            }
+        }
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
     }
@@ -34,6 +46,12 @@ if (is_array($latestJob) && trim((string) ($latestJob['result_json'] ?? '')) !==
     $decoded = json_decode((string) $latestJob['result_json'], true);
     if (is_array($decoded)) $jobResult = $decoded;
 }
+$jobStatus = is_array($latestJob) ? (string) ($latestJob['status'] ?? '') : '';
+$jobPending = in_array($jobStatus, ['queued', 'running'], true);
+$overallReady = is_array($jobResult)
+    && ($jobResult['ok'] ?? false) === true
+    && ($objects['ok'] ?? false) === true
+    && $tcpReachable;
 
 function ssh_badge(bool $ok, string $yes = 'OK', string $no = 'Missing / wrong'): string
 {
@@ -73,12 +91,12 @@ require __DIR__ . '/inc/header.php';
 <div class="ssh-summary">
     <div class="card"><strong>Source</strong><div><?= h($source !== '' ? $source : 'Unknown') ?></div></div>
     <div class="card"><strong>Agent</strong><div><?= h($agentVersion !== '' ? 'v' . $agentVersion : 'Not available') ?> <?= $agentReady ? '<span class="badge good">Ready</span>' : '<span class="badge bad">Update required</span>' ?></div></div>
-    <div class="card"><strong>Target</strong><div>TCP/22 · This Firewall</div></div>
+    <div class="card"><strong>Target</strong><div><?= h($tcpTarget !== '' ? $tcpTarget : 'TCP/22') ?> · This Firewall</div></div>
 </div>
 
 <div class="ssh-grid">
     <div class="card management-card">
-        <div class="management-card-header"><div><h2>Actions</h2><div class="management-summary">Both actions use the registered outbound agent; SSH itself is not required for the check.</div></div></div>
+        <div class="management-card-header"><div><h2>Actions</h2><div class="management-summary">Both actions use the registered outbound agent; SSH itself is not required for the configuration check.</div></div></div>
         <?php if ($agent === null): ?>
             <div class="alert error">No enabled agent is associated with this firewall.</div>
         <?php elseif (!$agentReady): ?>
@@ -106,6 +124,7 @@ require __DIR__ . '/inc/header.php';
             <div class="ssh-row"><strong>Firewall rule</strong><?= ssh_badge((bool) ($objects['rule']['ok'] ?? false)) ?></div>
             <div class="ssh-row"><strong>Rule source</strong><span>opnSentral</span></div>
             <div class="ssh-row"><strong>Rule destination</strong><span>This Firewall · TCP/22</span></div>
+            <div class="ssh-row"><strong>TCP/22 from opnSentral</strong><?= ssh_badge($tcpReachable, 'Reachable', 'Not reachable') ?></div>
         </div>
     </div>
 </div>
@@ -115,7 +134,7 @@ require __DIR__ . '/inc/header.php';
     <?php if ($latestJob === null): ?>
         <div class="empty">No SSH status job has run yet.</div>
     <?php else: ?>
-        <p>Job #<?= (int) $latestJob['id'] ?> · <span class="badge <?= (string) $latestJob['status'] === 'completed' ? 'good' : ((string) $latestJob['status'] === 'failed' ? 'bad' : 'neutral') ?>"><?= h((string) $latestJob['status']) ?></span></p>
+        <p>Job #<?= (int) $latestJob['id'] ?> · <span class="badge <?= $jobStatus === 'completed' ? 'good' : ($jobStatus === 'failed' ? 'bad' : 'neutral') ?>"><?= h($jobStatus) ?></span><?= $jobPending ? ' · waiting for agent…' : '' ?></p>
         <?php if ((string) ($latestJob['error'] ?? '') !== ''): ?><div class="alert error"><?= h((string) $latestJob['error']) ?></div><?php endif; ?>
         <?php if (is_array($jobResult)): ?>
         <div class="ssh-status">
@@ -125,11 +144,14 @@ require __DIR__ . '/inc/header.php';
             <div class="ssh-row"><strong>SSH group</strong><?= ssh_badge((string) ($jobResult['ssh_group'] ?? '') === 'admins', 'admins', (string) ($jobResult['ssh_group'] ?? 'Unknown')) ?></div>
             <div class="ssh-row"><strong>Sudo</strong><?= ssh_badge((bool) ($jobResult['sudo_enabled'] ?? false), 'Enabled', 'Disabled') ?></div>
             <div class="ssh-row"><strong>Sudo group</strong><?= ssh_badge((string) ($jobResult['sudo_group'] ?? '') === 'admins', 'admins', (string) ($jobResult['sudo_group'] ?? 'Unknown')) ?></div>
-            <div class="ssh-row"><strong>Overall</strong><?= ssh_badge((bool) ($jobResult['ok'] ?? false), 'READY', 'Needs repair') ?></div>
+            <div class="ssh-row"><strong>Overall</strong><?= ssh_badge($overallReady, 'READY', 'Needs repair') ?></div>
         </div>
         <?php endif; ?>
     <?php endif; ?>
 </div>
 <?php endif; ?>
 
+<?php if ($jobPending): ?>
+<script>window.setTimeout(function(){ window.location.reload(); }, 5000);</script>
+<?php endif; ?>
 <?php require __DIR__ . '/inc/footer.php'; ?>
