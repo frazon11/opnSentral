@@ -8,6 +8,10 @@ on:
       - "v*"
   workflow_dispatch:
 
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: write
@@ -61,6 +65,14 @@ jobs:
           echo "Building commit: $GITHUB_SHA"
           echo "Triggered by ref: $GITHUB_REF"
 
+      - name: Lint PHP sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            php -l "$file" >/dev/null
+          done < <(find app -type f \( -name '*.php' -o -path 'app/agent/opnsentral-agent' \) -print0)
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
 
@@ -77,7 +89,7 @@ jobs:
           tags: |
             type=match,pattern=v(.*),group=1
             type=raw,value=${{ steps.version.outputs.version }}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,prefix=sha-
 
       - name: Generate telemetry image metadata
@@ -89,7 +101,7 @@ jobs:
           tags: |
             type=match,pattern=v(.*),group=1
             type=raw,value=${{ steps.version.outputs.version }}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,prefix=sha-
 
       - name: Login to GitHub Container Registry
