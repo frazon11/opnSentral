@@ -136,6 +136,61 @@ if ($action === 'create_registration') {
     }
     $jobId = agent_queue_self_update($agent);
     $_SESSION['agent_update_result'] = 'Self-update job #' . $jobId . ' queued for ' . ((string) ($agent['name'] ?: $agent['last_hostname'] ?: $agent['agent_id'])) . '.';
+} elseif ($action === 'self_update_all') {
+    require_configuration_unlocked(false);
+    $targetVersion = agent_current_version();
+    if ($targetVersion === 'unknown') {
+        http_response_code(500);
+        exit('Current agent version is unavailable.');
+    }
+
+    $agents = $pdo->query('SELECT * FROM agents ORDER BY id')->fetchAll();
+    $queued = 0;
+    $skippedCurrent = 0;
+    $skippedDisabled = 0;
+    $skippedOld = 0;
+    $skippedPending = 0;
+
+    $pendingStatement = $pdo->prepare(
+        'SELECT COUNT(*) FROM agent_jobs
+         WHERE agent_id = ? AND job_type = "self_update" AND status IN ("queued", "running")'
+    );
+
+    foreach ($agents as $agent) {
+        if ((int) ($agent['enabled'] ?? 0) !== 1) {
+            $skippedDisabled++;
+            continue;
+        }
+
+        $current = trim((string) ($agent['last_version'] ?? ''));
+        if ($current === '' || version_compare($current, '0.1.2', '<')) {
+            $skippedOld++;
+            continue;
+        }
+        if (version_compare($current, $targetVersion, '>=')) {
+            $skippedCurrent++;
+            continue;
+        }
+
+        $pendingStatement->execute([(int) $agent['id']]);
+        if ((int) $pendingStatement->fetchColumn() > 0) {
+            $skippedPending++;
+            continue;
+        }
+
+        agent_queue_self_update($agent);
+        $queued++;
+    }
+
+    $_SESSION['agent_update_result'] = sprintf(
+        'Update all agents → target v%s: %d queued, %d already current, %d disabled, %d too old/unknown for self-update, %d already queued/running.',
+        $targetVersion,
+        $queued,
+        $skippedCurrent,
+        $skippedDisabled,
+        $skippedOld,
+        $skippedPending
+    );
 } elseif ($action === 'delete') {
     $id = (int) ($_POST['id'] ?? 0);
     $agent = $pdo->prepare('SELECT agent_id FROM agents WHERE id = ?');
