@@ -64,8 +64,8 @@ try {
             }
 
             $agentVersion = trim((string) ($agent['last_version'] ?? ''));
-            if ($agentVersion === '' || version_compare($agentVersion, '0.1.1', '<')) {
-                throw new RuntimeException('Agent 0.1.1 or newer is required for Administration writes.');
+            if ($agentVersion === '' || version_compare($agentVersion, '0.1.7', '<')) {
+                throw new RuntimeException('Agent 0.1.7 or newer is required for Administration writes. Update the agent first.');
             }
 
             backup_before_change($firewall, 'system-administration-fleet');
