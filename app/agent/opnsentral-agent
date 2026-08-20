@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.5';
+const AGENT_VERSION = '0.1.6';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
@@ -49,58 +49,25 @@ function curl_binary(): string
 
 function run_process(array $command, ?string $stdin = null): array
 {
-    $descriptors = [
-        0 => ['pipe', 'r'],
-        1 => ['pipe', 'w'],
-        2 => ['pipe', 'w'],
-    ];
+    $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
     $process = proc_open($command, $descriptors, $pipes);
     if (!is_resource($process)) throw new RuntimeException('Could not start HTTPS client.');
-
     if ($stdin !== null && $stdin !== '') fwrite($pipes[0], $stdin);
     fclose($pipes[0]);
     $stdout = stream_get_contents($pipes[1]);
     $stderr = stream_get_contents($pipes[2]);
-    fclose($pipes[1]);
-    fclose($pipes[2]);
+    fclose($pipes[1]); fclose($pipes[2]);
     $status = proc_close($process);
-
-    return [
-        'status' => $status,
-        'stdout' => is_string($stdout) ? $stdout : '',
-        'stderr' => is_string($stderr) ? $stderr : '',
-    ];
+    return ['status' => $status, 'stdout' => is_string($stdout) ? $stdout : '', 'stderr' => is_string($stderr) ? $stderr : ''];
 }
 
 function curl_request(string $url, string $method = 'GET', ?string $body = null, array $headers = [], bool $verifyTls = true): string
 {
     if (!preg_match('#^https://#i', $url)) throw new RuntimeException('Refusing non-HTTPS request: ' . $url);
-
-    $command = [
-        curl_binary(),
-        '--silent',
-        '--show-error',
-        '--location',
-        '--fail',
-        '--connect-timeout', '10',
-        '--max-time', '30',
-        '--proto', '=https',
-        '--user-agent', 'opnSentral-agent/' . AGENT_VERSION,
-    ];
+    $command = [curl_binary(), '--silent', '--show-error', '--location', '--fail', '--connect-timeout', '10', '--max-time', '30', '--proto', '=https', '--user-agent', 'opnSentral-agent/' . AGENT_VERSION];
     if (!$verifyTls) $command[] = '--insecure';
-
-    foreach ($headers as $header) {
-        $command[] = '--header';
-        $command[] = (string) $header;
-    }
-
-    if (strtoupper($method) === 'POST') {
-        $command[] = '--request';
-        $command[] = 'POST';
-        $command[] = '--data-binary';
-        $command[] = '@-';
-    }
-
+    foreach ($headers as $header) { $command[] = '--header'; $command[] = (string) $header; }
+    if (strtoupper($method) === 'POST') { $command[] = '--request'; $command[] = 'POST'; $command[] = '--data-binary'; $command[] = '@-'; }
     $command[] = $url;
     $result = run_process($command, $body);
     if ((int) $result['status'] !== 0) {
@@ -113,16 +80,11 @@ function curl_request(string $url, string $method = 'GET', ?string $body = null,
 
 function http_post(string $url, string $body, array $headers, bool $verifyTls = true): array
 {
-    $headerLines = array_merge([
-        'Content-Type: application/json',
-        'Accept: application/json',
-    ], $headers);
+    $headerLines = array_merge(['Content-Type: application/json', 'Accept: application/json'], $headers);
     $response = curl_request($url, 'POST', $body, $headerLines, $verifyTls);
     $decoded = json_decode($response, true);
     if (!is_array($decoded)) throw new RuntimeException('Server returned invalid JSON.');
-    if (($decoded['ok'] ?? false) !== true) {
-        throw new RuntimeException((string) ($decoded['error'] ?? 'Server rejected the request.'));
-    }
+    if (($decoded['ok'] ?? false) !== true) throw new RuntimeException((string) ($decoded['error'] ?? 'Server rejected the request.'));
     return $decoded;
 }
 
@@ -131,9 +93,7 @@ function load_config(): array
     if (!is_file(CONFIG_PATH)) fail('Not registered. Run: opnsentral-agent register SERVER_URL TOKEN');
     $decoded = json_decode((string) file_get_contents(CONFIG_PATH), true);
     if (!is_array($decoded)) fail('Configuration file is invalid.');
-    foreach (['server_url', 'agent_id', 'agent_secret'] as $key) {
-        if (trim((string) ($decoded[$key] ?? '')) === '') fail('Configuration is missing ' . $key . '.');
-    }
+    foreach (['server_url', 'agent_id', 'agent_secret'] as $key) if (trim((string) ($decoded[$key] ?? '')) === '') fail('Configuration is missing ' . $key . '.');
     return $decoded;
 }
 
@@ -148,33 +108,20 @@ function save_config(array $config): void
 
 function signed_post(array $config, string $path, array $payload): array
 {
-    $body = json_body($payload);
-    $timestamp = (string) time();
-    $nonce = bin2hex(random_bytes(16));
+    $body = json_body($payload); $timestamp = (string) time(); $nonce = bin2hex(random_bytes(16));
     $canonical = $timestamp . "\n" . $nonce . "\n" . hash('sha256', $body);
     $signature = hash_hmac('sha256', $canonical, (string) $config['agent_secret']);
-    return http_post(
-        rtrim((string) $config['server_url'], '/') . $path,
-        $body,
-        [
-            'X-OpnSentral-Agent-ID: ' . $config['agent_id'],
-            'X-OpnSentral-Timestamp: ' . $timestamp,
-            'X-OpnSentral-Nonce: ' . $nonce,
-            'X-OpnSentral-Signature: ' . $signature,
-        ],
-        ($config['verify_tls'] ?? true) !== false
-    );
+    return http_post(rtrim((string) $config['server_url'], '/') . $path, $body, [
+        'X-OpnSentral-Agent-ID: ' . $config['agent_id'],
+        'X-OpnSentral-Timestamp: ' . $timestamp,
+        'X-OpnSentral-Nonce: ' . $nonce,
+        'X-OpnSentral-Signature: ' . $signature,
+    ], ($config['verify_tls'] ?? true) !== false);
 }
 
 function registration_payload(string $token): array
 {
-    return [
-        'token' => $token,
-        'hostname' => hostname_value(),
-        'opnsense_version' => opnsense_version(),
-        'architecture' => php_uname('m'),
-        'agent_version' => AGENT_VERSION,
-    ];
+    return ['token' => $token, 'hostname' => hostname_value(), 'opnsense_version' => opnsense_version(), 'architecture' => php_uname('m'), 'agent_version' => AGENT_VERSION];
 }
 
 function register_agent(string $serverUrl, string $token): void
@@ -183,44 +130,26 @@ function register_agent(string $serverUrl, string $token): void
     if (!preg_match('#^https://#i', $serverUrl)) fail('Registration requires an https:// opnSentral URL.');
     if (!preg_match('/^[A-Za-z0-9_-]{40,128}$/', $token)) fail('Registration token format is invalid.');
     $response = http_post($serverUrl . '/api/agent_register.php', json_body(registration_payload($token)), [], true);
-    save_config([
-        'server_url' => $serverUrl,
-        'agent_id' => (string) $response['agent_id'],
-        'agent_secret' => (string) $response['agent_secret'],
-        'verify_tls' => true,
-        'poll_interval' => max(30, (int) ($response['poll_interval'] ?? 60)),
-    ]);
+    save_config(['server_url' => $serverUrl, 'agent_id' => (string) $response['agent_id'], 'agent_secret' => (string) $response['agent_secret'], 'verify_tls' => true, 'poll_interval' => max(30, (int) ($response['poll_interval'] ?? 60))]);
     fwrite(STDOUT, "Registered with opnSentral as {$response['agent_id']}\n");
 }
 
 function report(array $config): void
 {
-    signed_post($config, '/api/agent_report.php', [
-        'hostname' => hostname_value(),
-        'agent_version' => AGENT_VERSION,
-        'opnsense_version' => opnsense_version(),
-        'architecture' => php_uname('m'),
-        'platform' => 'opnsense',
-        'reported_at' => gmdate('c'),
-    ]);
+    signed_post($config, '/api/agent_report.php', ['hostname' => hostname_value(), 'agent_version' => AGENT_VERSION, 'opnsense_version' => opnsense_version(), 'architecture' => php_uname('m'), 'platform' => 'opnsense', 'reported_at' => gmdate('c')]);
 }
 
 function run_local_command(string $command, string $label): void
 {
-    $output = [];
-    $status = 0;
-    exec($command . ' 2>&1', $output, $status);
-    if ($status !== 0) {
-        throw new RuntimeException($label . ' failed' . ($output ? ': ' . implode(' | ', array_slice($output, -5)) : '.'));
-    }
+    $output = []; $status = 0; exec($command . ' 2>&1', $output, $status);
+    if ($status !== 0) throw new RuntimeException($label . ' failed' . ($output ? ': ' . implode(' | ', array_slice($output, -5)) : '.'));
 }
 
 function load_opnsense_config(): array
 {
     $configFile = '/usr/local/etc/inc/config.inc';
     if (!is_file($configFile)) throw new RuntimeException('OPNsense configuration library was not found.');
-    require_once $configFile;
-    global $config;
+    require_once $configFile; global $config;
     if (!is_array($config)) throw new RuntimeException('OPNsense configuration is unavailable.');
     return $config;
 }
@@ -231,331 +160,232 @@ function set_administration_settings(array $payload): array
     if (!is_array($requested) || $requested === []) throw new RuntimeException('Administration settings payload is empty.');
     $allowed = ['disablehttpredirect', 'ssl-hsts', 'httpaccesslog', 'nodnsrebindcheck', 'nohttpreferercheck', 'quietlogin'];
     $changes = [];
-    foreach ($requested as $key => $value) {
-        $key = (string) $key;
-        if (!in_array($key, $allowed, true) || !is_bool($value)) throw new RuntimeException('Unsupported Administration setting: ' . $key);
-        $changes[$key] = $value;
-    }
-    load_opnsense_config();
-    global $config;
+    foreach ($requested as $key => $value) { $key = (string) $key; if (!in_array($key, $allowed, true) || !is_bool($value)) throw new RuntimeException('Unsupported Administration setting: ' . $key); $changes[$key] = $value; }
+    load_opnsense_config(); global $config;
     if (!isset($config['system']) || !is_array($config['system'])) $config['system'] = [];
     if (!isset($config['system']['webgui']) || !is_array($config['system']['webgui'])) $config['system']['webgui'] = [];
     $before = [];
-    foreach ($changes as $key => $enabled) {
-        $before[$key] = array_key_exists($key, $config['system']['webgui']);
-        if ($enabled) $config['system']['webgui'][$key] = '';
-        else unset($config['system']['webgui'][$key]);
-    }
+    foreach ($changes as $key => $enabled) { $before[$key] = array_key_exists($key, $config['system']['webgui']); if ($enabled) $config['system']['webgui'][$key] = ''; else unset($config['system']['webgui'][$key]); }
     if (!function_exists('write_config')) throw new RuntimeException('OPNsense write_config() is unavailable.');
     write_config('opnSentral: update System Settings Administration');
     run_local_command('/usr/local/sbin/configctl webgui restart', 'WebGUI restart');
     if (array_key_exists('disablehttpredirect', $changes)) run_local_command('/usr/local/sbin/configctl filter reload', 'Firewall reload');
-    return [
-        'message' => count($changes) . ' Administration setting' . (count($changes) === 1 ? '' : 's') . ' applied.',
-        'settings' => $changes,
-        'previous' => $before,
-        'applied_at' => gmdate('c'),
+    return ['message' => count($changes) . ' Administration setting' . (count($changes) === 1 ? '' : 's') . ' applied.', 'settings' => $changes, 'previous' => $before, 'applied_at' => gmdate('c')];
+}
+
+function fleet_presence(array &$target, string $key, bool $enabled): void
+{
+    if ($enabled) $target[$key] = ''; else unset($target[$key]);
+}
+
+function fleet_text(mixed $value, string $key, int $max = 255): string
+{
+    if (!is_string($value)) throw new RuntimeException('Setting ' . $key . ' must be text.');
+    $value = trim($value);
+    if (strlen($value) > $max || preg_match('/[\x00-\x1F\x7F]/', $value)) throw new RuntimeException('Invalid value for ' . $key . '.');
+    return $value;
+}
+
+function set_general_settings(array $payload): array
+{
+    $requested = $payload['settings'] ?? null;
+    if (!is_array($requested) || $requested === []) throw new RuntimeException('General settings payload is empty.');
+    $allowed = ['hostname','domain','timezone','language','theme','prefer_ipv4','dns','dnssearchdomain','dnsallowoverride','dnsallowoverride_exclude','dnslocalhost','gw_switch_default'];
+    foreach ($requested as $key => $_) if (!in_array((string)$key, $allowed, true)) throw new RuntimeException('Unsupported General setting: ' . $key);
+    load_opnsense_config(); global $config;
+    if (!isset($config['system']) || !is_array($config['system'])) $config['system'] = [];
+    $before = [];
+    foreach ($requested as $key => $value) {
+        $key = (string)$key; $before[$key] = null;
+        if (in_array($key, ['prefer_ipv4','dnslocalhost','gw_switch_default'], true)) {
+            if (!is_bool($value)) throw new RuntimeException('Setting ' . $key . ' must be boolean.');
+            $before[$key] = array_key_exists($key, $config['system']); fleet_presence($config['system'], $key, $value); continue;
+        }
+        if ($key === 'dnsallowoverride') {
+            if (!is_bool($value)) throw new RuntimeException('Setting dnsallowoverride must be boolean.');
+            $before[$key] = (string)($config['system'][$key] ?? '0'); $config['system'][$key] = $value ? '1' : '0'; continue;
+        }
+        if ($key === 'theme') {
+            $text = fleet_text($value, $key, 128); $before[$key] = $config['theme'] ?? null; if ($text === '' || strcasecmp($text, 'Default') === 0) unset($config['theme']); else $config['theme'] = $text; continue;
+        }
+        if ($key === 'dns') {
+            $text = fleet_text($value, $key, 2048); $before[$key] = $config['system']['dnsserver'] ?? [];
+            $servers = []; $gateways = [];
+            if ($text !== '' && strcasecmp($text, 'None configured') !== 0) {
+                foreach (preg_split('/\s*,\s*/', $text) ?: [] as $entry) {
+                    if ($entry === '') continue;
+                    $parts = preg_split('/\s+via\s+/i', $entry, 2) ?: [];
+                    $server = trim((string)($parts[0] ?? ''));
+                    if (filter_var($server, FILTER_VALIDATE_IP) === false) throw new RuntimeException('Invalid DNS server: ' . $server);
+                    $servers[] = $server; $gateways[] = trim((string)($parts[1] ?? 'none')) ?: 'none';
+                }
+            }
+            $config['system']['dnsserver'] = $servers;
+            for ($i = 1; $i <= 8; $i++) unset($config['system']['dns' . $i . 'gw']);
+            foreach ($gateways as $index => $gateway) if (strtolower($gateway) !== 'none') $config['system']['dns' . ($index + 1) . 'gw'] = $gateway;
+            continue;
+        }
+        $limits = ['hostname'=>253,'domain'=>253,'timezone'=>128,'language'=>32,'dnssearchdomain'=>1024,'dnsallowoverride_exclude'=>1024];
+        $text = fleet_text($value, $key, $limits[$key] ?? 255); $before[$key] = $config['system'][$key] ?? null;
+        if (in_array($key, ['dnssearchdomain','dnsallowoverride_exclude'], true) && ($text === '' || in_array(strtolower($text), ['none','none configured'], true))) unset($config['system'][$key]);
+        else $config['system'][$key] = $text;
+    }
+    if (!function_exists('write_config')) throw new RuntimeException('OPNsense write_config() is unavailable.');
+    write_config('opnSentral: update System Settings General');
+    return ['message' => count($requested) . ' General setting' . (count($requested) === 1 ? '' : 's') . ' applied.', 'settings' => $requested, 'previous' => $before, 'applied_at' => gmdate('c')];
+}
+
+function set_firewall_advanced_settings(array $payload): array
+{
+    $requested = $payload['settings'] ?? null;
+    if (!is_array($requested) || $requested === []) throw new RuntimeException('Advanced firewall settings payload is empty.');
+    $boolMap = [
+        'natreflection'=>['system','disablenatreflection',true], 'binatreflection'=>['system','enablebinatreflection',false], 'natreflectionhelper'=>['system','enablenatreflectionhelper',false],
+        'skip_rules_gw_down'=>['system','skip_rules_gw_down',false], 'lb_use_sticky'=>['system','lb_use_sticky',false], 'pf_share_forward'=>['system','pf_share_forward',false], 'pf_disable_force_gw'=>['system','pf_disable_force_gw',false],
+        'schedule_states'=>['system','schedule_states',false], 'log_default_block'=>['syslog','nologdefaultblock',true], 'log_default_pass'=>['syslog','nologdefaultpass',true], 'logoutboundnat'=>['syslog','logoutboundnat',false],
+        'log_bogons'=>['syslog','nologbogons',true], 'log_privatenets'=>['syslog','nologprivatenets',true], 'keepcounters'=>['system','keepcounters',false], 'state_policy'=>['system','state-policy',false],
+        'disablefilter'=>['system','disablefilter',false], 'bypassstaticroutes'=>['filter','bypassstaticroutes',false], 'disablereplyto'=>['system','disablereplyto',false], 'noantilockout'=>['system_webgui','noantilockout',false],
+        'no_ipv6_rfc4890_req'=>['system','no_ipv6_rfc4890_req',false], 'no_port0_block'=>['system','no_port0_block',false], 'no_sshlockout'=>['system','no_sshlockout',false], 'no_virusprot'=>['system','no_virusprot',false],
+        'checkaliasesurlcert'=>['system','checkaliasesurlcert',false],
     ];
+    $textKeys = ['bogons_interval','srctrack','pfdebug','optimization','adaptivestart','adaptiveend','maximumstates','maximumfrags','maximumtableentries','aliasesresolveinterval','syncookies','syncookies_adaptstart','syncookies_adaptend'];
+    foreach ($requested as $key => $_) if (!isset($boolMap[(string)$key]) && !in_array((string)$key, $textKeys, true)) throw new RuntimeException('Unsupported Advanced setting: ' . $key);
+    load_opnsense_config(); global $config;
+    foreach (['system','syslog','filter'] as $section) if (!isset($config[$section]) || !is_array($config[$section])) $config[$section] = [];
+    if (!isset($config['system']['webgui']) || !is_array($config['system']['webgui'])) $config['system']['webgui'] = [];
+    if (!isset($config['system']['bogons']) || !is_array($config['system']['bogons'])) $config['system']['bogons'] = [];
+    $before = [];
+    foreach ($requested as $key => $value) {
+        $key = (string)$key;
+        if (isset($boolMap[$key])) {
+            if (!is_bool($value)) throw new RuntimeException('Setting ' . $key . ' must be boolean.');
+            [$section,$configKey,$invert] = $boolMap[$key];
+            $target =& ($section === 'system_webgui' ? $config['system']['webgui'] : $config[$section]);
+            $before[$key] = array_key_exists($configKey, $target);
+            fleet_presence($target, $configKey, $invert ? !$value : $value);
+            unset($target); continue;
+        }
+        $text = fleet_text($value, $key, 128); $before[$key] = null;
+        if ($key === 'bogons_interval') {
+            $text = strtolower($text); if (!in_array($text, ['daily','weekly','monthly'], true)) throw new RuntimeException('Bogon update frequency must be daily, weekly or monthly.');
+            $before[$key] = $config['system']['bogons']['interval'] ?? null; $config['system']['bogons']['interval'] = $text; continue;
+        }
+        if (in_array($key, ['srctrack','adaptivestart','adaptiveend','maximumstates','maximumfrags','maximumtableentries','aliasesresolveinterval','syncookies_adaptstart','syncookies_adaptend'], true)) {
+            if (strcasecmp($text, 'Default') !== 0 && !preg_match('/^\d+$/', $text)) throw new RuntimeException('Setting ' . $key . ' must be a non-negative integer or Default.');
+        }
+        if ($key === 'syncookies') {
+            $text = strtolower($text); if ($text === 'never (default)') $text = 'never';
+            if (!in_array($text, ['never','always','adaptive'], true)) throw new RuntimeException('Syncookies must be never, always or adaptive.');
+        }
+        if ($key === 'pfdebug' && !preg_match('/^[A-Za-z0-9_-]{1,32}$/', $text)) throw new RuntimeException('Invalid firewall debug level.');
+        if ($key === 'optimization' && !preg_match('/^[A-Za-z0-9_-]{1,32}$/', $text)) throw new RuntimeException('Invalid firewall optimization value.');
+        $configKey = $key; $before[$key] = $config['system'][$configKey] ?? null;
+        if (strcasecmp($text, 'Default') === 0) unset($config['system'][$configKey]); else $config['system'][$configKey] = $text;
+    }
+    if (!function_exists('write_config')) throw new RuntimeException('OPNsense write_config() is unavailable.');
+    write_config('opnSentral: update Firewall Settings Advanced');
+    run_local_command('/usr/local/sbin/configctl filter reload', 'Firewall reload');
+    return ['message' => count($requested) . ' Advanced firewall setting' . (count($requested) === 1 ? '' : 's') . ' applied.', 'settings' => $requested, 'previous' => $before, 'applied_at' => gmdate('c')];
 }
 
 function normalize_string_list(mixed $value, int $limit): array
 {
     if (!is_array($value)) return [];
     $result = [];
-    foreach ($value as $item) {
-        $item = trim((string)$item);
-        if ($item === '') continue;
-        if (!preg_match('/^[A-Za-z0-9_.:\/@+-]{1,160}$/', $item)) throw new RuntimeException('Invalid Access list value: ' . $item);
-        $result[] = $item;
-    }
-    $result = array_values(array_unique($result));
-    if (count($result) > $limit) throw new RuntimeException('Access list contains too many values.');
-    return $result;
+    foreach ($value as $item) { $item = trim((string)$item); if ($item === '') continue; if (!preg_match('/^[A-Za-z0-9_.:\/@+-]{1,160}$/', $item)) throw new RuntimeException('Invalid Access list value: ' . $item); $result[] = $item; }
+    $result = array_values(array_unique($result)); if (count($result) > $limit) throw new RuntimeException('Access list contains too many values.'); return $result;
 }
 
 function set_access_user(array $payload): array
 {
-    $name = trim((string)($payload['user'] ?? ''));
-    $disabled = $payload['disabled'] ?? null;
-    $shell = trim((string)($payload['shell'] ?? ''));
-    $groups = normalize_string_list($payload['groups'] ?? [], 100);
-    $privileges = normalize_string_list($payload['privileges'] ?? [], 250);
-
+    $name = trim((string)($payload['user'] ?? '')); $disabled = $payload['disabled'] ?? null; $shell = trim((string)($payload['shell'] ?? ''));
+    $groups = normalize_string_list($payload['groups'] ?? [], 100); $privileges = normalize_string_list($payload['privileges'] ?? [], 250);
     if ($name === '' || !preg_match('/^[^\x00-\x1F\x7F]{1,128}$/u', $name)) throw new RuntimeException('Invalid user name.');
     if (!is_bool($disabled)) throw new RuntimeException('Disabled state must be boolean.');
     $allowedShells = ['', '/bin/csh', '/bin/tcsh', '/bin/sh', '/sbin/nologin', '/usr/local/bin/scponly', '/usr/local/sbin/scponlyc', '/usr/local/sbin/ssh_tunnel_shell'];
     if (!in_array($shell, $allowedShells, true)) throw new RuntimeException('Unsupported login shell.');
-
-    $configFile = '/usr/local/etc/inc/config.inc';
-    $authFile = '/usr/local/etc/inc/auth.inc';
+    $configFile = '/usr/local/etc/inc/config.inc'; $authFile = '/usr/local/etc/inc/auth.inc';
     if (!is_file($configFile) || !is_file($authFile)) throw new RuntimeException('OPNsense Access libraries were not found.');
-    require_once $configFile;
-    require_once $authFile;
-
-    global $config;
-    if (!is_array($config) || !isset($config['system']['user']) || !is_array($config['system']['user'])) {
-        throw new RuntimeException('OPNsense user configuration is unavailable.');
-    }
-
-    $index = null;
-    foreach ($config['system']['user'] as $key => $candidate) {
-        if (is_array($candidate) && (string)($candidate['name'] ?? '') === $name) {
-            $index = $key;
-            break;
-        }
-    }
+    require_once $configFile; require_once $authFile; global $config;
+    if (!is_array($config) || !isset($config['system']['user']) || !is_array($config['system']['user'])) throw new RuntimeException('OPNsense user configuration is unavailable.');
+    $index = null; foreach ($config['system']['user'] as $key => $candidate) if (is_array($candidate) && (string)($candidate['name'] ?? '') === $name) { $index = $key; break; }
     if ($index === null) throw new RuntimeException('User not found: ' . $name);
-
-    $user = $config['system']['user'][$index];
-    $uid = (string)($user['uid'] ?? '');
-    if ($uid === '0' && $disabled) throw new RuntimeException('UID 0 cannot be disabled through opnSentral.');
-
-    $groupNames = [];
-    foreach (($config['system']['group'] ?? []) as $group) {
-        if (is_array($group) && trim((string)($group['name'] ?? '')) !== '') $groupNames[] = (string)$group['name'];
-    }
-    foreach ($groups as $group) {
-        if (!in_array($group, $groupNames, true)) throw new RuntimeException('Group does not exist: ' . $group);
-    }
-
-    if ($disabled) $user['disabled'] = '1';
-    else unset($user['disabled']);
-    if ($shell !== '') $user['shell'] = $shell;
-    else unset($user['shell']);
-    if ($privileges !== []) $user['priv'] = $privileges;
-    else unset($user['priv']);
-
+    $user = $config['system']['user'][$index]; $uid = (string)($user['uid'] ?? ''); if ($uid === '0' && $disabled) throw new RuntimeException('UID 0 cannot be disabled through opnSentral.');
+    $groupNames = []; foreach (($config['system']['group'] ?? []) as $group) if (is_array($group) && trim((string)($group['name'] ?? '')) !== '') $groupNames[] = (string)$group['name'];
+    foreach ($groups as $group) if (!in_array($group, $groupNames, true)) throw new RuntimeException('Group does not exist: ' . $group);
+    if ($disabled) $user['disabled'] = '1'; else unset($user['disabled']); if ($shell !== '') $user['shell'] = $shell; else unset($user['shell']); if ($privileges !== []) $user['priv'] = $privileges; else unset($user['priv']);
     $config['system']['user'][$index] = $user;
-
-    if (!function_exists('local_user_set_groups') || !function_exists('local_user_set') || !function_exists('write_config')) {
-        throw new RuntimeException('Required OPNsense local-user functions are unavailable.');
-    }
-
-    $groupSelection = array_values(array_unique(array_merge(['all'], $groups)));
-    local_user_set_groups($user, $groupSelection);
-    $config['system']['user'][$index] = $user;
-    write_config('opnSentral: update System Access user ' . $name);
-    local_user_set($user);
-
-    return [
-        'message' => 'User ' . $name . ' updated.',
-        'user' => $name,
-        'disabled' => $disabled,
-        'shell' => $shell,
-        'groups' => $groups,
-        'privileges' => $privileges,
-        'applied_at' => gmdate('c'),
-    ];
+    if (!function_exists('local_user_set_groups') || !function_exists('local_user_set') || !function_exists('write_config')) throw new RuntimeException('Required OPNsense local-user functions are unavailable.');
+    $groupSelection = array_values(array_unique(array_merge(['all'], $groups))); local_user_set_groups($user, $groupSelection); $config['system']['user'][$index] = $user;
+    write_config('opnSentral: update System Access user ' . $name); local_user_set($user);
+    return ['message' => 'User ' . $name . ' updated.', 'user' => $name, 'disabled' => $disabled, 'shell' => $shell, 'groups' => $groups, 'privileges' => $privileges, 'applied_at' => gmdate('c')];
 }
 
 function ssh_access_status(): array
 {
-    load_opnsense_config();
-    global $config;
-    $system = is_array($config['system'] ?? null) ? $config['system'] : [];
-    $ssh = is_array($system['ssh'] ?? null) ? $system['ssh'] : [];
-
-    $sshEnabled = (string) ($ssh['enabled'] ?? '') === 'enabled';
-    $port = trim((string) ($ssh['port'] ?? '22'));
-    if ($port === '') $port = '22';
-    $sshGroup = trim((string) ($ssh['group'] ?? 'admins'));
-    if ($sshGroup === '') $sshGroup = 'admins';
-    $sudoMode = trim((string) ($system['sudo_allow_wheel'] ?? ''));
-    $sudoGroup = trim((string) ($system['sudo_allow_group'] ?? ''));
-    $sudoEnabled = in_array($sudoMode, ['1', '2'], true);
-
-    $daemonOutput = [];
-    $daemonStatus = 0;
-    exec('/usr/bin/pgrep -x sshd 2>/dev/null', $daemonOutput, $daemonStatus);
-    $daemonRunning = $daemonStatus === 0 && $daemonOutput !== [];
-
-    $ok = $sshEnabled
-        && $daemonRunning
-        && $port === '22'
-        && $sshGroup === 'admins'
-        && $sudoEnabled
-        && $sudoGroup === 'admins';
-
-    return [
-        'ssh_enabled' => $sshEnabled,
-        'daemon_running' => $daemonRunning,
-        'port' => $port,
-        'ssh_group' => $sshGroup,
-        'sudo_enabled' => $sudoEnabled,
-        'sudo_mode' => $sudoMode,
-        'sudo_group' => $sudoGroup,
-        'ok' => $ok,
-        'checked_at' => gmdate('c'),
-    ];
+    load_opnsense_config(); global $config; $system = is_array($config['system'] ?? null) ? $config['system'] : []; $ssh = is_array($system['ssh'] ?? null) ? $system['ssh'] : [];
+    $sshEnabled = (string) ($ssh['enabled'] ?? '') === 'enabled'; $port = trim((string) ($ssh['port'] ?? '22')); if ($port === '') $port = '22';
+    $sshGroup = trim((string) ($ssh['group'] ?? 'admins')); if ($sshGroup === '') $sshGroup = 'admins'; $sudoMode = trim((string) ($system['sudo_allow_wheel'] ?? '')); $sudoGroup = trim((string) ($system['sudo_allow_group'] ?? '')); $sudoEnabled = in_array($sudoMode, ['1', '2'], true);
+    $daemonOutput = []; $daemonStatus = 0; exec('/usr/bin/pgrep -x sshd 2>/dev/null', $daemonOutput, $daemonStatus); $daemonRunning = $daemonStatus === 0 && $daemonOutput !== [];
+    $ok = $sshEnabled && $daemonRunning && $port === '22' && $sshGroup === 'admins' && $sudoEnabled && $sudoGroup === 'admins';
+    return ['ssh_enabled'=>$sshEnabled,'daemon_running'=>$daemonRunning,'port'=>$port,'ssh_group'=>$sshGroup,'sudo_enabled'=>$sudoEnabled,'sudo_mode'=>$sudoMode,'sudo_group'=>$sudoGroup,'ok'=>$ok,'checked_at'=>gmdate('c')];
 }
 
 function ensure_ssh_access(array $payload): array
 {
-    $port = (int) ($payload['port'] ?? 22);
-    $sudoMode = trim((string) ($payload['sudo_mode'] ?? '1'));
-    $sudoGroup = trim((string) ($payload['sudo_group'] ?? 'admins'));
-    if ($port !== 22) throw new RuntimeException('Managed SSH access only permits TCP port 22.');
-    if (!in_array($sudoMode, ['1', '2'], true)) throw new RuntimeException('Unsupported sudo mode.');
-    if ($sudoGroup !== 'admins') throw new RuntimeException('Managed SSH access requires sudo group admins.');
-
-    load_opnsense_config();
-    global $config;
-    if (!isset($config['system']) || !is_array($config['system'])) $config['system'] = [];
-    if (!isset($config['system']['ssh']) || !is_array($config['system']['ssh'])) $config['system']['ssh'] = [];
-
-    $before = ssh_access_status();
-    $config['system']['ssh']['noauto'] = 1;
-    $config['system']['ssh']['enabled'] = 'enabled';
-    $config['system']['ssh']['port'] = '22';
-    $config['system']['ssh']['group'] = 'admins';
-    $config['system']['sudo_allow_wheel'] = $sudoMode;
-    $config['system']['sudo_allow_group'] = 'admins';
-
-    if (!function_exists('write_config')) throw new RuntimeException('OPNsense write_config() is unavailable.');
-    write_config('Managed by opnSentral - Enable SSH management');
-    run_local_command('/usr/local/sbin/configctl sshd restart', 'OpenSSH restart');
-    usleep(500000);
-    $after = ssh_access_status();
-    if (($after['ok'] ?? false) !== true) {
-        throw new RuntimeException('SSH settings were written but post-change verification is not ready.');
-    }
-
-    $after['message'] = 'Managed SSH access enabled and verified.';
-    $after['previous'] = $before;
-    $after['applied_at'] = gmdate('c');
-    return $after;
+    $port = (int) ($payload['port'] ?? 22); $sudoMode = trim((string) ($payload['sudo_mode'] ?? '1')); $sudoGroup = trim((string) ($payload['sudo_group'] ?? 'admins'));
+    if ($port !== 22) throw new RuntimeException('Managed SSH access only permits TCP port 22.'); if (!in_array($sudoMode, ['1', '2'], true)) throw new RuntimeException('Unsupported sudo mode.'); if ($sudoGroup !== 'admins') throw new RuntimeException('Managed SSH access requires sudo group admins.');
+    load_opnsense_config(); global $config; if (!isset($config['system']) || !is_array($config['system'])) $config['system'] = []; if (!isset($config['system']['ssh']) || !is_array($config['system']['ssh'])) $config['system']['ssh'] = [];
+    $before = ssh_access_status(); $config['system']['ssh']['noauto'] = 1; $config['system']['ssh']['enabled'] = 'enabled'; $config['system']['ssh']['port'] = '22'; $config['system']['ssh']['group'] = 'admins'; $config['system']['sudo_allow_wheel'] = $sudoMode; $config['system']['sudo_allow_group'] = 'admins';
+    if (!function_exists('write_config')) throw new RuntimeException('OPNsense write_config() is unavailable.'); write_config('Managed by opnSentral - Enable SSH management'); run_local_command('/usr/local/sbin/configctl sshd restart', 'OpenSSH restart'); usleep(500000); $after = ssh_access_status();
+    if (($after['ok'] ?? false) !== true) throw new RuntimeException('SSH settings were written but post-change verification is not ready.');
+    $after['message'] = 'Managed SSH access enabled and verified.'; $after['previous'] = $before; $after['applied_at'] = gmdate('c'); return $after;
 }
 
 function self_update(array $config, array $payload): array
 {
-    $expected = strtolower(trim((string) ($payload['sha256'] ?? '')));
-    if (!preg_match('/^[a-f0-9]{64}$/', $expected)) throw new RuntimeException('Self-update SHA-256 is missing or invalid.');
-    $server = rtrim((string) $config['server_url'], '/');
-    if (!preg_match('#^https://#i', $server)) throw new RuntimeException('Self-update requires the registered HTTPS server URL.');
-    $url = $server . '/agent/opnsentral-agent';
-    $verifyTls = ($config['verify_tls'] ?? true) !== false;
-    $binary = curl_request($url, 'GET', null, [], $verifyTls);
-    if (strlen($binary) < 1000) throw new RuntimeException('Could not download the replacement agent.');
-    if (!str_starts_with($binary, '#!/usr/local/bin/php')) throw new RuntimeException('Downloaded agent has an invalid file signature.');
-    $actual = hash('sha256', $binary);
-    if (!hash_equals($expected, $actual)) throw new RuntimeException('Downloaded agent SHA-256 does not match the deployment request.');
-    if (!preg_match("/const AGENT_VERSION = '([^']+)'/", $binary, $match)) throw new RuntimeException('Downloaded agent does not declare a version.');
-    $newVersion = (string) $match[1];
+    $expected = strtolower(trim((string) ($payload['sha256'] ?? ''))); if (!preg_match('/^[a-f0-9]{64}$/', $expected)) throw new RuntimeException('Self-update SHA-256 is missing or invalid.');
+    $server = rtrim((string) $config['server_url'], '/'); if (!preg_match('#^https://#i', $server)) throw new RuntimeException('Self-update requires the registered HTTPS server URL.');
+    $url = $server . '/agent/opnsentral-agent'; $verifyTls = ($config['verify_tls'] ?? true) !== false; $binary = curl_request($url, 'GET', null, [], $verifyTls);
+    if (strlen($binary) < 1000) throw new RuntimeException('Could not download the replacement agent.'); if (!str_starts_with($binary, '#!/usr/local/bin/php')) throw new RuntimeException('Downloaded agent has an invalid file signature.');
+    $actual = hash('sha256', $binary); if (!hash_equals($expected, $actual)) throw new RuntimeException('Downloaded agent SHA-256 does not match the deployment request.');
+    if (!preg_match("/const AGENT_VERSION = '([^']+)'/", $binary, $match)) throw new RuntimeException('Downloaded agent does not declare a version.'); $newVersion = (string) $match[1];
     if (version_compare($newVersion, AGENT_VERSION, '<')) throw new RuntimeException('Refusing to downgrade agent from ' . AGENT_VERSION . ' to ' . $newVersion . '.');
-    $target = '/usr/local/sbin/opnsentral-agent';
-    $temp = $target . '.new-' . bin2hex(random_bytes(4));
-    if (file_put_contents($temp, $binary, LOCK_EX) === false) throw new RuntimeException('Could not write replacement agent.');
-    chmod($temp, 0755);
-    if (!rename($temp, $target)) {
-        @unlink($temp);
-        throw new RuntimeException('Could not activate replacement agent.');
-    }
-    return [
-        'message' => 'Agent ' . AGENT_VERSION . ' updated to ' . $newVersion . '.',
-        'previous_version' => AGENT_VERSION,
-        'new_version' => $newVersion,
-        'sha256' => $actual,
-        '_restart_agent' => true,
-    ];
+    $target = '/usr/local/sbin/opnsentral-agent'; $temp = $target . '.new-' . bin2hex(random_bytes(4)); if (file_put_contents($temp, $binary, LOCK_EX) === false) throw new RuntimeException('Could not write replacement agent.'); chmod($temp, 0755);
+    if (!rename($temp, $target)) { @unlink($temp); throw new RuntimeException('Could not activate replacement agent.'); }
+    return ['message'=>'Agent ' . AGENT_VERSION . ' updated to ' . $newVersion . '.','previous_version'=>AGENT_VERSION,'new_version'=>$newVersion,'sha256'=>$actual,'_restart_agent'=>true];
 }
 
 function execute_job(array $job, array $config): array
 {
     $type = (string) ($job['type'] ?? '');
-    if ($type === 'inventory') {
-        return [
-            'hostname' => hostname_value(),
-            'opnsense_version' => opnsense_version(),
-            'architecture' => php_uname('m'),
-            'php_version' => PHP_VERSION,
-            'agent_version' => AGENT_VERSION,
-        ];
-    }
-    if ($type === 'system_status') {
-        $load = function_exists('sys_getloadavg') ? sys_getloadavg() : [];
-        return [
-            'hostname' => hostname_value(),
-            'load_average' => is_array($load) ? array_values($load) : [],
-            'uptime' => trim((string) shell_exec('/usr/bin/uptime 2>/dev/null')),
-            'root_bytes_total' => @disk_total_space('/') ?: null,
-            'root_bytes_free' => @disk_free_space('/') ?: null,
-            'checked_at' => gmdate('c'),
-        ];
-    }
-    if ($type === 'set_administration_settings') {
-        return set_administration_settings(is_array($job['payload'] ?? null) ? $job['payload'] : []);
-    }
-    if ($type === 'set_access_user') {
-        return set_access_user(is_array($job['payload'] ?? null) ? $job['payload'] : []);
-    }
-    if ($type === 'ssh_access_status') {
-        return ssh_access_status();
-    }
-    if ($type === 'ensure_ssh_access') {
-        return ensure_ssh_access(is_array($job['payload'] ?? null) ? $job['payload'] : []);
-    }
-    if ($type === 'self_update') {
-        return self_update($config, is_array($job['payload'] ?? null) ? $job['payload'] : []);
-    }
+    if ($type === 'inventory') return ['hostname'=>hostname_value(),'opnsense_version'=>opnsense_version(),'architecture'=>php_uname('m'),'php_version'=>PHP_VERSION,'agent_version'=>AGENT_VERSION];
+    if ($type === 'system_status') { $load = function_exists('sys_getloadavg') ? sys_getloadavg() : []; return ['hostname'=>hostname_value(),'load_average'=>is_array($load)?array_values($load):[],'uptime'=>trim((string)shell_exec('/usr/bin/uptime 2>/dev/null')),'root_bytes_total'=>@disk_total_space('/')?:null,'root_bytes_free'=>@disk_free_space('/')?:null,'checked_at'=>gmdate('c')]; }
+    if ($type === 'set_administration_settings') return set_administration_settings(is_array($job['payload'] ?? null) ? $job['payload'] : []);
+    if ($type === 'set_general_settings') return set_general_settings(is_array($job['payload'] ?? null) ? $job['payload'] : []);
+    if ($type === 'set_firewall_advanced_settings') return set_firewall_advanced_settings(is_array($job['payload'] ?? null) ? $job['payload'] : []);
+    if ($type === 'set_access_user') return set_access_user(is_array($job['payload'] ?? null) ? $job['payload'] : []);
+    if ($type === 'ssh_access_status') return ssh_access_status();
+    if ($type === 'ensure_ssh_access') return ensure_ssh_access(is_array($job['payload'] ?? null) ? $job['payload'] : []);
+    if ($type === 'self_update') return self_update($config, is_array($job['payload'] ?? null) ? $job['payload'] : []);
     throw new RuntimeException('Unsupported job type: ' . $type);
 }
 
-function schedule_self_restart(): void
-{
-    shell_exec("/bin/sh -c '(sleep 2; /usr/sbin/service opnsentral_agent restart) >/dev/null 2>&1 &' >/dev/null 2>&1");
-}
+function schedule_self_restart(): void { shell_exec("/bin/sh -c '(sleep 2; /usr/sbin/service opnsentral_agent restart) >/dev/null 2>&1 &' >/dev/null 2>&1"); }
 
 function poll_job(array $config): void
 {
-    $response = signed_post($config, '/api/agent_jobs.php', []);
-    $job = $response['job'] ?? null;
-    if (!is_array($job)) return;
-    $jobId = (int) ($job['id'] ?? 0);
-    if ($jobId <= 0) return;
-    try {
-        $result = execute_job($job, $config);
-        $restart = ($result['_restart_agent'] ?? false) === true;
-        unset($result['_restart_agent']);
-        signed_post($config, '/api/agent_job_result.php', [
-            'job_id' => $jobId,
-            'success' => true,
-            'result' => $result,
-        ]);
-        if ($restart) schedule_self_restart();
-    } catch (Throwable $exception) {
-        signed_post($config, '/api/agent_job_result.php', [
-            'job_id' => $jobId,
-            'success' => false,
-            'result' => null,
-            'error' => $exception->getMessage(),
-        ]);
-    }
+    $response = signed_post($config, '/api/agent_jobs.php', []); $job = $response['job'] ?? null; if (!is_array($job)) return; $jobId = (int) ($job['id'] ?? 0); if ($jobId <= 0) return;
+    try { $result = execute_job($job, $config); $restart = ($result['_restart_agent'] ?? false) === true; unset($result['_restart_agent']); signed_post($config, '/api/agent_job_result.php', ['job_id'=>$jobId,'success'=>true,'result'=>$result]); if ($restart) schedule_self_restart(); }
+    catch (Throwable $exception) { signed_post($config, '/api/agent_job_result.php', ['job_id'=>$jobId,'success'=>false,'result'=>null,'error'=>$exception->getMessage()]); }
 }
 
-function run_once(array $config): void
-{
-    report($config);
-    poll_job($config);
-}
+function run_once(array $config): void { report($config); poll_job($config); }
 
 $command = $argv[1] ?? 'run';
-if ($command === 'register') {
-    if (count($argv) < 4) fail('Usage: opnsentral-agent register https://OPNSENTRAL TOKEN');
-    register_agent((string) $argv[2], (string) $argv[3]);
-    exit(0);
-}
+if ($command === 'register') { if (count($argv) < 4) fail('Usage: opnsentral-agent register https://OPNSENTRAL TOKEN'); register_agent((string) $argv[2], (string) $argv[3]); exit(0); }
 $config = load_config();
-if ($command === 'once') {
-    run_once($config);
-    exit(0);
-}
+if ($command === 'once') { run_once($config); exit(0); }
 if ($command !== 'run') fail('Supported commands: register, once, run');
 $interval = max(30, (int) ($config['poll_interval'] ?? 60));
-while (true) {
-    try {
-        run_once($config);
-    } catch (Throwable $exception) {
-        fwrite(STDERR, gmdate('c') . ' ' . $exception->getMessage() . "\n");
-    }
-    sleep($interval);
-}
+while (true) { try { run_once($config); } catch (Throwable $exception) { fwrite(STDERR, gmdate('c') . ' ' . $exception->getMessage() . "\n"); } sleep($interval); }
