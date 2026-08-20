@@ -134,8 +134,12 @@ if ($action === 'create_registration') {
         http_response_code(400);
         exit('Agent 0.1.2 or newer is required for outbound self-update.');
     }
-    $jobId = agent_queue_self_update($agent);
-    $_SESSION['agent_update_result'] = 'Self-update job #' . $jobId . ' queued for ' . ((string) ($agent['name'] ?: $agent['last_hostname'] ?: $agent['agent_id'])) . '.';
+    try {
+        $jobId = agent_queue_self_update($agent);
+        $_SESSION['agent_update_result'] = 'Self-update job #' . $jobId . ' queued for ' . ((string) ($agent['name'] ?: $agent['last_hostname'] ?: $agent['agent_id'])) . '.';
+    } catch (Throwable $exception) {
+        $_SESSION['agent_update_result'] = 'Could not queue agent update: ' . $exception->getMessage();
+    }
 } elseif ($action === 'self_update_all') {
     require_configuration_unlocked(false);
     $targetVersion = agent_current_version();
@@ -150,6 +154,8 @@ if ($action === 'create_registration') {
     $skippedDisabled = 0;
     $skippedOld = 0;
     $skippedPending = 0;
+    $queueFailed = 0;
+    $queueErrors = [];
 
     $pendingStatement = $pdo->prepare(
         'SELECT COUNT(*) FROM agent_jobs
@@ -178,19 +184,30 @@ if ($action === 'create_registration') {
             continue;
         }
 
-        agent_queue_self_update($agent);
-        $queued++;
+        try {
+            agent_queue_self_update($agent);
+            $queued++;
+        } catch (Throwable $exception) {
+            $queueFailed++;
+            $label = (string) ($agent['name'] ?: $agent['last_hostname'] ?: $agent['agent_id']);
+            $queueErrors[] = $label . ': ' . $exception->getMessage();
+        }
     }
 
-    $_SESSION['agent_update_result'] = sprintf(
-        'Update all agents → target v%s: %d queued, %d already current, %d disabled, %d too old/unknown for self-update, %d already queued/running.',
+    $message = sprintf(
+        'Update all agents → target v%s: %d queued, %d already current, %d disabled, %d too old/unknown for self-update, %d already queued/running, %d queue failures.',
         $targetVersion,
         $queued,
         $skippedCurrent,
         $skippedDisabled,
         $skippedOld,
-        $skippedPending
+        $skippedPending,
+        $queueFailed
     );
+    if ($queueErrors !== []) {
+        $message .= ' ' . implode(' | ', array_slice($queueErrors, 0, 5));
+    }
+    $_SESSION['agent_update_result'] = $message;
 } elseif ($action === 'delete') {
     $id = (int) ($_POST['id'] ?? 0);
     $agent = $pdo->prepare('SELECT agent_id FROM agents WHERE id = ?');
