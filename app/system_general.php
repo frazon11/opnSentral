@@ -4,283 +4,141 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/opnsense.php';
-
 require_login();
 
-$firewalls = db()->query(
-    'SELECT id,name,base_url FROM firewalls ORDER BY name'
-)->fetchAll();
+$firewalls = db()->query('SELECT * FROM firewalls ORDER BY name')->fetchAll();
 
-$id = (int) ($_GET['firewall_id'] ?? 0);
-$firewall = $id > 0 ? firewall_by_id($id) : null;
-$error = '';
-$sections = [];
-
-function general_value(
-    SimpleXMLElement $xml,
-    string $path,
-    string $default = ''
-): string {
+function general_matrix_value(SimpleXMLElement $xml, string $path, string $default = '—'): string
+{
     $nodes = $xml->xpath($path);
-    if (!is_array($nodes) || !isset($nodes[0])) {
-        return $default;
-    }
-
+    if (!is_array($nodes) || !isset($nodes[0])) return $default;
     $value = trim((string) $nodes[0]);
     return $value === '' ? $default : $value;
 }
 
-function general_values(SimpleXMLElement $xml, string $path): array
+function general_matrix_values(SimpleXMLElement $xml, string $path): array
 {
     $nodes = $xml->xpath($path);
-    if (!is_array($nodes)) {
-        return [];
-    }
-
+    if (!is_array($nodes)) return [];
     return array_values(array_filter(array_map(
         static fn(SimpleXMLElement $node): string => trim((string) $node),
         $nodes
     ), static fn(string $value): bool => $value !== ''));
 }
 
-function general_exists(SimpleXMLElement $xml, string $path): bool
+function general_matrix_exists(SimpleXMLElement $xml, string $path): bool
 {
     $nodes = $xml->xpath($path);
     return is_array($nodes) && isset($nodes[0]);
 }
 
-function general_bool(bool $value): string
-{
-    return $value ? 'Enabled' : 'Disabled';
-}
+$settings = [
+    'System' => [
+        'hostname' => ['label' => 'Hostname', 'type' => 'text'],
+        'domain' => ['label' => 'Domain', 'type' => 'text'],
+        'timezone' => ['label' => 'Time zone', 'type' => 'text'],
+        'language' => ['label' => 'Language', 'type' => 'text'],
+        'theme' => ['label' => 'Theme', 'type' => 'text'],
+    ],
+    'Networking' => [
+        'prefer_ipv4' => ['label' => 'Prefer IPv4 over IPv6', 'type' => 'boolean', 'help' => 'Prefer IPv4 when both IPv4 and IPv6 are available.'],
+        'dns' => ['label' => 'DNS servers', 'type' => 'text'],
+        'dnssearchdomain' => ['label' => 'DNS search domains', 'type' => 'text'],
+        'dnsallowoverride' => ['label' => 'Allow DNS server list override by DHCP/PPP on WAN', 'type' => 'boolean'],
+        'dnsallowoverride_exclude' => ['label' => 'DNS override excluded interfaces', 'type' => 'text'],
+        'dnslocalhost' => ['label' => 'Do not use local DNS service as system nameserver', 'type' => 'boolean'],
+        'gw_switch_default' => ['label' => 'Allow default gateway switching', 'type' => 'boolean'],
+    ],
+];
 
-function general_field(
-    string $label,
-    string $value,
-    string $type = 'text',
-    string $help = ''
-): array {
-    return compact('label', 'value', 'type', 'help');
+$requests = [];
+foreach ($firewalls as $firewall) {
+    $requests[(string) $firewall['id']] = [
+        'firewall' => $firewall,
+        'path' => 'core/backup/download/this',
+        'timeout' => 60,
+    ];
 }
+$downloads = opn_downloads_parallel($requests);
+$matrix = [];
 
-if ($firewall !== null) {
+foreach ($firewalls as $firewall) {
+    $fid = (int) $firewall['id'];
+    $entry = ['firewall' => $firewall, 'ok' => false, 'error' => '', 'values' => []];
+    $download = $downloads[(string) $fid] ?? $downloads[$fid] ?? ['ok' => false, 'error' => 'No response.'];
+    if (($download['ok'] ?? false) !== true) {
+        $entry['error'] = (string) ($download['error'] ?? 'Could not read configuration.');
+        $matrix[$fid] = $entry;
+        continue;
+    }
     try {
-        $rawXml = opn_download(
-            $firewall,
-            'core/backup/download/this'
-        );
+        $xml = simplexml_load_string((string) ($download['value'] ?? ''), SimpleXMLElement::class, LIBXML_NONET | LIBXML_NOCDATA);
+        if (!$xml instanceof SimpleXMLElement) throw new RuntimeException('Could not parse configuration XML.');
 
-        libxml_use_internal_errors(true);
-        $xml = simplexml_load_string(
-            $rawXml,
-            SimpleXMLElement::class,
-            LIBXML_NONET | LIBXML_NOCDATA
-        );
-
-        if (!$xml instanceof SimpleXMLElement) {
-            throw new RuntimeException('Could not parse the OPNsense configuration.');
-        }
-
-        $dnsServers = general_values($xml, '/opnsense/system/dnsserver');
+        $dnsServers = general_matrix_values($xml, '/opnsense/system/dnsserver');
         $dnsDisplay = [];
         foreach ($dnsServers as $index => $server) {
-            $gateway = general_value(
-                $xml,
-                '/opnsense/system/dns' . ($index + 1) . 'gw',
-                'none'
-            );
-            $dnsDisplay[] = $gateway !== '' && strtolower($gateway) !== 'none'
-                ? $server . ' via ' . $gateway
-                : $server;
+            $gateway = general_matrix_value($xml, '/opnsense/system/dns' . ($index + 1) . 'gw', 'none');
+            $dnsDisplay[] = strtolower($gateway) !== 'none' ? $server . ' via ' . $gateway : $server;
         }
 
-        $sections = [
-            'System' => [
-                general_field(
-                    'Hostname',
-                    general_value($xml, '/opnsense/system/hostname', '—')
-                ),
-                general_field(
-                    'Domain',
-                    general_value($xml, '/opnsense/system/domain', '—')
-                ),
-                general_field(
-                    'Time zone',
-                    general_value($xml, '/opnsense/system/timezone', 'Etc/UTC')
-                ),
-                general_field(
-                    'Language',
-                    general_value($xml, '/opnsense/system/language', 'Default')
-                ),
-                general_field(
-                    'Theme',
-                    general_value($xml, '/opnsense/theme', 'Default')
-                ),
-            ],
-            'Networking' => [
-                general_field(
-                    'Prefer IPv4 over IPv6',
-                    general_bool(general_exists($xml, '/opnsense/system/prefer_ipv4')),
-                    'boolean',
-                    'Prefer IPv4 when both IPv4 and IPv6 are available.'
-                ),
-                general_field(
-                    'DNS servers',
-                    $dnsDisplay !== [] ? implode("\n", $dnsDisplay) : 'None configured',
-                    'multiline'
-                ),
-                general_field(
-                    'DNS search domains',
-                    general_value($xml, '/opnsense/system/dnssearchdomain', 'None configured')
-                ),
-                general_field(
-                    'Allow DNS server list override by DHCP/PPP on WAN',
-                    general_bool(
-                        general_value($xml, '/opnsense/system/dnsallowoverride', '0') === '1'
-                    ),
-                    'boolean'
-                ),
-                general_field(
-                    'DNS override excluded interfaces',
-                    general_value(
-                        $xml,
-                        '/opnsense/system/dnsallowoverride_exclude',
-                        'None'
-                    )
-                ),
-                general_field(
-                    'Do not use local DNS service as system nameserver',
-                    general_bool(general_exists($xml, '/opnsense/system/dnslocalhost')),
-                    'boolean'
-                ),
-                general_field(
-                    'Allow default gateway switching',
-                    general_bool(general_exists($xml, '/opnsense/system/gw_switch_default')),
-                    'boolean'
-                ),
-            ],
+        $entry['values'] = [
+            'hostname' => general_matrix_value($xml, '/opnsense/system/hostname'),
+            'domain' => general_matrix_value($xml, '/opnsense/system/domain'),
+            'timezone' => general_matrix_value($xml, '/opnsense/system/timezone', 'Etc/UTC'),
+            'language' => general_matrix_value($xml, '/opnsense/system/language', 'Default'),
+            'theme' => general_matrix_value($xml, '/opnsense/theme', 'Default'),
+            'prefer_ipv4' => general_matrix_exists($xml, '/opnsense/system/prefer_ipv4'),
+            'dns' => $dnsDisplay !== [] ? implode(', ', $dnsDisplay) : 'None configured',
+            'dnssearchdomain' => general_matrix_value($xml, '/opnsense/system/dnssearchdomain', 'None configured'),
+            'dnsallowoverride' => general_matrix_value($xml, '/opnsense/system/dnsallowoverride', '0') === '1',
+            'dnsallowoverride_exclude' => general_matrix_value($xml, '/opnsense/system/dnsallowoverride_exclude', 'None'),
+            'dnslocalhost' => general_matrix_exists($xml, '/opnsense/system/dnslocalhost'),
+            'gw_switch_default' => general_matrix_exists($xml, '/opnsense/system/gw_switch_default'),
         ];
+        $entry['ok'] = true;
     } catch (Throwable $exception) {
-        $error = $exception->getMessage();
+        $entry['error'] = $exception->getMessage();
     }
+    $matrix[$fid] = $entry;
 }
 
 require __DIR__ . '/inc/header.php';
 ?>
-
 <style>
-.settings-page-grid{display:grid;grid-template-columns:240px minmax(0,1fr);gap:14px}
-.settings-tree{padding:0;overflow:hidden}
-.settings-tree-title{padding:14px 16px;background:#10131a;color:#fff;font-weight:800}
-.settings-tree a,.settings-tree span{display:block;padding:10px 16px;text-decoration:none}
-.settings-tree .tree-group{font-weight:800;background:var(--table-head)}
-.settings-tree .tree-child{padding-left:30px}
-.settings-tree .tree-subgroup{padding-left:30px;font-weight:750;color:var(--muted)}
-.settings-tree .tree-grandchild{padding-left:46px}
-.settings-tree a.active{background:#3b4851;color:#fff}
-.opn-general-shell{border:1px solid #2e3238;border-radius:6px;overflow:hidden;background:#0d1016;color:#f3f3f3}
-.opn-general-title{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:60px;padding:0 17px;background:#10131a;border-bottom:1px solid #b6bbc3}
-.opn-general-title h2{margin:0;color:#fff}
-.opn-general-toolbar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#3c3c3b}
-.opn-general-toolbar label{margin:0}
-.opn-general-toolbar select{width:min(420px,100%);margin:0}
-.opn-general-section{border-bottom:1px solid #333740}
-.opn-general-section>summary{display:flex;align-items:center;gap:10px;min-height:54px;padding:0 15px;background:#10131a;color:#fff;font-weight:750;cursor:pointer;list-style:none}
-.opn-general-section>summary::-webkit-details-marker{display:none}
-.opn-general-section>summary::before{content:"›";font-size:1.4rem}
-.opn-general-section[open]>summary::before{transform:rotate(90deg)}
-.opn-general-row{display:grid;grid-template-columns:minmax(280px,31%) minmax(0,1fr);min-height:56px}
-.opn-general-row:nth-child(odd){background:#3e3e3d}
-.opn-general-row:nth-child(even){background:#0f1218}
-.opn-general-label{display:flex;align-items:center;gap:7px;padding:10px 15px;font-weight:700}
-.opn-general-info{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;flex:0 0 auto;border-radius:50%;background:#d6532f;color:#17191d;font-family:Georgia,serif;font-weight:900}
-.opn-general-value{display:flex;align-items:center;padding:8px 18px}
-.opn-general-control{display:flex;align-items:center;gap:9px;width:min(650px,100%);min-height:40px;padding:7px 13px;border:1px solid #c5c9cf;border-radius:4px;background:#1b1f2a;color:#e9eaed;white-space:pre-line}
-.opn-general-checkbox{width:18px;height:18px;flex:0 0 auto;border:1px solid #bfc3c9;border-radius:2px;background:#fff}
-.opn-general-checkbox.enabled{background:#368df7;border-color:#368df7;position:relative}
-.opn-general-checkbox.enabled::after{content:"✓";position:absolute;left:2px;top:-3px;color:#fff;font-weight:900}
-@media(max-width:900px){.settings-page-grid{grid-template-columns:1fr}.opn-general-row{grid-template-columns:1fr}.opn-general-value{padding-top:0}}
+.fleet-settings-toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.fleet-settings-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--card)}
+.fleet-settings-table{border-collapse:separate;border-spacing:0;min-width:max(980px,100%);width:100%}
+.fleet-settings-table th,.fleet-settings-table td{padding:10px 12px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);vertical-align:middle;text-align:center}
+.fleet-settings-table th:last-child,.fleet-settings-table td:last-child{border-right:0}.fleet-settings-table tr:last-child td{border-bottom:0}
+.fleet-settings-table thead th{position:sticky;top:0;z-index:3;background:var(--table-head)}
+.fleet-settings-table .setting-col{position:sticky;left:0;z-index:2;text-align:left;min-width:300px;background:var(--card)}
+.fleet-settings-table thead .setting-col{z-index:4;background:var(--table-head)}
+.fleet-settings-table .firewall-col{min-width:170px}.fleet-settings-table .firewall-col a{display:block;font-weight:700}.fleet-settings-table .firewall-col small{display:block;margin-top:3px;color:var(--muted);font-weight:400}
+.fleet-settings-section td{background:var(--table-head);font-weight:800;text-align:left!important;padding:9px 12px!important}
+.fleet-setting strong{display:block}.fleet-setting small{display:block;margin-top:4px;color:var(--muted);font-weight:400;line-height:1.3}
+.fleet-value{white-space:normal;overflow-wrap:anywhere}.fleet-value .badge{white-space:nowrap}
 </style>
 
 <div class="page-title">
-    <div>
-        <h1>System → Settings → General</h1>
-        <p>Current general settings for one managed OPNsense firewall.</p>
-    </div>
+    <div><h1>System → Settings → General</h1><p>Compare general settings across all managed OPNsense firewalls.</p></div>
 </div>
 
-<div class="settings-page-grid">
-    <aside class="card settings-tree">
-        <div class="settings-tree-title">Settings</div>
-        <span class="tree-group">Firewall</span>
-        <a class="tree-child"
-           href="/firewall_advanced.php<?= $id ? '?firewall_id=' . $id : '' ?>">
-            Advanced
-        </a>
-        <span class="tree-group">System</span>
-        <span class="tree-subgroup">Settings</span>
-        <a class="tree-grandchild active"
-           href="/system_general.php<?= $id ? '?firewall_id=' . $id : '' ?>">
-            General
-        </a>
-        <a class="tree-grandchild"
-           href="/system_administration.php<?= $id ? '?firewall_id=' . $id : '' ?>">
-            Administration
-        </a>
-    </aside>
-
-    <main>
-        <section class="opn-general-shell">
-            <div class="opn-general-title">
-                <h2>General</h2>
-                <span class="badge neutral">Read-only</span>
-            </div>
-
-            <form method="get" class="opn-general-toolbar">
-                <label for="firewall_id">OPNsense</label>
-                <select id="firewall_id" name="firewall_id" onchange="this.form.submit()">
-                    <option value="">Select firewall</option>
-                    <?php foreach ($firewalls as $item): ?>
-                        <option value="<?= (int) $item['id'] ?>"
-                            <?= $id === (int) $item['id'] ? 'selected' : '' ?>>
-                            <?= h((string) $item['name']) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </form>
-
-            <?php if ($error !== ''): ?>
-                <div class="alert error"><?= h($error) ?></div>
-            <?php elseif ($firewall === null): ?>
-                <div class="empty">Select an OPNsense firewall.</div>
-            <?php else: ?>
-                <?php foreach ($sections as $section => $fields): ?>
-                    <details class="opn-general-section" open>
-                        <summary><?= h($section) ?></summary>
-                        <?php foreach ($fields as $field): ?>
-                            <?php $enabled = $field['value'] === 'Enabled'; ?>
-                            <div class="opn-general-row">
-                                <div class="opn-general-label">
-                                    <?php if (($field['help'] ?? '') !== ''): ?>
-                                        <span class="opn-general-info" title="<?= h((string) $field['help']) ?>">i</span>
-                                    <?php endif; ?>
-                                    <?= h((string) $field['label']) ?>
-                                </div>
-                                <div class="opn-general-value">
-                                    <div class="opn-general-control">
-                                        <?php if (($field['type'] ?? '') === 'boolean'): ?>
-                                            <span class="opn-general-checkbox <?= $enabled ? 'enabled' : '' ?>"></span>
-                                        <?php endif; ?>
-                                        <span><?= h((string) $field['value']) ?></span>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </details>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </section>
-    </main>
+<div class="fleet-settings-toolbar">
+    <div><strong><?= count($firewalls) ?> managed firewall<?= count($firewalls) === 1 ? '' : 's' ?></strong><span class="muted"> · Fleet overview, same structure as Administration.</span></div>
+    <button type="button" class="button secondary" onclick="window.location.reload()">Refresh</button>
 </div>
+
+<div class="fleet-settings-table-wrap">
+<table class="fleet-settings-table">
+<thead><tr><th class="setting-col">Setting</th><?php foreach ($matrix as $fid => $entry): ?><th class="firewall-col"><a href="/firewall_view.php?id=<?= $fid ?>"><?= h((string) $entry['firewall']['name']) ?></a><?php if ($entry['ok']): ?><small><span class="badge good">Read OK</span></small><?php else: ?><small><span class="badge bad">Read failed</span></small><?php endif; ?></th><?php endforeach; ?></tr></thead>
+<tbody>
+<?php foreach ($settings as $section => $definitions): ?>
+<tr class="fleet-settings-section"><td colspan="<?= count($matrix) + 1 ?>"><?= h($section) ?></td></tr>
+<?php foreach ($definitions as $key => $definition): ?>
+<tr><td class="setting-col fleet-setting"><strong><?= h((string) $definition['label']) ?></strong><?php if (($definition['help'] ?? '') !== ''): ?><small><?= h((string) $definition['help']) ?></small><?php endif; ?></td>
+<?php foreach ($matrix as $entry): ?><td class="fleet-value"><?php if (!$entry['ok']): ?><span class="badge bad" title="<?= h((string) $entry['error']) ?>">Unavailable</span><?php elseif (($definition['type'] ?? '') === 'boolean'): ?><?php $enabled = (bool) ($entry['values'][$key] ?? false); ?><span class="badge <?= $enabled ? 'good' : 'neutral' ?>"><?= $enabled ? 'Enabled' : 'Disabled' ?></span><?php else: ?><?= h((string) ($entry['values'][$key] ?? '—')) ?><?php endif; ?></td><?php endforeach; ?></tr>
+<?php endforeach; endforeach; ?>
+</tbody></table></div>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>
