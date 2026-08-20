@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.6';
+const AGENT_VERSION = '0.1.7';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
@@ -147,10 +147,14 @@ function run_local_command(string $command, string $label): void
 
 function load_opnsense_config(): array
 {
+    $utilFile = '/usr/local/etc/inc/util.inc';
     $configFile = '/usr/local/etc/inc/config.inc';
-    if (!is_file($configFile)) throw new RuntimeException('OPNsense configuration library was not found.');
-    require_once $configFile; global $config;
+    if (!is_file($utilFile) || !is_file($configFile)) throw new RuntimeException('Required OPNsense configuration libraries were not found.');
+    require_once $utilFile;
+    require_once $configFile;
+    global $config;
     if (!is_array($config)) throw new RuntimeException('OPNsense configuration is unavailable.');
+    if (!function_exists('shell_safe') || !function_exists('write_config')) throw new RuntimeException('Required OPNsense configuration functions are unavailable.');
     return $config;
 }
 
@@ -166,7 +170,6 @@ function set_administration_settings(array $payload): array
     if (!isset($config['system']['webgui']) || !is_array($config['system']['webgui'])) $config['system']['webgui'] = [];
     $before = [];
     foreach ($changes as $key => $enabled) { $before[$key] = array_key_exists($key, $config['system']['webgui']); if ($enabled) $config['system']['webgui'][$key] = ''; else unset($config['system']['webgui'][$key]); }
-    if (!function_exists('write_config')) throw new RuntimeException('OPNsense write_config() is unavailable.');
     write_config('opnSentral: update System Settings Administration');
     run_local_command('/usr/local/sbin/configctl webgui restart', 'WebGUI restart');
     if (array_key_exists('disablehttpredirect', $changes)) run_local_command('/usr/local/sbin/configctl filter reload', 'Firewall reload');
@@ -230,7 +233,6 @@ function set_general_settings(array $payload): array
         if (in_array($key, ['dnssearchdomain','dnsallowoverride_exclude'], true) && ($text === '' || in_array(strtolower($text), ['none','none configured'], true))) unset($config['system'][$key]);
         else $config['system'][$key] = $text;
     }
-    if (!function_exists('write_config')) throw new RuntimeException('OPNsense write_config() is unavailable.');
     write_config('opnSentral: update System Settings General');
     return ['message' => count($requested) . ' General setting' . (count($requested) === 1 ? '' : 's') . ' applied.', 'settings' => $requested, 'previous' => $before, 'applied_at' => gmdate('c')];
 }
@@ -286,7 +288,6 @@ function set_firewall_advanced_settings(array $payload): array
         $configKey = $key; $before[$key] = $config['system'][$configKey] ?? null;
         if (strcasecmp($text, 'Default') === 0) unset($config['system'][$configKey]); else $config['system'][$configKey] = $text;
     }
-    if (!function_exists('write_config')) throw new RuntimeException('OPNsense write_config() is unavailable.');
     write_config('opnSentral: update Firewall Settings Advanced');
     run_local_command('/usr/local/sbin/configctl filter reload', 'Firewall reload');
     return ['message' => count($requested) . ' Advanced firewall setting' . (count($requested) === 1 ? '' : 's') . ' applied.', 'settings' => $requested, 'previous' => $before, 'applied_at' => gmdate('c')];
@@ -308,9 +309,11 @@ function set_access_user(array $payload): array
     if (!is_bool($disabled)) throw new RuntimeException('Disabled state must be boolean.');
     $allowedShells = ['', '/bin/csh', '/bin/tcsh', '/bin/sh', '/sbin/nologin', '/usr/local/bin/scponly', '/usr/local/sbin/scponlyc', '/usr/local/sbin/ssh_tunnel_shell'];
     if (!in_array($shell, $allowedShells, true)) throw new RuntimeException('Unsupported login shell.');
-    $configFile = '/usr/local/etc/inc/config.inc'; $authFile = '/usr/local/etc/inc/auth.inc';
-    if (!is_file($configFile) || !is_file($authFile)) throw new RuntimeException('OPNsense Access libraries were not found.');
-    require_once $configFile; require_once $authFile; global $config;
+    $authFile = '/usr/local/etc/inc/auth.inc';
+    if (!is_file($authFile)) throw new RuntimeException('OPNsense Access library was not found.');
+    load_opnsense_config();
+    require_once $authFile;
+    global $config;
     if (!is_array($config) || !isset($config['system']['user']) || !is_array($config['system']['user'])) throw new RuntimeException('OPNsense user configuration is unavailable.');
     $index = null; foreach ($config['system']['user'] as $key => $candidate) if (is_array($candidate) && (string)($candidate['name'] ?? '') === $name) { $index = $key; break; }
     if ($index === null) throw new RuntimeException('User not found: ' . $name);
@@ -319,7 +322,7 @@ function set_access_user(array $payload): array
     foreach ($groups as $group) if (!in_array($group, $groupNames, true)) throw new RuntimeException('Group does not exist: ' . $group);
     if ($disabled) $user['disabled'] = '1'; else unset($user['disabled']); if ($shell !== '') $user['shell'] = $shell; else unset($user['shell']); if ($privileges !== []) $user['priv'] = $privileges; else unset($user['priv']);
     $config['system']['user'][$index] = $user;
-    if (!function_exists('local_user_set_groups') || !function_exists('local_user_set') || !function_exists('write_config')) throw new RuntimeException('Required OPNsense local-user functions are unavailable.');
+    if (!function_exists('local_user_set_groups') || !function_exists('local_user_set')) throw new RuntimeException('Required OPNsense local-user functions are unavailable.');
     $groupSelection = array_values(array_unique(array_merge(['all'], $groups))); local_user_set_groups($user, $groupSelection); $config['system']['user'][$index] = $user;
     write_config('opnSentral: update System Access user ' . $name); local_user_set($user);
     return ['message' => 'User ' . $name . ' updated.', 'user' => $name, 'disabled' => $disabled, 'shell' => $shell, 'groups' => $groups, 'privileges' => $privileges, 'applied_at' => gmdate('c')];
@@ -341,7 +344,7 @@ function ensure_ssh_access(array $payload): array
     if ($port !== 22) throw new RuntimeException('Managed SSH access only permits TCP port 22.'); if (!in_array($sudoMode, ['1', '2'], true)) throw new RuntimeException('Unsupported sudo mode.'); if ($sudoGroup !== 'admins') throw new RuntimeException('Managed SSH access requires sudo group admins.');
     load_opnsense_config(); global $config; if (!isset($config['system']) || !is_array($config['system'])) $config['system'] = []; if (!isset($config['system']['ssh']) || !is_array($config['system']['ssh'])) $config['system']['ssh'] = [];
     $before = ssh_access_status(); $config['system']['ssh']['noauto'] = 1; $config['system']['ssh']['enabled'] = 'enabled'; $config['system']['ssh']['port'] = '22'; $config['system']['ssh']['group'] = 'admins'; $config['system']['sudo_allow_wheel'] = $sudoMode; $config['system']['sudo_allow_group'] = 'admins';
-    if (!function_exists('write_config')) throw new RuntimeException('OPNsense write_config() is unavailable.'); write_config('Managed by opnSentral - Enable SSH management'); run_local_command('/usr/local/sbin/configctl sshd restart', 'OpenSSH restart'); usleep(500000); $after = ssh_access_status();
+    write_config('Managed by opnSentral - Enable SSH management'); run_local_command('/usr/local/sbin/configctl sshd restart', 'OpenSSH restart'); usleep(500000); $after = ssh_access_status();
     if (($after['ok'] ?? false) !== true) throw new RuntimeException('SSH settings were written but post-change verification is not ready.');
     $after['message'] = 'Managed SSH access enabled and verified.'; $after['previous'] = $before; $after['applied_at'] = gmdate('c'); return $after;
 }
