@@ -260,7 +260,11 @@ function set_firewall_advanced_settings(array $payload): array
         if (isset($boolMap[$key])) {
             if (!is_bool($value)) throw new RuntimeException('Setting ' . $key . ' must be boolean.');
             [$section,$configKey,$invert] = $boolMap[$key];
-            $target =& ($section === 'system_webgui' ? $config['system']['webgui'] : $config[$section]);
+            if ($section === 'system_webgui') {
+                $target =& $config['system']['webgui'];
+            } else {
+                $target =& $config[$section];
+            }
             $before[$key] = array_key_exists($configKey, $target);
             fleet_presence($target, $configKey, $invert ? !$value : $value);
             unset($target); continue;
