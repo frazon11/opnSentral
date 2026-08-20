@@ -10,6 +10,8 @@ function db(): PDO {
  $p=new PDO('sqlite:'.DATA_DIR.'/central.sqlite');
  $p->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
  $p->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
+ $p->setAttribute(PDO::ATTR_TIMEOUT,10);
+ $p->exec('PRAGMA busy_timeout=10000');
  $p->exec('PRAGMA journal_mode=WAL');
  $p->exec('CREATE TABLE IF NOT EXISTS firewalls (
  id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,base_url TEXT NOT NULL,
