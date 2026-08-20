@@ -33,6 +33,28 @@ function agent_public_base_url(): string
     return $host !== '' ? $scheme . '://' . $host : '';
 }
 
+function agent_sqlite_busy(Throwable $exception): bool
+{
+    return $exception instanceof PDOException
+        && str_contains(strtolower($exception->getMessage()), 'database is locked');
+}
+
+function agent_execute_with_retry(PDOStatement $statement, array $params, int $attempts = 5): void
+{
+    $attempts = max(1, $attempts);
+    for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+        try {
+            $statement->execute($params);
+            return;
+        } catch (Throwable $exception) {
+            if (!agent_sqlite_busy($exception) || $attempt === $attempts) {
+                throw $exception;
+            }
+            usleep(150000 * $attempt);
+        }
+    }
+}
+
 function agent_create_registration_token(int $firewallId, string $label = '', int $ttlMinutes = 15): array
 {
     if ($firewallId <= 0) throw new RuntimeException('A managed firewall is required for agent bootstrap.');
@@ -83,16 +105,17 @@ function agent_queue_self_update(array $agent): int
         'sha256' => agent_current_sha256(),
         'target_version' => agent_current_version(),
     ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-    $statement = db()->prepare(
+    $pdo = db();
+    $statement = $pdo->prepare(
         'INSERT INTO agent_jobs(agent_id, job_type, payload_json, status, created_at)
          VALUES(?, ?, ?, ?, ?)'
     );
-    $statement->execute([
+    agent_execute_with_retry($statement, [
         (int) $agent['id'],
         'self_update',
         $payload,
         'queued',
         gmdate('c'),
     ]);
-    return (int) db()->lastInsertId();
+    return (int) $pdo->lastInsertId();
 }
