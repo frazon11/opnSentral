@@ -75,7 +75,7 @@ function administration_agent_writable(?array $agent): bool
     if (!is_array($agent) || (int) ($agent['enabled'] ?? 0) !== 1) {
         return false;
     }
-    $version = trim((string) ($agent['last_agent_version'] ?? ''));
+    $version = trim((string) ($agent['last_version'] ?? ''));
     return $version !== '' && version_compare($version, '0.1.1', '>=');
 }
 
@@ -317,23 +317,18 @@ require __DIR__ . '/inc/header.php';
             const jobs=Array.isArray(data.jobs)?data.jobs:[];
             const failures=Array.isArray(data.failures)?data.failures:[];
             jobs.forEach(job=>{
-                const node=document.createElement('div');node.id='admin-job-'+job.job_id;node.className='admin-fleet-result-item pending';node.innerHTML='<strong>'+escapeHtml(job.firewall_name)+'</strong> <span class="badge neutral">Queued</span>';resultGrid.appendChild(node);
+                const node=document.createElement('div');node.id='admin-job-'+job.job_id;node.className='admin-fleet-result-item pending';node.innerHTML='<strong>'+escapeHtml(job.firewall_name)+'</strong> <span class="badge neutral">queued</span>';resultGrid.appendChild(node);
             });
             failures.forEach(item=>{
-                const node=document.createElement('div');node.className='admin-fleet-result-item bad';node.innerHTML='<strong>'+escapeHtml(item.firewall_name)+'</strong> <span class="badge bad">Not queued</span><br>'+escapeHtml(item.error);resultGrid.appendChild(node);
+                const node=document.createElement('div');node.className='admin-fleet-result-item bad';node.innerHTML='<strong>'+escapeHtml(item.firewall_name||('Firewall #'+item.firewall_id))+'</strong> <span class="badge bad">Not queued</span><br>'+escapeHtml(item.error||'Unknown error');resultGrid.appendChild(node);
             });
-            summary.className=failures.length?'alert warningbox':'alert goodbox';
-            summary.textContent=jobs.length+' firewall job'+(jobs.length===1?'':'s')+' queued'+(failures.length?' · '+failures.length+' target'+(failures.length===1?'':'s')+' failed before queueing.':'.');
-            await pollJobs(jobs);
-        }catch(error){
-            summary.className='alert error';summary.textContent=error.message;
-            refreshDirty();
-        }
+            if(jobs.length){summary.className=failures.length?'alert warningbox':'alert goodbox';summary.textContent=jobs.length+' deployment job'+(jobs.length===1?'':'s')+' queued'+(failures.length?' · '+failures.length+' target'+(failures.length===1?'':'s')+' failed before queueing.':'.');await pollJobs(jobs);}
+            else{summary.className='alert error';summary.textContent='No deployment jobs were queued.';refreshDirty();}
+        }catch(error){summary.className='alert error';summary.textContent=error.message||'Administration deployment failed.';refreshDirty();}
     });
 
-    function escapeHtml(value){const node=document.createElement('div');node.textContent=String(value??'');return node.innerHTML;}
-    syncAllRows();
-    refreshDirty();
+    function escapeHtml(value){const div=document.createElement('div');div.textContent=String(value??'');return div.innerHTML;}
+    syncAllRows();refreshDirty();
 })();
 </script>
 <?php require __DIR__ . '/inc/footer.php'; ?>
