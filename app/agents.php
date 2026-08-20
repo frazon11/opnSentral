@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/inc/config.php';
+require_once __DIR__ . '/inc/agent_deployment.php';
 require_login();
 
 $pdo = db();
@@ -27,6 +28,7 @@ $updateResult = $_SESSION['agent_update_result'] ?? null;
 unset($_SESSION['agent_update_result']);
 $associationResult = $_SESSION['agent_association_result'] ?? null;
 unset($_SESSION['agent_association_result']);
+$targetAgentVersion = agent_current_version();
 
 $forwardedProto = trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0] ?? '');
 $scheme = $forwardedProto !== ''
@@ -43,6 +45,12 @@ require __DIR__ . '/inc/header.php';
         <p>Native OPNsense plugin-managed agents using outbound HTTPS to opnSentral.</p>
     </div>
     <div class="management-toolbar">
+        <form method="post" action="/agents_action.php" style="display:inline">
+            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+            <input type="hidden" name="action" value="self_update_all">
+            <button type="submit" class="button" onclick="return confirm('Queue an update to agent v<?= h($targetAgentVersion) ?> for every enabled agent that is older and supports self-update?')">Update all agents</button>
+        </form>
+        <span class="badge neutral">Target v<?= h($targetAgentVersion) ?></span>
         <button type="button" class="button secondary" onclick="window.location.reload()">Refresh</button>
     </div>
 </div>
@@ -87,7 +95,7 @@ require __DIR__ . '/inc/header.php';
     <div>
         <strong>Agent overview</strong>
         <div class="management-summary">
-            <?= count($agents) ?> registered agent<?= count($agents) === 1 ? '' : 's' ?>
+            <?= count($agents) ?> registered agent<?= count($agents) === 1 ? '' : 's' ?> · current package target v<?= h($targetAgentVersion) ?>
         </div>
     </div>
 </div>
@@ -131,7 +139,7 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
 </div>
 
 <div class="card management-card">
-    <div class="management-card-header"><div><h2>Registered agents</h2><div class="management-summary">Agents report status, poll opnSentral for allow-listed jobs, and can be associated with an existing managed firewall without reinstalling.</div></div></div>
+    <div class="management-card-header"><div><h2>Registered agents</h2><div class="management-summary">“Update agent” updates only the signed opnSentral worker binary and restarts its service; registration, firewall association and OPNsense configuration are kept.</div></div></div>
     <div class="table-scroll management-table-wrap">
         <table class="management-table">
             <thead><tr><th>Firewall / site</th><th>Agent</th><th>Last seen</th><th>OPNsense</th><th>Status</th><th>Remote jobs</th><th>Actions</th></tr></thead>
@@ -141,13 +149,16 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
                 $last = !empty($agent['last_seen_at']) ? (strtotime((string) $agent['last_seen_at']) ?: 0) : 0;
                 $fresh = $last > 0 && time() - $last < 150;
                 $currentFirewallId = (int) ($agent['firewall_id'] ?? 0);
+                $agentVersion = trim((string) ($agent['last_version'] ?? ''));
+                $updateCapable = !empty($agent['enabled']) && $agentVersion !== '' && version_compare($agentVersion, '0.1.2', '>=');
+                $needsUpdate = $updateCapable && $targetAgentVersion !== 'unknown' && version_compare($agentVersion, $targetAgentVersion, '<');
             ?>
                 <tr>
                     <td>
                         <?= h((string) ($agent['firewall_name'] ?? $agent['name'] ?? 'Unassigned')) ?>
                         <?php if (empty($agent['firewall_id'])): ?><br><small>Not associated with a managed firewall</small><?php endif; ?>
                     </td>
-                    <td><code><?= h(substr((string) ($agent['agent_id'] ?? ''), 0, 12)) ?>…</code><br><small><?= h((string) ($agent['last_hostname'] ?? '')) ?> · v<?= h((string) (($agent['last_version'] ?? '') !== '' ? $agent['last_version'] : 'unknown')) ?></small></td>
+                    <td><code><?= h(substr((string) ($agent['agent_id'] ?? ''), 0, 12)) ?>…</code><br><small><?= h((string) ($agent['last_hostname'] ?? '')) ?> · v<?= h($agentVersion !== '' ? $agentVersion : 'unknown') ?></small></td>
                     <td><?= h((string) (($agent['last_seen_at'] ?? '') !== '' ? $agent['last_seen_at'] : 'Never')) ?></td>
                     <td><?= h((string) (($agent['last_opnsense_version'] ?? '') !== '' ? $agent['last_opnsense_version'] : '—')) ?></td>
                     <td><span class="badge <?= $fresh && !empty($agent['enabled']) ? 'good' : 'bad' ?>"><?= !empty($agent['enabled']) ? ($fresh ? 'Online' : 'Stale') : 'Disabled' ?></span></td>
@@ -175,7 +186,7 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
                             <?php if (!empty($agent['firewall_id'])): ?><a class="button secondary" href="/ssh_access.php?firewall_id=<?= (int) $agent['firewall_id'] ?>">SSH access</a><?php endif; ?>
                             <form method="post" action="/agents_action.php" class="management-row-actions">
                                 <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
-                                <button class="button secondary" name="action" value="self_update" <?= empty($agent['enabled']) ? 'disabled' : '' ?>>Update agent</button>
+                                <button class="button secondary" name="action" value="self_update" <?= !$updateCapable ? 'disabled' : '' ?>><?= $needsUpdate ? 'Update agent' : 'Reinstall agent worker' ?></button>
                                 <button class="button secondary" name="action" value="toggle"><?= !empty($agent['enabled']) ? 'Disable' : 'Enable' ?></button>
                                 <button class="button danger" name="action" value="delete" onclick="return confirm('Delete this agent and its queued job history?')">Delete</button>
                             </form>
