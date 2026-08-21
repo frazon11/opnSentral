@@ -29,6 +29,7 @@ unset($_SESSION['agent_update_result']);
 $associationResult = $_SESSION['agent_association_result'] ?? null;
 unset($_SESSION['agent_association_result']);
 $targetAgentVersion = agent_current_version();
+$agentStaleAfterSeconds = 300;
 
 $forwardedProto = trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0] ?? '');
 $scheme = $forwardedProto !== ''
@@ -147,7 +148,8 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
             <?php if (!$agents): ?><tr><td colspan="7">No agents registered.</td></tr><?php endif; ?>
             <?php foreach ($agents as $agent):
                 $last = !empty($agent['last_seen_at']) ? (strtotime((string) $agent['last_seen_at']) ?: 0) : 0;
-                $fresh = $last > 0 && time() - $last < 150;
+                $age = $last > 0 ? max(0, time() - $last) : null;
+                $fresh = $last > 0 && $age < $agentStaleAfterSeconds;
                 $currentFirewallId = (int) ($agent['firewall_id'] ?? 0);
                 $agentVersion = trim((string) ($agent['last_version'] ?? ''));
                 $updateCapable = !empty($agent['enabled']) && $agentVersion !== '' && version_compare($agentVersion, '0.1.2', '>=');
@@ -159,7 +161,7 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
                         <?php if (empty($agent['firewall_id'])): ?><br><small>Not associated with a managed firewall</small><?php endif; ?>
                     </td>
                     <td><code><?= h(substr((string) ($agent['agent_id'] ?? ''), 0, 12)) ?>…</code><br><small><?= h((string) ($agent['last_hostname'] ?? '')) ?> · v<?= h($agentVersion !== '' ? $agentVersion : 'unknown') ?></small></td>
-                    <td><?= h((string) (($agent['last_seen_at'] ?? '') !== '' ? $agent['last_seen_at'] : 'Never')) ?></td>
+                    <td><?= h((string) (($agent['last_seen_at'] ?? '') !== '' ? $agent['last_seen_at'] : 'Never')) ?><?php if ($age !== null): ?><br><small><?= h((string)$age) ?>s ago</small><?php endif; ?></td>
                     <td><?= h((string) (($agent['last_opnsense_version'] ?? '') !== '' ? $agent['last_opnsense_version'] : '—')) ?></td>
                     <td><span class="badge <?= $fresh && !empty($agent['enabled']) ? 'good' : 'bad' ?>"><?= !empty($agent['enabled']) ? ($fresh ? 'Online' : 'Stale') : 'Disabled' ?></span></td>
                     <td>
