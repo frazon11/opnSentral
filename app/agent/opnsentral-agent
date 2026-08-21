@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.8';
+const AGENT_VERSION = '0.1.9';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
@@ -190,36 +190,37 @@ function execute_job(array $job, array $config): array
     throw new RuntimeException('Unsupported job type: ' . $type);
 }
 
-function schedule_self_restart(): void
-{
-    shell_exec("/bin/sh -c '(sleep 2; /usr/sbin/service opnsentral_agent restart) >/dev/null 2>&1 &' >/dev/null 2>&1");
-}
-
 function schedule_system_reboot(): void
 {
     shell_exec("/bin/sh -c '(sleep 3; /sbin/shutdown -r now) >/dev/null 2>&1 &' >/dev/null 2>&1");
 }
 
-function poll_job(array $config): void
+function poll_job(array $config): bool
 {
     $response=signed_post($config,'/api/agent_jobs.php',[]);
     $job=$response['job'] ?? null;
-    if (!is_array($job)) return;
+    if (!is_array($job)) return false;
     $jobId=(int)($job['id'] ?? 0);
-    if ($jobId<=0) return;
+    if ($jobId<=0) return false;
     try {
         $result=execute_job($job,$config);
         $restart=($result['_restart_agent'] ?? false)===true;
         $reboot=($result['_reboot_system'] ?? false)===true;
         unset($result['_restart_agent'],$result['_reboot_system']);
         signed_post($config,'/api/agent_job_result.php',['job_id'=>$jobId,'success'=>true,'result'=>$result]);
-        if ($reboot) schedule_system_reboot(); elseif ($restart) schedule_self_restart();
+        if ($reboot) schedule_system_reboot();
+        return $restart;
     } catch (Throwable $exception) {
         signed_post($config,'/api/agent_job_result.php',['job_id'=>$jobId,'success'=>false,'result'=>null,'error'=>$exception->getMessage()]);
+        return false;
     }
 }
 
-function run_once(array $config): void { report($config); poll_job($config); }
+function run_once(array $config): bool
+{
+    report($config);
+    return poll_job($config);
+}
 
 $command=$argv[1] ?? 'run';
 if ($command==='register') { if (count($argv)<4) fail('Usage: opnsentral-agent register https://OPNSENTRAL TOKEN'); register_agent((string)$argv[2],(string)$argv[3]); exit(0); }
@@ -227,4 +228,16 @@ $config=load_config();
 if ($command==='once') { run_once($config); exit(0); }
 if ($command!=='run') fail('Supported commands: register, once, run');
 $interval=max(30,(int)($config['poll_interval'] ?? 60));
-while (true) { try { run_once($config); } catch (Throwable $exception) { fwrite(STDERR,gmdate('c') . ' ' . $exception->getMessage() . "\n"); } sleep($interval); }
+while (true) {
+    try {
+        if (run_once($config)) {
+            // The rc.d service runs us under daemon -r. Exiting cleanly here lets
+            // daemon restart the child with the newly installed worker binary,
+            // avoiding a nested "service restart" from inside the worker itself.
+            exit(0);
+        }
+    } catch (Throwable $exception) {
+        fwrite(STDERR,gmdate('c') . ' ' . $exception->getMessage() . "\n");
+    }
+    sleep($interval);
+}
