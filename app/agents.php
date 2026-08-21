@@ -140,7 +140,7 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
 </div>
 
 <div class="card management-card">
-    <div class="management-card-header"><div><h2>Registered agents</h2><div class="management-summary">“Update agent” updates only the signed opnSentral worker binary and restarts its service; registration, firewall association and OPNsense configuration are kept.</div></div></div>
+    <div class="management-card-header"><div><h2>Registered agents</h2><div class="management-summary">Update agent replaces only the SHA-256-verified opnSentral worker and keeps registration, firewall association and OPNsense configuration.</div></div></div>
     <div class="table-scroll management-table-wrap">
         <table class="management-table">
             <thead><tr><th>Firewall / site</th><th>Agent</th><th>Last seen</th><th>OPNsense</th><th>Status</th><th>Remote jobs</th><th>Actions</th></tr></thead>
@@ -173,18 +173,29 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
                     </td>
                     <td>
                         <div class="management-row-actions" style="align-items:center;flex-wrap:wrap">
-                            <form method="post" action="/agents_action.php" class="management-row-actions">
-                                <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="associate">
-                                <input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
-                                <select name="firewall_id" aria-label="Managed firewall association">
-                                    <option value="0" <?= $currentFirewallId === 0 ? 'selected' : '' ?>>Unassigned</option>
-                                    <?php foreach ($firewalls as $firewall): ?>
-                                        <option value="<?= (int) $firewall['id'] ?>" <?= $currentFirewallId === (int) $firewall['id'] ? 'selected' : '' ?>><?= h((string) $firewall['name']) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <button class="button secondary" type="submit"><?= $currentFirewallId > 0 ? 'Change association' : 'Associate' ?></button>
-                            </form>
+                            <?php if ($currentFirewallId === 0): ?>
+                                <form method="post" action="/agents_action.php" class="management-row-actions">
+                                    <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="associate">
+                                    <input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
+                                    <select name="firewall_id" aria-label="Managed firewall association" required>
+                                        <option value="" selected disabled>Select firewall…</option>
+                                        <?php foreach ($firewalls as $firewall): ?>
+                                            <option value="<?= (int) $firewall['id'] ?>"><?= h((string) $firewall['name']) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <button class="button secondary" type="submit">Associate</button>
+                                </form>
+                            <?php else: ?>
+                                <span class="badge neutral">Associated: <?= h((string) ($agent['firewall_name'] ?? ('Firewall #' . $currentFirewallId))) ?></span>
+                                <form method="post" action="/agents_action.php" class="management-row-actions">
+                                    <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+                                    <input type="hidden" name="action" value="associate">
+                                    <input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
+                                    <input type="hidden" name="firewall_id" value="0">
+                                    <button class="button secondary" type="submit" onclick="return confirm('De-associate this agent from <?= h((string) ($agent['firewall_name'] ?? 'the managed firewall')) ?>? The agent remains registered but firewall-specific jobs cannot be sent until it is associated again.')">De-associate</button>
+                                </form>
+                            <?php endif; ?>
                             <?php if (!empty($agent['firewall_id'])): ?><a class="button secondary" href="/ssh_access.php?firewall_id=<?= (int) $agent['firewall_id'] ?>">SSH access</a><?php endif; ?>
                             <form method="post" action="/agents_action.php" class="management-row-actions">
                                 <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
@@ -202,7 +213,7 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
 </div>
 
 <div class="card management-card">
-    <div class="management-card-header"><div><h2>Recent remote jobs</h2><div class="management-summary">Remote jobs are strictly allow-listed, including signed worker self-updates and supported Administration writes.</div></div></div>
+    <div class="management-card-header"><div><h2>Recent remote jobs</h2><div class="management-summary">Remote jobs are strictly allow-listed, including SHA-256-verified worker self-updates and emergency restore jobs.</div></div></div>
     <div class="table-scroll management-table-wrap">
         <table class="management-table">
             <thead><tr><th>ID</th><th>Agent</th><th>Job</th><th>Status</th><th>Created</th><th>Finished</th><th>Result</th></tr></thead>
