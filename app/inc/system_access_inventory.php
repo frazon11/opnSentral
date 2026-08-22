@@ -33,6 +33,16 @@ function access_xml_listish_values(SimpleXMLElement $node, string $name): array
     return array_values(array_unique($result));
 }
 
+function access_decode_authorized_keys(SimpleXMLElement $node): string
+{
+    if (!isset($node->authorizedkeys)) return '';
+    $encoded = trim((string) $node->authorizedkeys);
+    if ($encoded === '') return '';
+    $decoded = base64_decode($encoded, true);
+    if (!is_string($decoded)) return '';
+    return trim(str_replace(["\r\n", "\r"], "\n", $decoded));
+}
+
 function access_parse_users(SimpleXMLElement $xml): array
 {
     $users = [];
@@ -53,6 +63,7 @@ function access_parse_users(SimpleXMLElement $xml): array
             access_xml_listish_values($node, 'privilege')
         );
 
+        $authorizedKeys = access_decode_authorized_keys($node);
         $users[$name] = [
             'name' => $name,
             'description' => access_xml_text($node, 'descr', access_xml_text($node, 'description')),
@@ -64,6 +75,8 @@ function access_parse_users(SimpleXMLElement $xml): array
             'disabled' => isset($node->disabled),
             'otp' => isset($node->otp_seed) && trim((string) $node->otp_seed) !== '',
             'has_password' => isset($node->password) && trim((string) $node->password) !== '',
+            'authorized_keys' => $authorizedKeys,
+            'has_authorized_keys' => $authorizedKeys !== '',
         ];
     }
 
