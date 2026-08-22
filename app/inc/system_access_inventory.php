@@ -162,6 +162,9 @@ function access_reconcile_memberships(array &$users, array $groups): void
 
 function access_agent_inventory_by_firewall(): array
 {
+    $script=basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
+    if (!in_array($script,['system_access_users.php','system_access_groups.php'],true)) return [];
+
     $rows=db()->query('SELECT * FROM agents WHERE firewall_id IS NOT NULL ORDER BY id DESC')->fetchAll();
     $result=[];
     foreach ($rows as $agent) {
