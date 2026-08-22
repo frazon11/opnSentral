@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "app/inc/update_check.php"
     tags:
       - "v*"
   workflow_dispatch:
