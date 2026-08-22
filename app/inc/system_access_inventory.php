@@ -2,18 +2,45 @@
 
 declare(strict_types=1);
 
+function access_xml_children_named(SimpleXMLElement $node, string $name): array
+{
+    $children = [];
+
+    if (isset($node->{$name})) {
+        foreach ($node->{$name} as $child) {
+            if ($child instanceof SimpleXMLElement) $children[] = $child;
+        }
+    }
+
+    if ($children === []) {
+        $matches = $node->xpath('./*[local-name()="' . $name . '"]');
+        if (is_array($matches)) {
+            foreach ($matches as $child) {
+                if ($child instanceof SimpleXMLElement) $children[] = $child;
+            }
+        }
+    }
+
+    return $children;
+}
+
+function access_xml_has(SimpleXMLElement $node, string $name): bool
+{
+    return access_xml_children_named($node, $name) !== [];
+}
+
 function access_xml_text(SimpleXMLElement $node, string $name, string $default = ''): string
 {
-    if (!isset($node->{$name})) return $default;
-    $value = trim((string) $node->{$name});
+    $children = access_xml_children_named($node, $name);
+    if ($children === []) return $default;
+    $value = trim((string) $children[0]);
     return $value === '' ? $default : $value;
 }
 
 function access_xml_values(SimpleXMLElement $node, string $name): array
 {
-    if (!isset($node->{$name})) return [];
     $values = [];
-    foreach ($node->{$name} as $item) {
+    foreach (access_xml_children_named($node, $name) as $item) {
         $value = trim((string) $item);
         if ($value !== '') $values[] = $value;
     }
@@ -33,10 +60,31 @@ function access_xml_listish_values(SimpleXMLElement $node, string $name): array
     return array_values(array_unique($result));
 }
 
+function access_xml_system_nodes(SimpleXMLElement $xml, string $name): array
+{
+    $queries = [
+        '/opnsense/system/' . $name,
+        '//system/' . $name,
+        '//*[local-name()="system"]/*[local-name()="' . $name . '"]',
+    ];
+
+    foreach ($queries as $query) {
+        $nodes = $xml->xpath($query);
+        if (!is_array($nodes) || $nodes === []) continue;
+
+        $result = [];
+        foreach ($nodes as $node) {
+            if ($node instanceof SimpleXMLElement) $result[] = $node;
+        }
+        if ($result !== []) return $result;
+    }
+
+    return [];
+}
+
 function access_decode_authorized_keys(SimpleXMLElement $node): string
 {
-    if (!isset($node->authorizedkeys)) return '';
-    $encoded = trim((string) $node->authorizedkeys);
+    $encoded = access_xml_text($node, 'authorizedkeys');
     if ($encoded === '') return '';
     $decoded = base64_decode($encoded, true);
     if (!is_string($decoded)) return '';
@@ -46,11 +94,9 @@ function access_decode_authorized_keys(SimpleXMLElement $node): string
 function access_parse_users(SimpleXMLElement $xml): array
 {
     $users = [];
-    $nodes = $xml->xpath('/opnsense/system/user');
-    if (!is_array($nodes)) return [];
+    $nodes = access_xml_system_nodes($xml, 'user');
 
     foreach ($nodes as $node) {
-        if (!$node instanceof SimpleXMLElement) continue;
         $name = access_xml_text($node, 'name');
         if ($name === '') continue;
 
@@ -72,9 +118,9 @@ function access_parse_users(SimpleXMLElement $xml): array
             'groups' => array_values(array_unique($groups)),
             'privileges' => array_values(array_unique($privileges)),
             'shell' => access_xml_text($node, 'shell'),
-            'disabled' => isset($node->disabled),
-            'otp' => isset($node->otp_seed) && trim((string) $node->otp_seed) !== '',
-            'has_password' => isset($node->password) && trim((string) $node->password) !== '',
+            'disabled' => access_xml_has($node, 'disabled'),
+            'otp' => access_xml_text($node, 'otp_seed') !== '',
+            'has_password' => access_xml_text($node, 'password') !== '',
             'authorized_keys' => $authorizedKeys,
             'has_authorized_keys' => $authorizedKeys !== '',
         ];
@@ -87,11 +133,9 @@ function access_parse_users(SimpleXMLElement $xml): array
 function access_parse_groups(SimpleXMLElement $xml): array
 {
     $groups = [];
-    $nodes = $xml->xpath('/opnsense/system/group');
-    if (!is_array($nodes)) return [];
+    $nodes = access_xml_system_nodes($xml, 'group');
 
     foreach ($nodes as $node) {
-        if (!$node instanceof SimpleXMLElement) continue;
         $name = access_xml_text($node, 'name');
         if ($name === '') continue;
 
@@ -182,8 +226,17 @@ function access_load_fleet_inventory(array $firewalls): array
             if (!$xml instanceof SimpleXMLElement) {
                 throw new RuntimeException('Could not parse OPNsense configuration XML.');
             }
+
             $entry['users'] = access_parse_users($xml);
             $entry['groups'] = access_parse_groups($xml);
+
+            // A valid OPNsense configuration normally has at least the root user
+            // and admins group. Treat an empty Access inventory as a read/parser
+            // failure instead of incorrectly displaying every fleet object as Missing.
+            if ($entry['users'] === [] && $entry['groups'] === []) {
+                throw new RuntimeException('Configuration was read, but no System Access users or groups could be extracted.');
+            }
+
             access_reconcile_memberships($entry['users'], $entry['groups']);
             $entry['ok'] = true;
         } catch (Throwable $exception) {
