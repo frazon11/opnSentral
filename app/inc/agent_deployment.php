@@ -101,11 +101,26 @@ function agent_queue_self_update(array $agent): int
     if ((int) ($agent['enabled'] ?? 0) !== 1) {
         throw new RuntimeException('Agent is disabled.');
     }
+
+    $lastSeen = !empty($agent['last_seen_at']) ? (strtotime((string) $agent['last_seen_at']) ?: 0) : 0;
+    if ($lastSeen <= 0 || (time() - $lastSeen) >= 300) {
+        throw new RuntimeException('Agent is stale/offline. Self-update cannot be queued until it is reporting again.');
+    }
+
+    $pdo = db();
+    $pending = $pdo->prepare(
+        'SELECT COUNT(*) FROM agent_jobs
+         WHERE agent_id = ? AND job_type = ? AND status IN (?, ?)'
+    );
+    $pending->execute([(int) $agent['id'], 'self_update', 'queued', 'running']);
+    if ((int) $pending->fetchColumn() > 0) {
+        throw new RuntimeException('A self-update job is already queued or running for this agent.');
+    }
+
     $payload = json_encode([
         'sha256' => agent_current_sha256(),
         'target_version' => agent_current_version(),
     ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-    $pdo = db();
     $statement = $pdo->prepare(
         'INSERT INTO agent_jobs(agent_id, job_type, payload_json, status, created_at)
          VALUES(?, ?, ?, ?, ?)'
