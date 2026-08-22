@@ -9,12 +9,27 @@ header('Cache-Control: no-store');
 
 $request = authenticate_agent_request(32768);
 $agent = $request['agent'];
-$agentDbId = (int) $agent['id'];
+$agentDbId = (int)$agent['id'];
 $now = gmdate('c');
 $pdo = db();
 
 try {
     $pdo->beginTransaction();
+
+    // Safety barrier: legacy broad writes must never be delivered. They can
+    // change authentication or management settings and are intentionally
+    // disabled while the dedicated narrow actions are used instead.
+    $blocked = $pdo->prepare(
+        "UPDATE agent_jobs
+         SET status='failed', error=?, finished_at=?
+         WHERE agent_id=? AND status IN ('queued','running')
+           AND job_type IN ('set_access_user','set_administration_settings','set_general_settings','set_firewall_advanced_settings')"
+    );
+    $blocked->execute([
+        'Blocked by opnSentral safety policy. Use a dedicated narrow action instead.',
+        $now,
+        $agentDbId,
+    ]);
 
     $requeue = $pdo->prepare(
         'UPDATE agent_jobs
@@ -44,7 +59,7 @@ try {
          SET status = ?, picked_at = ?
          WHERE id = ? AND status = ?'
     );
-    $claim->execute(['running', $now, (int) $job['id'], 'queued']);
+    $claim->execute(['running', $now, (int)$job['id'], 'queued']);
 
     if ($claim->rowCount() !== 1) {
         $pdo->rollBack();
@@ -54,23 +69,19 @@ try {
 
     $pdo->commit();
 
-    $payload = json_decode((string) $job['payload_json'], true);
-    if (!is_array($payload)) {
-        $payload = [];
-    }
+    $payload = json_decode((string)$job['payload_json'], true);
+    if (!is_array($payload)) $payload = [];
 
     echo json_encode([
         'ok' => true,
         'job' => [
-            'id' => (int) $job['id'],
-            'type' => (string) $job['job_type'],
+            'id' => (int)$job['id'],
+            'type' => (string)$job['job_type'],
             'payload' => $payload,
-            'created_at' => (string) $job['created_at'],
+            'created_at' => (string)$job['created_at'],
         ],
     ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 } catch (Throwable $exception) {
-    if ($pdo->inTransaction()) {
-        $pdo->rollBack();
-    }
+    if ($pdo->inTransaction()) $pdo->rollBack();
     agent_fail(500, 'Could not fetch agent job.');
 }
