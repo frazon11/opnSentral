@@ -34,7 +34,7 @@ try {
     $agent = $agentStmt->fetch();
     if (!is_array($agent) || (int)($agent['enabled'] ?? 0) !== 1) throw new RuntimeException('No enabled agent is associated with this firewall.');
     $version = trim((string)($agent['last_version'] ?? ''));
-    if ($version === '' || version_compare($version, '0.1.14', '<')) throw new RuntimeException('Agent 0.1.14 is required.');
+    if ($version === '' || version_compare($version, '0.1.15', '<')) throw new RuntimeException('Agent 0.1.15 is required.');
     $lastSeen = !empty($agent['last_seen_at']) ? (strtotime((string)$agent['last_seen_at']) ?: 0) : 0;
     if ($lastSeen <= 0 || (time() - $lastSeen) >= 300) throw new RuntimeException('The selected firewall agent is offline or stale.');
 
