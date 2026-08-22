@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.12';
+const AGENT_VERSION = '0.1.13';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
@@ -321,12 +321,12 @@ function run_once(array $config): bool { report($config); return poll_job($confi
 
 $command=$argv[1]??'run';
 if ($command==='register') { if (count($argv)<4) fail('Usage: opnsentral-agent register https://OPNSENTRAL TOKEN'); register_agent((string)$argv[2],(string)$argv[3]); exit(0); }
-$config=load_config();
-if ($command==='once') { run_once($config); exit(0); }
+$agentConfig=load_config();
+if ($command==='once') { run_once($agentConfig); exit(0); }
 if ($command!=='run') fail('Supported commands: register, once, run');
-$interval=max(30,(int)($config['poll_interval']??60));
+$interval=max(30,(int)($agentConfig['poll_interval']??60));
 while (true) {
-    try { if (run_once($config)) exit(0); }
+    try { if (run_once($agentConfig)) exit(0); }
     catch (Throwable $exception) { fwrite(STDERR,gmdate('c').' '.$exception->getMessage()."\n"); }
     sleep($interval);
 }
