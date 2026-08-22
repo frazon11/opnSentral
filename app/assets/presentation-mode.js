@@ -47,7 +47,15 @@
     function anonymizeIpv4(address){return mapped('ipv4',address,function(){const p=address.split('.').map(Number);if(p.length!==4)return '192.0.2.'+stableNumber(address,1,254);if(p[0]===10)return [10,stableNumber(address+':b',1,254),stableNumber(address+':c',1,254),stableNumber(address+':d',1,254)].join('.');if(p[0]===172&&p[1]>=16&&p[1]<=31)return [172,stableNumber(address+':b',16,31),stableNumber(address+':c',1,254),stableNumber(address+':d',1,254)].join('.');if(p[0]===192&&p[1]===168)return [192,168,stableNumber(address+':c',1,254),stableNumber(address+':d',1,254)].join('.');return [192,0,2,stableNumber(address,1,254)].join('.');});}
     function anonymizeIpv6(address){return mapped('ipv6',address,function(){const a=stableNumber(address+':a',1,65535).toString(16);const b=stableNumber(address+':b',1,65535).toString(16);const c=stableNumber(address+':c',1,65535).toString(16);return '2001:db8:'+a+':'+b+'::'+c;});}
     function anonymizeEmail(email){return mapped('email',email,()=> 'user'+stableNumber(email,1,999)+'@example.invalid');}
-    function anonymizeHost(host){return mapped('host',host,function(){const lower=host.toLowerCase();if(lower==='localhost')return 'demo-host.local';const suffix=lower.endsWith('.local')?'.demo.local':'.example.invalid';return 'host-'+stableNumber(host,1,999)+suffix;});}
+    function anonymizeHost(host){
+        return mapped('host-v2',host,function(){
+            return String(host).split('.').map(function(label){
+                return label.split(/(-)/).map(function(part){
+                    return part==='-'?part:fakeName(part);
+                }).join('');
+            }).join('.');
+        });
+    }
     function presentationNames(){
         const names=Array.isArray(window.opnSentralPresentationNames)?window.opnSentralPresentationNames:[];
         return Array.from(new Set(names.map(value=>String(value||'').trim()).filter(Boolean)));
