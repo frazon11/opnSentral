@@ -29,6 +29,21 @@ function access_xml_has(SimpleXMLElement $node, string $name): bool
     return access_xml_children_named($node, $name) !== [];
 }
 
+function access_xml_bool(SimpleXMLElement $node, string $name): bool
+{
+    $children = access_xml_children_named($node, $name);
+    if ($children === []) return false;
+
+    $value = strtolower(trim((string) $children[0]));
+
+    // OPNsense configurations may serialize false checkbox values as
+    // <field>0</field> rather than omitting the node. Presence alone is
+    // therefore not a valid boolean test. An empty node is kept compatible
+    // with the historical presence-style representation of enabled flags.
+    if ($value === '') return true;
+    return in_array($value, ['1', 'true', 'yes', 'on'], true);
+}
+
 function access_xml_text(SimpleXMLElement $node, string $name, string $default = ''): string
 {
     $children = access_xml_children_named($node, $name);
@@ -139,7 +154,7 @@ function access_parse_users(SimpleXMLElement $xml): array
             'groups' => array_values(array_unique($groups)),
             'privileges' => array_values(array_unique($privileges)),
             'shell' => access_xml_text($node, 'shell'),
-            'disabled' => access_xml_has($node, 'disabled'),
+            'disabled' => access_xml_bool($node, 'disabled'),
             'otp' => access_xml_text($node, 'otp_seed') !== '',
             'has_password' => access_xml_text($node, 'password') !== '',
             'authorized_keys' => $authorizedKeys,
