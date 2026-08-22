@@ -36,7 +36,7 @@ function access_xml_values(SimpleXMLElement $node, string $name): array
 {
     $values=[];
     foreach (access_xml_children_named($node,$name) as $item) {
-        $value=trim((string)$item;
+        $value=trim((string)$item);
         if ($value!=='') $values[]=$value;
     }
     return array_values(array_unique($values));
@@ -213,8 +213,7 @@ function access_load_fleet_inventory(array $firewalls): array
     foreach ($firewalls as $firewall) {
         $id=(int)$firewall['id'];
         if (isset($agentInventory[$id])) {
-            $entry=['firewall'=>$firewall,'ok'=>true,'users'=>$agentInventory[$id]['users'],'groups'=>$agentInventory[$id]['groups'],'error'=>'','normalized_escaped_xml'=>false,'source'=>'agent','source_note'=>'Agent '.$agentInventory[$id]['agent_version'].' local config'];
-            $result[$id]=$entry;
+            $result[$id]=['firewall'=>$firewall,'ok'=>true,'users'=>$agentInventory[$id]['users'],'groups'=>$agentInventory[$id]['groups'],'error'=>'','normalized_escaped_xml'=>false,'source'=>'agent','source_note'=>'Agent '.$agentInventory[$id]['agent_version'].' local config'];
             continue;
         }
         $download=$downloads[$id] ?? ['ok'=>false,'error'=>'No response.'];
