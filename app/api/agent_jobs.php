@@ -38,6 +38,30 @@ try {
     );
     $requeue->execute(['queued', $agentDbId, 'running', gmdate('c', time() - 300)]);
 
+    // If several self-update clicks accumulated while an agent was stale,
+    // only the newest queued update is meaningful. Mark older queued copies
+    // failed before selecting work so a recovered agent cannot restart through
+    // several obsolete update jobs in sequence.
+    $latestSelfUpdate = $pdo->prepare(
+        "SELECT MAX(id) FROM agent_jobs
+         WHERE agent_id = ? AND job_type = 'self_update' AND status = 'queued'"
+    );
+    $latestSelfUpdate->execute([$agentDbId]);
+    $latestSelfUpdateId = (int)($latestSelfUpdate->fetchColumn() ?: 0);
+    if ($latestSelfUpdateId > 0) {
+        $supersede = $pdo->prepare(
+            "UPDATE agent_jobs
+             SET status='failed', error=?, finished_at=?
+             WHERE agent_id=? AND job_type='self_update' AND status='queued' AND id<>?"
+        );
+        $supersede->execute([
+            'Superseded by newer queued self-update job #'.$latestSelfUpdateId.'.',
+            $now,
+            $agentDbId,
+            $latestSelfUpdateId,
+        ]);
+    }
+
     $statement = $pdo->prepare(
         'SELECT id, job_type, payload_json, created_at
          FROM agent_jobs
