@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - "app/inc/update_check.php"
+      - "app/agent/opnsentral-agent"
+      - "scripts/check-agent-runtime-isolation.php"
+      - ".github/workflows/docker-publish.yml"
     tags:
       - "v*"
   workflow_dispatch:
@@ -74,6 +77,9 @@ jobs:
           while IFS= read -r -d '' file; do
             php -l "$file" >/dev/null
           done < <(find app -type f \( -name '*.php' -o -path 'app/agent/opnsentral-agent' \) -print0)
+
+      - name: Check agent runtime config isolation
+        run: php scripts/check-agent-runtime-isolation.php
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
