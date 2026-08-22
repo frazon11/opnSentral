@@ -82,6 +82,27 @@ function access_xml_system_nodes(SimpleXMLElement $xml, string $name): array
     return [];
 }
 
+function access_normalize_config_xml(string $body): array
+{
+    $normalized = ltrim($body, "\xEF\xBB\xBF\x00\x09\x0A\x0D\x20");
+    $decodedEscaping = false;
+
+    // OPNsense has had regressions where /api/core/backup/download/this
+    // returns the entire XML document HTML-escaped (&lt;opnsense&gt;...).
+    // Decode only when the document itself starts escaped; never decode a
+    // normally formed XML document because its field values may legitimately
+    // contain XML entities.
+    for ($attempt = 0; $attempt < 2; $attempt++) {
+        if (!preg_match('/^&lt;(?:\?xml\b|opnsense\b)/i', $normalized)) break;
+        $decoded = html_entity_decode($normalized, ENT_QUOTES | ENT_XML1, 'UTF-8');
+        if ($decoded === $normalized) break;
+        $normalized = ltrim($decoded, "\xEF\xBB\xBF\x00\x09\x0A\x0D\x20");
+        $decodedEscaping = true;
+    }
+
+    return ['xml' => $normalized, 'decoded_escaped_xml' => $decodedEscaping];
+}
+
 function access_decode_authorized_keys(SimpleXMLElement $node): string
 {
     $encoded = access_xml_text($node, 'authorizedkeys');
@@ -208,7 +229,7 @@ function access_load_fleet_inventory(array $firewalls): array
     foreach ($firewalls as $firewall) {
         $id = (int) $firewall['id'];
         $download = $downloads[$id] ?? ['ok' => false, 'error' => 'No response.'];
-        $entry = ['firewall' => $firewall, 'ok' => false, 'users' => [], 'groups' => [], 'error' => ''];
+        $entry = ['firewall' => $firewall, 'ok' => false, 'users' => [], 'groups' => [], 'error' => '', 'normalized_escaped_xml' => false];
 
         if (($download['ok'] ?? false) !== true) {
             $entry['error'] = (string) ($download['error'] ?? 'Could not read configuration.');
@@ -217,24 +238,31 @@ function access_load_fleet_inventory(array $firewalls): array
         }
 
         try {
+            $normalization = access_normalize_config_xml((string) ($download['value'] ?? ''));
+            $entry['normalized_escaped_xml'] = (bool) $normalization['decoded_escaped_xml'];
+
             libxml_use_internal_errors(true);
+            libxml_clear_errors();
             $xml = simplexml_load_string(
-                (string) ($download['value'] ?? ''),
+                (string) $normalization['xml'],
                 SimpleXMLElement::class,
                 LIBXML_NONET | LIBXML_NOCDATA
             );
             if (!$xml instanceof SimpleXMLElement) {
-                throw new RuntimeException('Could not parse OPNsense configuration XML.');
+                $errors = libxml_get_errors();
+                $detail = $errors ? trim((string) $errors[0]->message) : 'unknown XML parser error';
+                libxml_clear_errors();
+                throw new RuntimeException('Could not parse OPNsense configuration XML: ' . $detail);
+            }
+            if (strcasecmp($xml->getName(), 'opnsense') !== 0) {
+                throw new RuntimeException('Backup endpoint did not return an OPNsense configuration document.');
             }
 
             $entry['users'] = access_parse_users($xml);
             $entry['groups'] = access_parse_groups($xml);
 
-            // A valid OPNsense configuration normally has at least the root user
-            // and admins group. Treat an empty Access inventory as a read/parser
-            // failure instead of incorrectly displaying every fleet object as Missing.
             if ($entry['users'] === [] && $entry['groups'] === []) {
-                throw new RuntimeException('Configuration was read, but no System Access users or groups could be extracted.');
+                throw new RuntimeException('Configuration XML is valid, but contains no System Access users or groups.');
             }
 
             access_reconcile_memberships($entry['users'], $entry['groups']);
