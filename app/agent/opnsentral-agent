@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.14';
+const AGENT_VERSION = '0.1.15';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
@@ -45,7 +45,7 @@ function curl_binary(): string
 function run_process(array $command, ?string $stdin = null): array
 {
     $process = proc_open($command, [0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']], $pipes);
-    if (!is_resource($process)) throw new RuntimeException('Could not start HTTPS client.');
+    if (!is_resource($process)) throw new RuntimeException('Could not start process.');
     if ($stdin !== null && $stdin !== '') fwrite($pipes[0], $stdin);
     fclose($pipes[0]);
     $stdout = stream_get_contents($pipes[1]);
@@ -271,6 +271,22 @@ function authorized_key_file_contains(string $path, string $identity): bool
     return false;
 }
 
+function local_user_home(string $name): string
+{
+    foreach (['/usr/sbin/pw','/usr/local/sbin/pw'] as $pw) {
+        if (!is_file($pw) || !is_executable($pw)) continue;
+        $result=run_process([$pw,'usershow','-n',$name,'-7']);
+        if ((int)$result['status']!==0) continue;
+        $line=trim((string)$result['stdout']);
+        $parts=explode(':',$line);
+        $home=count($parts)>=10 ? rtrim(trim((string)$parts[8]),'/') : '';
+        if ($home!=='' && str_starts_with($home,'/')) return $home;
+    }
+    if ($name==='root') return '/root';
+    if (preg_match('/^[A-Za-z0-9._-]+$/',$name)) return '/home/'.$name;
+    throw new RuntimeException('Filesystem verification failed: could not determine home directory for '.$name.'.');
+}
+
 function add_access_user_authorized_key(array $payload): array
 {
     $name=trim((string)($payload['user']??'')); $key=normalize_authorized_key($payload['authorized_key']??'');
@@ -293,7 +309,15 @@ function add_access_user_authorized_key(array $payload): array
         foreach (preg_split('/\R+/',trim($decoded))?:[] as $line) { $line=trim((string)$line); if ($line!=='') $existing[]=$line; }
     }
     $newIdentity=authorized_key_identity($key);
-    foreach ($existing as $line) if (authorized_key_identity($line)===$newIdentity) return ['message'=>'SSH key is already present for user '.$name.'; no change made.','user'=>$name,'changed'=>false,'applied_at'=>gmdate('c')];
+    $home=local_user_home($name);
+    $authorizedKeysPath=$home.'/.ssh/authorized_keys';
+    foreach ($existing as $line) {
+        if (authorized_key_identity($line)!==$newIdentity) continue;
+        if (!function_exists('local_user_set')) throw new RuntimeException('Required OPNsense local_user_set() function is unavailable.');
+        if (!authorized_key_file_contains($authorizedKeysPath,$newIdentity)) local_user_set($user);
+        if (!authorized_key_file_contains($authorizedKeysPath,$newIdentity)) throw new RuntimeException('SSH key exists in config but not in '.$authorizedKeysPath.'.');
+        return ['message'=>'SSH key is already present for user '.$name.' and verified in '.$authorizedKeysPath.'; no config change made.','user'=>$name,'changed'=>false,'authorized_keys_path'=>$authorizedKeysPath,'applied_at'=>gmdate('c')];
+    }
 
     if (!is_dir('/conf/backup') && !mkdir('/conf/backup',0700,true) && !is_dir('/conf/backup')) throw new RuntimeException('Could not create /conf/backup for safety copy.');
     $safety='/conf/backup/opnsentral-before-ssh-key-'.preg_replace('/[^A-Za-z0-9._-]+/','_',$name).'-'.gmdate('Ymd-His').'.xml';
@@ -314,12 +338,6 @@ function add_access_user_authorized_key(array $payload): array
     $configHasKey=false;
     foreach (preg_split('/\R+/',trim($verifyDecoded))?:[] as $line) if (authorized_key_identity((string)$line)===$newIdentity) { $configHasKey=true; break; }
     if (!$configHasKey) throw new RuntimeException('Post-write verification failed: SSH key not present in config. Safety copy: '.$safety);
-
-    if (!function_exists('posix_getpwnam')) throw new RuntimeException('Filesystem verification unavailable: posix_getpwnam() is missing. Safety copy: '.$safety);
-    $account=posix_getpwnam($name);
-    $home=is_array($account) ? rtrim(trim((string)($account['dir']??'')),'/') : '';
-    if ($home==='') throw new RuntimeException('Filesystem verification failed: local account/home not found for '.$name.'. Safety copy: '.$safety);
-    $authorizedKeysPath=$home.'/.ssh/authorized_keys';
     if (!authorized_key_file_contains($authorizedKeysPath,$newIdentity)) throw new RuntimeException('Filesystem verification failed: SSH key is not present in '.$authorizedKeysPath.'. Safety copy: '.$safety);
 
     return ['message'=>'SSH key added to user '.$name.' and verified in OPNsense config and '.$authorizedKeysPath.'. Existing keys and all other user settings were preserved.','user'=>$name,'changed'=>true,'safety_copy'=>$safety,'authorized_keys_path'=>$authorizedKeysPath,'applied_at'=>gmdate('c')];
