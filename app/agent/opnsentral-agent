@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.9';
+const AGENT_VERSION = '0.1.10';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
@@ -179,6 +179,103 @@ function restore_backup(array $payload): array
     return ['message'=>'Backup #' . $backupId . ' restored to /conf/config.xml; reboot queued.','backup_id'=>$backupId,'filename'=>$filename,'sha256'=>$expected,'safety_copy'=>$safety,'restored_at'=>gmdate('c'),'_reboot_system'=>true];
 }
 
+function load_opnsense_config(): array
+{
+    foreach (['/usr/local/etc/inc/util.inc','/usr/local/etc/inc/config.inc'] as $file) {
+        if (!is_file($file)) throw new RuntimeException('Required OPNsense configuration library is missing: ' . $file);
+        require_once $file;
+    }
+    global $config;
+    if (!is_array($config)) throw new RuntimeException('OPNsense configuration is unavailable.');
+    if (!function_exists('write_config')) throw new RuntimeException('OPNsense write_config() is unavailable.');
+    return $config;
+}
+
+function normalize_string_list(mixed $value, int $limit): array
+{
+    if (!is_array($value)) return [];
+    $result=[];
+    foreach ($value as $item) {
+        $item=trim((string)$item);
+        if ($item==='') continue;
+        if (!preg_match('/^[A-Za-z0-9_.:\/@+-]{1,160}$/',$item)) throw new RuntimeException('Invalid Access list value: ' . $item);
+        $result[]=$item;
+    }
+    $result=array_values(array_unique($result));
+    if (count($result)>$limit) throw new RuntimeException('Access list contains too many values.');
+    return $result;
+}
+
+function normalize_authorized_keys(mixed $value): string
+{
+    if (!is_string($value)) throw new RuntimeException('Authorized Keys must be text.');
+    $value=trim(str_replace(["\r\n","\r"],"\n",$value));
+    if (strlen($value)>65535) throw new RuntimeException('Authorized Keys exceeds 64 KiB.');
+    if ($value==='') return '';
+    $allowed=['ssh-ed25519','ssh-rsa','ecdsa-sha2-nistp256','ecdsa-sha2-nistp384','ecdsa-sha2-nistp521','sk-ssh-ed25519@openssh.com','sk-ecdsa-sha2-nistp256@openssh.com'];
+    $lines=[];
+    foreach (explode("\n",$value) as $line) {
+        $line=trim($line);
+        if ($line==='') continue;
+        if (strlen($line)>8192 || preg_match('/[\x00-\x1F\x7F]/',$line)) throw new RuntimeException('Authorized Keys contains an invalid line.');
+        $parts=preg_split('/\s+/',$line,3) ?: [];
+        $type=(string)($parts[0] ?? '');
+        $blob=(string)($parts[1] ?? '');
+        if (!in_array($type,$allowed,true) || $blob==='' || base64_decode($blob,true)===false) {
+            throw new RuntimeException('Unsupported or invalid OpenSSH public key. Supported key types: ' . implode(', ',$allowed) . '.');
+        }
+        $lines[]=$line;
+    }
+    return implode("\n",$lines);
+}
+
+function set_access_user(array $payload): array
+{
+    $name=trim((string)($payload['user'] ?? ''));
+    $disabled=$payload['disabled'] ?? null;
+    $shell=trim((string)($payload['shell'] ?? ''));
+    $groups=normalize_string_list($payload['groups'] ?? [],100);
+    $privileges=normalize_string_list($payload['privileges'] ?? [],250);
+    $authorizedKeys=normalize_authorized_keys($payload['authorized_keys'] ?? '');
+    if ($name==='' || !preg_match('/^[^\x00-\x1F\x7F]{1,128}$/u',$name)) throw new RuntimeException('Invalid user name.');
+    if (!is_bool($disabled)) throw new RuntimeException('Disabled state must be boolean.');
+    $allowedShells=['','/bin/csh','/bin/tcsh','/bin/sh','/sbin/nologin','/usr/local/bin/scponly','/usr/local/sbin/scponlyc','/usr/local/sbin/ssh_tunnel_shell'];
+    if (!in_array($shell,$allowedShells,true)) throw new RuntimeException('Unsupported login shell.');
+    $authFile='/usr/local/etc/inc/auth.inc';
+    if (!is_file($authFile)) throw new RuntimeException('OPNsense Access library was not found.');
+    load_opnsense_config();
+    require_once $authFile;
+    global $config;
+    if (!isset($config['system']['user']) || !is_array($config['system']['user'])) throw new RuntimeException('OPNsense user configuration is unavailable.');
+    $index=null;
+    foreach ($config['system']['user'] as $key=>$candidate) {
+        if (is_array($candidate) && (string)($candidate['name'] ?? '')===$name) { $index=$key; break; }
+    }
+    if ($index===null) throw new RuntimeException('User not found: ' . $name);
+    $user=$config['system']['user'][$index];
+    $uid=(string)($user['uid'] ?? '');
+    if ($uid==='0' && $disabled) throw new RuntimeException('UID 0 cannot be disabled through opnSentral.');
+    $groupNames=[];
+    foreach (($config['system']['group'] ?? []) as $group) if (is_array($group) && trim((string)($group['name'] ?? ''))!=='') $groupNames[]=(string)$group['name'];
+    foreach ($groups as $group) if (!in_array($group,$groupNames,true)) throw new RuntimeException('Group does not exist: ' . $group);
+    if ($disabled) $user['disabled']='1'; else unset($user['disabled']);
+    if ($shell!=='') $user['shell']=$shell; else unset($user['shell']);
+    if ($privileges!==[]) $user['priv']=$privileges; else unset($user['priv']);
+    if ($authorizedKeys!=='') $user['authorizedkeys']=base64_encode($authorizedKeys); else unset($user['authorizedkeys']);
+    if (!function_exists('local_user_set_groups') || !function_exists('local_user_set')) throw new RuntimeException('Required OPNsense local-user functions are unavailable.');
+    $groupSelection=array_values(array_unique(array_merge(['all'],$groups)));
+    local_user_set_groups($user,$groupSelection);
+    $config['system']['user'][$index]=$user;
+    write_config('opnSentral: update System Access user ' . $name);
+    local_user_set($user);
+    return [
+        'message'=>'User ' . $name . ' updated, including ' . ($authorizedKeys==='' ? 'no' : (string)count(explode("\n",$authorizedKeys))) . ' authorized SSH key' . ($authorizedKeys!=='' && count(explode("\n",$authorizedKeys))!==1 ? 's' : '') . '.',
+        'user'=>$name,
+        'authorized_key_count'=>$authorizedKeys==='' ? 0 : count(explode("\n",$authorizedKeys)),
+        'applied_at'=>gmdate('c'),
+    ];
+}
+
 function execute_job(array $job, array $config): array
 {
     $type=(string)($job['type'] ?? '');
@@ -186,6 +283,7 @@ function execute_job(array $job, array $config): array
     if ($type==='system_status') { $load=function_exists('sys_getloadavg')?sys_getloadavg():[]; return ['hostname'=>hostname_value(),'load_average'=>is_array($load)?array_values($load):[],'uptime'=>trim((string)shell_exec('/usr/bin/uptime 2>/dev/null')),'checked_at'=>gmdate('c')]; }
     if ($type==='self_update') return self_update($config,is_array($job['payload'] ?? null)?$job['payload']:[]);
     if ($type==='restore_backup') return restore_backup(is_array($job['payload'] ?? null)?$job['payload']:[]);
+    if ($type==='set_access_user') return set_access_user(is_array($job['payload'] ?? null)?$job['payload']:[]);
     if (in_array($type,['set_administration_settings','set_general_settings','set_firewall_advanced_settings'],true)) throw new RuntimeException('Remote configuration writes are temporarily disabled for safety.');
     throw new RuntimeException('Unsupported job type: ' . $type);
 }
