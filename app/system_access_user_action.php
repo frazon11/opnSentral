@@ -17,6 +17,8 @@ $disabled = isset($_POST['disabled']);
 $shell = trim((string) ($_POST['shell'] ?? ''));
 $groups = array_values(array_unique(array_filter(array_map(static fn($v): string => trim((string)$v), $_POST['groups'] ?? []), static fn(string $v): bool => $v !== '')));
 $privileges = array_values(array_unique(array_filter(array_map(static fn($v): string => trim((string)$v), $_POST['privileges'] ?? []), static fn(string $v): bool => $v !== '')));
+$authorizedKeys = str_replace(["\r\n", "\r"], "\n", (string) ($_POST['authorized_keys'] ?? ''));
+$authorizedKeys = trim($authorizedKeys);
 $additional = preg_split('/\R+/', trim((string)($_POST['additional_privileges'] ?? ''))) ?: [];
 foreach ($additional as $priv) {
     $priv = trim((string)$priv);
@@ -40,6 +42,8 @@ try {
         }
     }
     if (count($groups) > 100 || count($privileges) > 250) throw new RuntimeException('Too many groups or privileges selected.');
+    if (strlen($authorizedKeys) > 65535) throw new RuntimeException('Authorized Keys exceeds 64 KiB.');
+    if (preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $authorizedKeys)) throw new RuntimeException('Authorized Keys contains unsupported control characters.');
 
     $marks = implode(',', array_fill(0, count($targets), '?'));
     $statement = db()->prepare('SELECT * FROM firewalls WHERE id IN (' . $marks . ') ORDER BY name');
@@ -73,9 +77,9 @@ try {
 
             $agentStatement->execute([$fid]);
             $agent = $agentStatement->fetch();
-            $agentVersion = is_array($agent) ? trim((string)($agent['last_agent_version'] ?? '')) : '';
-            if (!is_array($agent) || (int)($agent['enabled'] ?? 0) !== 1 || $agentVersion === '' || version_compare($agentVersion, '0.1.3', '<')) {
-                throw new RuntimeException('Enabled agent 0.1.3 or newer is required.');
+            $agentVersion = is_array($agent) ? trim((string)($agent['last_version'] ?? '')) : '';
+            if (!is_array($agent) || (int)($agent['enabled'] ?? 0) !== 1 || $agentVersion === '' || version_compare($agentVersion, '0.1.10', '<')) {
+                throw new RuntimeException('Enabled agent 0.1.10 or newer is required.');
             }
 
             backup_before_change($firewall, 'access-user-' . preg_replace('/[^A-Za-z0-9._-]+/', '_', $userName));
@@ -86,10 +90,10 @@ try {
                 'shell' => $shell,
                 'groups' => $groups,
                 'privileges' => $privileges,
+                'authorized_keys' => $authorizedKeys,
             ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
             $insert = db()->prepare(
-                'INSERT INTO agent_jobs(agent_id, job_type, payload_json, status, created_at)
-                 VALUES(?, ?, ?, ?, ?)'
+                'INSERT INTO agent_jobs(agent_id, job_type, payload_json, status, created_at)\n                 VALUES(?, ?, ?, ?, ?)'
             );
             $insert->execute([(int)$agent['id'], 'set_access_user', $payload, 'queued', gmdate('c')]);
             $jobs[] = [
