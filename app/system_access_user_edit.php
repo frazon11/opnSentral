@@ -64,13 +64,13 @@ $shellOptions = array_values(array_unique(array_filter([
 require __DIR__ . '/inc/header.php';
 ?>
 <style>
-.access-edit-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,.8fr);gap:14px}.access-edit-card label{display:block;margin-bottom:12px}.access-edit-card select[multiple]{min-height:180px}.access-targets{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}.access-target{padding:10px;border:1px solid var(--border);border-radius:6px}.access-target small{display:block;color:var(--muted);margin-top:3px}.access-edit-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.access-result-item{padding:9px 11px;border-radius:6px;margin-top:7px;background:rgba(127,127,127,.08)}.access-result-item.good{border-left:4px solid #2aa84a}.access-result-item.bad{border-left:4px solid #d74747}.access-result-item.pending{border-left:4px solid #d6a52f}@media(max-width:900px){.access-edit-grid{grid-template-columns:1fr}}
+.access-edit-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,.8fr);gap:14px}.access-edit-card label{display:block;margin-bottom:12px}.access-edit-card select[multiple]{min-height:180px}.access-targets{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}.access-target{padding:10px;border:1px solid var(--border);border-radius:6px}.access-target small{display:block;color:var(--muted);margin-top:3px}.access-edit-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.access-result-item{padding:9px 11px;border-radius:6px;margin-top:7px;background:rgba(127,127,127,.08)}.access-result-item.good{border-left:4px solid #2aa84a}.access-result-item.bad{border-left:4px solid #d74747}.access-result-item.pending{border-left:4px solid #d6a52f}.authorized-keys{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;min-height:150px;width:100%}@media(max-width:900px){.access-edit-grid{grid-template-columns:1fr}}
 </style>
 <div class="page-title">
     <div><h1>System → Access → Users → Edit</h1><p><?= h($userName) ?> · source <?= h((string) $sourceEntry['firewall']['name']) ?></p></div>
     <a class="button secondary" href="/system_access_users.php">Back to Users</a>
 </div>
-<div class="alert warningbox"><strong>Authentication-critical change.</strong> Only Disabled, Login shell, Group membership and direct Privileges are modified. Passwords, OTP seeds, authorized keys and API keys are preserved. A pre-change backup is created for every target before the job is queued.</div>
+<div class="alert warningbox"><strong>Authentication-critical change.</strong> Disabled, Login shell, Group membership, direct Privileges and Authorized Keys can be modified. Passwords, OTP seeds and API keys are preserved. A pre-change backup is created for every target before the job is queued.</div>
 
 <form method="post" action="/system_access_user_action.php">
 <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
@@ -86,6 +86,10 @@ require __DIR__ . '/inc/header.php';
                 <option value="">Default / none</option>
                 <?php foreach ($shellOptions as $shell): ?><option value="<?= h($shell) ?>" <?= (string)($sourceUser['shell'] ?? '') === $shell ? 'selected' : '' ?>><?= h($shell) ?></option><?php endforeach; ?>
             </select>
+        </label>
+        <label>Authorized Keys
+            <textarea class="authorized-keys" name="authorized_keys" rows="7" spellcheck="false" placeholder="ssh-ed25519 AAAA... comment&#10;ssh-rsa AAAA... comment"><?= h((string)($sourceUser['authorized_keys'] ?? '')) ?></textarea>
+            <small>One OpenSSH public key per line. Leave empty to remove all authorized keys for this user.</small>
         </label>
         <label>Group membership
             <select name="groups[]" multiple>
@@ -110,14 +114,14 @@ require __DIR__ . '/inc/header.php';
             $user = $entry['users'][$userName] ?? null;
             if (!is_array($user)) continue;
             $agent = $agentsByFirewall[$fid] ?? null;
-            $agentVersion = is_array($agent) ? trim((string)($agent['last_agent_version'] ?? '')) : '';
-            $writable = is_array($agent) && (int)($agent['enabled'] ?? 0) === 1 && $agentVersion !== '' && version_compare($agentVersion, '0.1.3', '>=');
+            $agentVersion = is_array($agent) ? trim((string)($agent['last_version'] ?? '')) : '';
+            $writable = is_array($agent) && (int)($agent['enabled'] ?? 0) === 1 && $agentVersion !== '' && version_compare($agentVersion, '0.1.10', '>=');
         ?>
             <label class="access-target">
                 <input type="checkbox" name="targets[]" value="<?= (int)$fid ?>" <?= $fid === $firewallId && $writable ? 'checked' : '' ?> <?= $writable ? '' : 'disabled' ?>>
                 <strong><?= h((string)$entry['firewall']['name']) ?></strong>
                 <small>UID <?= h((string)($user['uid'] ?? '—')) ?> · <?= $agentVersion !== '' ? 'agent '.$agentVersion : 'no agent' ?></small>
-                <?php if (!$writable): ?><small><span class="badge warning">Agent 0.1.3+ required</span></small><?php endif; ?>
+                <?php if (!$writable): ?><small><span class="badge warning">Agent 0.1.10+ required</span></small><?php endif; ?>
             </label>
         <?php endforeach; ?>
         </div>
