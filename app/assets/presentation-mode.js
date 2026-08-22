@@ -52,11 +52,55 @@
         const names=Array.isArray(window.opnSentralPresentationNames)?window.opnSentralPresentationNames:[];
         return Array.from(new Set(names.map(value=>String(value||'').trim()).filter(Boolean)));
     }
-    function registerNames(values){
+    function addName(value){
+        const name=String(value||'').trim();
+        if(!name)return false;
         if(!Array.isArray(window.opnSentralPresentationNames))window.opnSentralPresentationNames=[];
-        const current=new Set(window.opnSentralPresentationNames.map(value=>String(value)));
-        (Array.isArray(values)?values:[values]).forEach(function(value){const name=String(value||'').trim();if(name&&!current.has(name)){window.opnSentralPresentationNames.push(name);current.add(name);}});
-        if(enabled)apply();
+        if(window.opnSentralPresentationNames.some(item=>String(item)===name))return false;
+        window.opnSentralPresentationNames.push(name);
+        return true;
+    }
+    function registerNames(values){
+        let changed=false;
+        (Array.isArray(values)?values:[values]).forEach(value=>{if(addName(value))changed=true;});
+        if(changed&&enabled)apply();
+    }
+    function discoverPageNames(root){
+        const scope=root&&typeof root.querySelectorAll==='function'?root:document;
+        const path=location.pathname;
+        const collect=function(selector,extractor){
+            scope.querySelectorAll(selector).forEach(function(element){
+                const value=extractor?extractor(element):element.textContent;
+                addName(value);
+            });
+        };
+        if(path==='/system_access_users.php'){
+            collect('.access-table tbody .object-col strong');
+        }
+        if(path==='/system_access_ssh_key.php'){
+            collect('.fixed-target strong');
+        }
+        if(path==='/wireguard_overview.php'){
+            collect('#wg-overview-list tbody tr td:first-child strong');
+            collect('#wg-overview-list tbody tr td:nth-child(2)',element=>element.textContent);
+        }
+        if(path==='/openvpn_manage.php'){
+            collect('#ovpn-list tbody tr td:first-child strong');
+            scope.querySelectorAll('#ovpn-list table').forEach(function(table){
+                const heading=String(table.querySelector('thead th:first-child')?.textContent||'').trim().toLowerCase();
+                if(/user|common name|client/.test(heading)){
+                    table.querySelectorAll('tbody tr td:first-child').forEach(cell=>addName(cell.textContent));
+                }
+            });
+        }
+        if(path==='/vpn_status.php'){
+            scope.querySelectorAll('table').forEach(function(table){
+                const heading=String(table.querySelector('thead th:first-child')?.textContent||'').trim().toLowerCase();
+                if(/vpn|tunnel|peer|client|user|name/.test(heading)){
+                    table.querySelectorAll('tbody tr td:first-child').forEach(cell=>addName(cell.textContent));
+                }
+            });
+        }
     }
     function replaceVisibleText(input){
         let output=String(input);
@@ -79,10 +123,10 @@
         const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT|NodeFilter.SHOW_ELEMENT);let current;
         while((current=walker.nextNode())){if(current.nodeType===Node.TEXT_NODE){transform?transformTextNode(current):restoreTextNode(current);}else{transform?transformElementAttributes(current):restoreElementAttributes(current);}}
     }
-    function startObserver(){if(observer)return;observer=new MutationObserver(function(mutations){if(!enabled||applying)return;applying=true;try{mutations.forEach(function(mutation){mutation.addedNodes.forEach(node=>walk(node,true));if(mutation.type==='characterData'&&mutation.target.nodeType===Node.TEXT_NODE)transformTextNode(mutation.target);});}finally{applying=false;}});observer.observe(document.body,{childList:true,subtree:true,characterData:true});}
+    function startObserver(){if(observer)return;observer=new MutationObserver(function(mutations){if(!enabled||applying)return;applying=true;try{mutations.forEach(function(mutation){mutation.addedNodes.forEach(function(node){if(node.nodeType===Node.ELEMENT_NODE||node.nodeType===Node.DOCUMENT_FRAGMENT_NODE)discoverPageNames(node);walk(node,true);});if(mutation.type==='characterData'&&mutation.target.nodeType===Node.TEXT_NODE)transformTextNode(mutation.target);});}finally{applying=false;}});observer.observe(document.body,{childList:true,subtree:true,characterData:true});}
     function stopObserver(){if(observer){observer.disconnect();observer=null;}}
     function updateUi(){document.body.classList.toggle('presentation-mode',enabled);}
-    function apply(){applying=true;try{if(enabled){walk(document.body,true);startObserver();}else{stopObserver();walk(document.body,false);}updateUi();}finally{applying=false;}}
+    function apply(){applying=true;try{if(enabled){discoverPageNames(document);walk(document.body,true);startObserver();}else{stopObserver();walk(document.body,false);}updateUi();}finally{applying=false;}}
 
     window.opnSentralApplyPresentationMode=apply;
     window.opnSentralPresentationEnabled=()=>enabled;
