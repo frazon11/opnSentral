@@ -5,14 +5,14 @@ declare(strict_types=1);
 require_once __DIR__ . '/inc/config.php';
 require_login();
 
+$prefillFirewallId = (int)($_GET['firewall_id'] ?? 0);
+$prefillUser = trim((string)($_GET['user'] ?? ''));
 $firewalls = db()->query('SELECT id,name FROM firewalls ORDER BY name')->fetchAll();
 $agents = db()->query('SELECT * FROM agents WHERE firewall_id IS NOT NULL ORDER BY id DESC')->fetchAll();
 $agentsByFirewall = [];
 foreach ($agents as $agent) {
     $fid = (int)($agent['firewall_id'] ?? 0);
-    if ($fid > 0 && !isset($agentsByFirewall[$fid])) {
-        $agentsByFirewall[$fid] = $agent;
-    }
+    if ($fid > 0 && !isset($agentsByFirewall[$fid])) $agentsByFirewall[$fid] = $agent;
 }
 
 $result = $_SESSION['ssh_key_deploy_result'] ?? null;
@@ -21,12 +21,7 @@ unset($_SESSION['ssh_key_deploy_result']);
 require __DIR__ . '/inc/header.php';
 ?>
 <style>
-.ssh-key-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.7fr);gap:14px}
-.ssh-key-card label{display:block;margin-bottom:12px}
-.ssh-key-text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;min-height:130px;width:100%}
-.ssh-key-result{padding:10px 12px;border-radius:6px;margin-top:8px;background:rgba(127,127,127,.08)}
-.ssh-key-result.good{border-left:4px solid #2aa84a}.ssh-key-result.bad{border-left:4px solid #d74747}.ssh-key-result.pending{border-left:4px solid #d6a52f}
-@media(max-width:900px){.ssh-key-grid{grid-template-columns:1fr}}
+.ssh-key-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.7fr);gap:14px}.ssh-key-card label{display:block;margin-bottom:12px}.ssh-key-text{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;min-height:130px;width:100%}.ssh-key-result{padding:10px 12px;border-radius:6px;margin-top:8px;background:rgba(127,127,127,.08)}.ssh-key-result.good{border-left:4px solid #2aa84a}.ssh-key-result.bad{border-left:4px solid #d74747}.ssh-key-result.pending{border-left:4px solid #d6a52f}@media(max-width:900px){.ssh-key-grid{grid-template-columns:1fr}}
 </style>
 <div class="page-title">
     <div><h1>System → Access → Add SSH Key</h1><p>Add one SSH public key to one existing OPNsense user on one firewall.</p></div>
@@ -49,12 +44,12 @@ require __DIR__ . '/inc/header.php';
                     $online = is_array($agent) && (int)($agent['enabled'] ?? 0) === 1 && $lastSeen > 0 && (time() - $lastSeen) < 300;
                     $capable = $online && $version !== '' && version_compare($version, '0.1.11', '>=');
                 ?>
-                <option value="<?= $fid ?>" <?= $capable ? '' : 'disabled' ?>><?= h((string)$firewall['name']) ?><?= $version !== '' ? ' — agent '.h($version) : ' — no agent' ?><?= !$online ? ' — offline/stale' : (!$capable ? ' — update agent' : '') ?></option>
+                <option value="<?= $fid ?>" <?= $fid === $prefillFirewallId ? 'selected' : '' ?> <?= $capable ? '' : 'disabled' ?>><?= h((string)$firewall['name']) ?><?= $version !== '' ? ' — agent '.h($version) : ' — no agent' ?><?= !$online ? ' — offline/stale' : (!$capable ? ' — update agent' : '') ?></option>
                 <?php endforeach; ?>
             </select>
         </label>
         <label>User name
-            <input type="text" name="user" maxlength="128" autocomplete="off" required placeholder="e.g. admin">
+            <input type="text" name="user" maxlength="128" autocomplete="off" required value="<?= h($prefillUser) ?>" placeholder="e.g. admin">
         </label>
         <label>OpenSSH public key
             <textarea class="ssh-key-text" name="authorized_key" rows="5" spellcheck="false" required placeholder="ssh-ed25519 AAAA... comment"></textarea>
@@ -63,12 +58,11 @@ require __DIR__ . '/inc/header.php';
         <button class="button" type="submit">Add SSH key</button>
     </div>
     <div class="card ssh-key-card">
-        <h2>What this does</h2>
-        <p>1. Confirms the selected firewall has an online agent 0.1.11+.</p>
-        <p>2. Queues one <code>add_access_user_authorized_key</code> job for that one firewall.</p>
-        <p>3. The agent confirms the user exists locally.</p>
-        <p>4. The agent preserves the current config locally before writing.</p>
-        <p>5. Only <code>authorizedkeys</code> for that user is changed; the key is appended, never replacing existing keys.</p>
+        <h2>Safety</h2>
+        <p>The selected firewall must have an online agent 0.1.11+.</p>
+        <p>The agent confirms the user exists in the local OPNsense configuration before changing anything.</p>
+        <p>A local safety copy of <code>/conf/config.xml</code> is created first.</p>
+        <p>The job appends one key to <code>authorizedkeys</code>; existing keys are preserved. No other user field is sent by this action.</p>
     </div>
 </div>
 </form>
