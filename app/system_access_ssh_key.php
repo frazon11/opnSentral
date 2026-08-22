@@ -26,7 +26,7 @@ $agent = $agentStmt->fetch();
 $version = is_array($agent) ? trim((string)($agent['last_version'] ?? '')) : '';
 $lastSeen = is_array($agent) && !empty($agent['last_seen_at']) ? (strtotime((string)$agent['last_seen_at']) ?: 0) : 0;
 $online = is_array($agent) && (int)($agent['enabled'] ?? 0) === 1 && $lastSeen > 0 && (time() - $lastSeen) < 300;
-$capable = $online && $version !== '' && version_compare($version, '0.1.12', '>=');
+$capable = $online && $version !== '' && version_compare($version, '0.1.13', '>=');
 
 $result = $_SESSION['ssh_key_deploy_result'] ?? null;
 unset($_SESSION['ssh_key_deploy_result']);
@@ -45,7 +45,7 @@ require __DIR__ . '/inc/header.php';
     <h2>Target</h2>
     <div class="fixed-target"><strong><?= h((string)$firewall['name']) ?></strong><br>User: <strong><?= h($userName) ?></strong><br><small><?= $version !== '' ? 'Agent '.h($version) : 'No agent' ?><?= !$online ? ' · offline/stale' : '' ?></small></div>
     <?php if (!$capable): ?>
-        <div class="alert warningbox"><strong>Cannot deploy yet.</strong> This firewall needs an online agent 0.1.12.</div>
+        <div class="alert warningbox"><strong>Cannot deploy yet.</strong> This firewall needs an online agent 0.1.13.</div>
     <?php else: ?>
     <form method="post" action="/system_access_ssh_key_action.php">
         <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
