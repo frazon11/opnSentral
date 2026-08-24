@@ -180,8 +180,8 @@ require __DIR__ . '/inc/header.php';
 <select id="backend_protocol" name="backend_protocol"><option value="http" <?= $form['backend_protocol']==='http'?'selected':'' ?>>HTTP</option><option value="https" <?= $form['backend_protocol']==='https'?'selected':'' ?>>HTTPS</option></select>
 
 <div class="rp-options">
-<label class="rp-option"><input type="checkbox" name="healthcheck" value="1" <?= !empty($form['healthcheck'])?'checked':'' ?>> Health check</label>
-<label class="rp-option"><input type="checkbox" name="backend_verify_tls" value="1" <?= !empty($form['backend_verify_tls'])?'checked':'' ?>> Verify backend TLS certificate</label>
+<input type="hidden" name="healthcheck" value="0"><label class="rp-option"><input type="checkbox" name="healthcheck" value="1" <?= !empty($form['healthcheck'])?'checked':'' ?>> Health check</label>
+<input type="hidden" name="backend_verify_tls" value="0"><label class="rp-option"><input type="checkbox" name="backend_verify_tls" value="1" <?= !empty($form['backend_verify_tls'])?'checked':'' ?>> Verify backend TLS certificate</label>
 </div>
 
 <div class="rp-actions">
