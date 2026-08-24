@@ -7,6 +7,7 @@ $firewalls = db()->query('SELECT * FROM firewalls ORDER BY name')->fetchAll();
 $error = '';
 $preflight = null;
 $preview = null;
+$pluginStatus = null;
 
 $defaults = [
     'template' => 'guacamole',
@@ -38,6 +39,41 @@ function reverse_proxy_valid_hostname(string $hostname): bool
     return $hostname !== ''
         && strlen($hostname) <= 253
         && filter_var($hostname, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false;
+}
+
+function reverse_proxy_plugin_bool(mixed $value): bool
+{
+    if (is_bool($value)) return $value;
+    if (is_int($value) || is_float($value)) return $value !== 0;
+    return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on', 'installed', 'locked'], true);
+}
+
+function reverse_proxy_find_plugin(mixed $node, string $packageName): ?array
+{
+    if (!is_array($node)) return null;
+
+    $name = trim((string) ($node['name'] ?? $node['pkg_name'] ?? $node['package'] ?? ''));
+    if ($name === $packageName) {
+        $status = strtolower(trim((string) ($node['status'] ?? '')));
+        $current = trim((string) ($node['current'] ?? ''));
+        $installed = array_key_exists('installed', $node)
+            ? reverse_proxy_plugin_bool($node['installed'])
+            : ($status === 'installed' || $current !== '');
+
+        return [
+            'name' => $name,
+            'installed' => $installed,
+            'version' => trim((string) ($node['version'] ?? $node['installed_version'] ?? $current)),
+            'available_version' => trim((string) ($node['available_version'] ?? $node['new_version'] ?? $node['version'] ?? '')),
+        ];
+    }
+
+    foreach ($node as $value) {
+        $found = reverse_proxy_find_plugin($value, $packageName);
+        if ($found !== null) return $found;
+    }
+
+    return null;
 }
 
 function reverse_proxy_validate(array $form): void
@@ -96,6 +132,7 @@ function reverse_proxy_build_preview(array $form): array
     ];
 
     return [
+        'required_plugin' => 'os-haproxy',
         'managed_names' => [
             'server' => $prefix . '_server',
             'backend' => $prefix . '_backend',
@@ -154,6 +191,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new RuntimeException('Selected firewall no longer exists.');
         }
 
+        // HAProxy is a hard requirement for this template. Check it before doing
+        // any HAProxy-specific API request or allowing a future deployment path.
+        $firmwareInfo = opn_request($selectedFirewall, 'core/firmware/info', 'GET', [], 30);
+        $pluginStatus = reverse_proxy_find_plugin($firmwareInfo, 'os-haproxy');
+        if ($pluginStatus === null || ($pluginStatus['installed'] ?? false) !== true) {
+            throw new RuntimeException(
+                'Required plugin os-haproxy is not installed on ' . (string) $selectedFirewall['name'] .
+                '. Install it under System → Firmware → Plugins in opnSentral before using this template.'
+            );
+        }
+
         $preview = reverse_proxy_build_preview($form);
 
         if (($_POST['operation'] ?? 'preview') === 'preflight') {
@@ -162,6 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $servers = opn_request($selectedFirewall, 'haproxy/settings/search_servers', 'GET', [], 20);
             $preflight = [
                 'firewall' => (string) $selectedFirewall['name'],
+                'required_plugin' => $pluginStatus,
                 'service_status' => $status,
                 'frontends' => $frontends,
                 'servers' => $servers,
@@ -179,12 +228,19 @@ require __DIR__ . '/inc/header.php';
 </style>
 <div class="page-title">
     <div>
-        <h1>HAProxy Reverse Proxy Template</h1>
+        <h1>HAProxy Reverse Proxy Template (testing)</h1>
         <p>Build and validate an opnSentral-managed HTTPS reverse proxy definition before deployment.</p>
     </div>
 </div>
 
+<div class="alert warningbox">
+    <strong>Requirement:</strong> the selected OPNsense firewall must have <code>os-haproxy</code> installed. opnSentral checks this requirement before preview/preflight and refuses to continue when the plugin is missing.
+</div>
+
 <?php if ($error): ?><div class="alert error"><?= h($error) ?></div><?php endif; ?>
+<?php if ($pluginStatus && ($pluginStatus['installed'] ?? false) === true): ?>
+<div class="alert goodbox"><strong>HAProxy plugin detected.</strong> <code>os-haproxy</code><?= !empty($pluginStatus['version']) ? ' ' . h((string) $pluginStatus['version']) : '' ?> is installed on the selected firewall.</div>
+<?php endif; ?>
 
 <div class="rp-grid">
 <section class="card">
