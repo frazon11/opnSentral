@@ -57,6 +57,65 @@ function rp_page_validate(array $form): void
     }
 }
 
+function rp_page_resolve_certificate(array $firewall, string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        throw new RuntimeException('Select or enter a server certificate.');
+    }
+
+    $response = opn_request(
+        $firewall,
+        'trust/cert/search',
+        'POST',
+        ['current' => 1, 'rowCount' => 500, 'searchPhrase' => ''],
+        25
+    );
+    $rows = is_array($response['rows'] ?? null) ? $response['rows'] : [];
+
+    foreach ($rows as $row) {
+        if (!is_array($row)) continue;
+        foreach (['refid','uuid','id'] as $field) {
+            $candidate = trim((string) ($row[$field] ?? ''));
+            if ($candidate !== '' && hash_equals($candidate, $value)) {
+                return $candidate;
+            }
+        }
+    }
+
+    $matches = [];
+    foreach ($rows as $row) {
+        if (!is_array($row)) continue;
+        foreach (['descr','description','name','commonname','common_name','cn'] as $field) {
+            $label = trim((string) ($row[$field] ?? ''));
+            if ($label === '' || strcasecmp($label, $value) !== 0) continue;
+            $refid = trim((string) ($row['refid'] ?? $row['uuid'] ?? $row['id'] ?? ''));
+            if ($refid !== '') {
+                $matches[$refid] = $label;
+            }
+        }
+    }
+
+    if (count($matches) === 1) {
+        return (string) array_key_first($matches);
+    }
+    if (count($matches) > 1) {
+        throw new RuntimeException(
+            'More than one certificate matches "' . $value . '". Enter the exact certificate refid instead.'
+        );
+    }
+
+    $available = [];
+    foreach ($rows as $row) {
+        if (!is_array($row)) continue;
+        $label = trim((string) ($row['descr'] ?? $row['description'] ?? $row['name'] ?? $row['commonname'] ?? $row['common_name'] ?? $row['cn'] ?? ''));
+        if ($label !== '') $available[$label] = true;
+        if (count($available) >= 8) break;
+    }
+    $hint = $available !== [] ? ' Available certificates include: ' . implode(', ', array_keys($available)) . '.' : '';
+    throw new RuntimeException('Certificate "' . $value . '" was not found on the selected firewall.' . $hint);
+}
+
 function rp_page_preview(array $form): array
 {
     $slug = strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '_', (string) $form['public_hostname']), '_'));
@@ -105,13 +164,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $operation = (string) ($_POST['operation'] ?? 'preview');
         if ($operation === 'preflight') {
-            rp_validate_certificate($selectedFirewall, (string) $form['certificate']);
+            $resolvedCertificate = rp_page_resolve_certificate($selectedFirewall, (string) $form['certificate']);
+            rp_validate_certificate($selectedFirewall, $resolvedCertificate);
             $frontendName = (string) $preview['managed_objects']['shared_frontend'];
             $bind = (string) $preview['target']['frontend_bind'];
             rp_assert_bind_available($selectedFirewall, $frontendName, $bind);
             $preflight = [
                 'firewall' => (string) $selectedFirewall['name'],
                 'plugin' => $pluginStatus,
+                'certificate_input' => (string) $form['certificate'],
+                'certificate_refid' => $resolvedCertificate,
                 'service_status' => opn_request($selectedFirewall, 'haproxy/service/status', 'GET', [], 15),
                 'existing_server' => rp_find_exact($selectedFirewall, 'server', (string) $preview['managed_objects']['server']),
                 'existing_backend' => rp_find_exact($selectedFirewall, 'backend', (string) $preview['managed_objects']['backend']),
@@ -122,6 +184,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($operation === 'deploy') {
             require_configuration_unlocked(false);
             if (($_POST['confirm_deploy'] ?? '') !== '1') throw new RuntimeException('Deployment confirmation is required.');
+            $form['certificate'] = rp_page_resolve_certificate($selectedFirewall, (string) $form['certificate']);
             $deployment = rp_deploy($selectedFirewall, $form);
         }
     } catch (Throwable $exception) {
@@ -168,7 +231,7 @@ require __DIR__ . '/inc/header.php';
 
 <div class="rp-two">
 <div><label for="frontend_port">Frontend HTTPS port</label><input id="frontend_port" type="number" min="1" max="65535" name="frontend_port" required value="<?= h((string)$form['frontend_port']) ?>"></div>
-<div><label for="certificate">Certificate reference (refid)</label><input id="certificate" name="certificate" required value="<?= h((string)$form['certificate']) ?>" placeholder="OPNsense certificate refid"></div>
+<div><label for="certificate">Certificate (name or refid)</label><input id="certificate" name="certificate" required value="<?= h((string)$form['certificate']) ?>" placeholder="e.g. opnsense.example.com or exact refid"></div>
 </div>
 
 <div class="rp-two">
