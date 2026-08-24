@@ -5,9 +5,9 @@ on:
     branches:
       - main
     paths:
-      - "app/inc/update_check.php"
-      - "app/agent/opnsentral-agent"
+      - "app/**"
       - "scripts/check-agent-runtime-isolation.php"
+      - "Dockerfile"
       - ".github/workflows/docker-publish.yml"
     tags:
       - "v*"
