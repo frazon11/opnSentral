@@ -99,9 +99,7 @@ function rp_get_payload(array $firewall, string $kind, ?string $uuid = null): ar
     $path = 'haproxy/settings/get_' . $kind . ($uuid ? '/' . rawurlencode($uuid) : '');
     $response = opn_request($firewall, $path, 'GET', [], 20);
     $payload = $response[$kind] ?? null;
-    if (!is_array($payload)) {
-        throw new RuntimeException('Unexpected HAProxy get_' . $kind . ' response.');
-    }
+    if (!is_array($payload)) throw new RuntimeException('Unexpected HAProxy get_' . $kind . ' response.');
     return $payload;
 }
 
@@ -113,23 +111,11 @@ function rp_upsert(array $firewall, string $kind, string $name, array $changes):
     $payload = array_replace($payload, $changes, ['name' => $name]);
 
     if ($uuid !== '') {
-        $response = opn_request(
-            $firewall,
-            'haproxy/settings/set_' . $kind . '/' . rawurlencode($uuid),
-            'POST',
-            [$kind => $payload],
-            30
-        );
+        $response = opn_request($firewall, 'haproxy/settings/set_' . $kind . '/' . rawurlencode($uuid), 'POST', [$kind => $payload], 30);
         rp_api_ok($response, 'HAProxy ' . $kind . ' update');
         $action = 'updated';
     } else {
-        $response = opn_request(
-            $firewall,
-            'haproxy/settings/add_' . $kind,
-            'POST',
-            [$kind => $payload],
-            30
-        );
+        $response = opn_request($firewall, 'haproxy/settings/add_' . $kind, 'POST', [$kind => $payload], 30);
         rp_api_ok($response, 'HAProxy ' . $kind . ' creation');
         $uuid = trim((string) ($response['uuid'] ?? ''));
         $action = 'created';
@@ -140,7 +126,6 @@ function rp_upsert(array $firewall, string $kind, string $name, array $changes):
         $uuid = trim((string) ($verified['uuid'] ?? $verified['id'] ?? ''));
     }
     if ($uuid === '') throw new RuntimeException('HAProxy ' . $kind . ' saved but UUID could not be resolved.');
-
     return ['uuid' => $uuid, 'action' => $action, 'name' => $name];
 }
 
@@ -154,14 +139,22 @@ function rp_csv_merge(string $current, string ...$values): string
     return implode(',', $items);
 }
 
+function rp_line_merge(string $current, string $line): string
+{
+    $lines = preg_split('/\R/', $current) ?: [];
+    $lines = array_values(array_filter(array_map('trim', $lines), static fn(string $v): bool => $v !== ''));
+    $line = trim($line);
+    if ($line !== '' && !in_array($line, $lines, true)) $lines[] = $line;
+    return implode("\n", $lines);
+}
+
 function rp_assert_bind_available(array $firewall, string $frontendName, string $bind): void
 {
     foreach (rp_search_rows($firewall, 'frontend', '') as $row) {
         if (!is_array($row)) continue;
         $name = trim((string) ($row['name'] ?? ''));
         if (strcasecmp($name, $frontendName) === 0) continue;
-        $rowBind = trim((string) ($row['bind'] ?? ''));
-        $bindings = array_map('trim', explode(',', $rowBind));
+        $bindings = array_map('trim', explode(',', trim((string) ($row['bind'] ?? ''))));
         if (in_array($bind, $bindings, true)) {
             throw new RuntimeException('Frontend bind conflict: ' . $bind . ' is already used by HAProxy frontend "' . $name . '".');
         }
@@ -176,7 +169,7 @@ function rp_validate_certificate(array $firewall, string $reference): void
         $firewall,
         'trust/cert/search',
         'POST',
-        ['current' => 1, 'rowCount' => 500, 'searchPhrase' => $reference],
+        ['current' => 1, 'rowCount' => 500, 'searchPhrase' => ''],
         25
     );
     foreach (($response['rows'] ?? []) as $row) {
@@ -191,9 +184,7 @@ function rp_validate_certificate(array $firewall, string $reference): void
 function rp_enable_haproxy(array $firewall): void
 {
     $settings = opn_request($firewall, 'haproxy/settings/get', 'GET', [], 25);
-    if (!isset($settings['haproxy']) || !is_array($settings['haproxy'])) {
-        throw new RuntimeException('Unexpected HAProxy settings response.');
-    }
+    if (!isset($settings['haproxy']) || !is_array($settings['haproxy'])) throw new RuntimeException('Unexpected HAProxy settings response.');
     if (rp_bool($settings['haproxy']['general']['enabled'] ?? false)) return;
     $payload = $settings['haproxy'];
     if (!isset($payload['general']) || !is_array($payload['general'])) $payload['general'] = [];
@@ -204,11 +195,15 @@ function rp_enable_haproxy(array $firewall): void
 
 function rp_configtest_ok(array $response): bool
 {
-    $text = strtolower(json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-    if (str_contains($text, 'error') || str_contains($text, 'failed') || str_contains($text, 'invalid')) return false;
-    if (isset($response['result'])) return in_array(strtolower(trim((string) $response['result'])), ['ok','success','passed'], true);
-    if (isset($response['status'])) return in_array(strtolower(trim((string) $response['status'])), ['ok','success','passed'], true);
-    return str_contains($text, 'configuration file is valid') || str_contains($text, 'valid');
+    $text = strtolower((string) json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    if (str_contains($text, 'error') || str_contains($text, 'failed') || str_contains($text, 'fatal') || str_contains($text, 'invalid')) return false;
+    foreach (['result','status'] as $field) {
+        if (!isset($response[$field])) continue;
+        $value = strtolower(trim((string) $response[$field]));
+        if (in_array($value, ['ok','success','passed'], true)) return true;
+        if (str_contains($value, 'configuration file is valid') || $value === 'valid') return true;
+    }
+    return str_contains($text, 'configuration file is valid');
 }
 
 function rp_deploy(array $firewall, array $form): array
@@ -222,7 +217,6 @@ function rp_deploy(array $firewall, array $form): array
     $prefix = 'opnsentral_' . $slug;
     $frontendName = 'opnsentral_https_' . $bindSlug . '_' . (int) $form['frontend_port'];
     $bind = (string) $form['bind_address'] . ':' . (int) $form['frontend_port'];
-
     rp_assert_bind_available($firewall, $frontendName, $bind);
 
     $backendTls = ((string) $form['backend_protocol'] === 'https');
@@ -247,7 +241,7 @@ function rp_deploy(array $firewall, array $form): array
         'healthCheckEnabled' => !empty($form['healthcheck']) ? '1' : '0',
         'tuning_timeoutConnect' => '10s',
         'tuning_timeoutServer' => $isGuacamole ? '1h' : '30s',
-        'customOptions' => $isGuacamole ? "timeout tunnel 1h" : '',
+        'customOptions' => $isGuacamole ? 'timeout tunnel 1h' : '',
     ]);
 
     $acl = rp_upsert($firewall, 'acl', $prefix . '_host', [
@@ -273,6 +267,8 @@ function rp_deploy(array $firewall, array $form): array
     $existingPayload = $existingFrontendUuid !== '' ? rp_get_payload($firewall, 'frontend', $existingFrontendUuid) : [];
     $linkedActions = rp_csv_merge((string) ($existingPayload['linkedActions'] ?? ''), $action['uuid']);
     $certificates = rp_csv_merge((string) ($existingPayload['ssl_certificates'] ?? ''), (string) $form['certificate']);
+    $frontendCustom = (string) ($existingPayload['customOptions'] ?? '');
+    if ($isGuacamole) $frontendCustom = rp_line_merge($frontendCustom, 'timeout tunnel 1h');
 
     $frontend = rp_upsert($firewall, 'frontend', $frontendName, [
         'enabled' => '1',
@@ -285,8 +281,8 @@ function rp_deploy(array $firewall, array $form): array
         'ssl_minVersion' => 'TLSv1.2',
         'linkedActions' => $linkedActions,
         'connectionBehaviour' => 'http-keep-alive',
-        'tuning_timeoutClient' => $isGuacamole ? '1h' : '30s',
-        'customOptions' => $isGuacamole ? "timeout tunnel 1h" : (string) ($existingPayload['customOptions'] ?? ''),
+        'tuning_timeoutClient' => $isGuacamole ? '1h' : (string) (($existingPayload['tuning_timeoutClient'] ?? '') ?: '30s'),
+        'customOptions' => $frontendCustom,
     ]);
 
     rp_enable_haproxy($firewall);
