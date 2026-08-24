@@ -135,6 +135,9 @@ function nav_active_query(string $path, string $key, string $value): string {
                 <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','alerts') ?>" href="/intrusion_detection.php?view=alerts"><span>Alerts</span></a>
                 <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','schedule') ?>" href="/intrusion_detection.php?view=schedule"><span>Schedule</span></a>
                 <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','log-file') ?>" href="/intrusion_detection.php?view=log-file"><span>Log File</span></a>
+
+                <span class="menu-level2">HAProxy</span>
+                <a class="menu-link<?= nav_active(['/haproxy_template.php']) ?>" href="/haproxy_template.php"><span>Reverse Proxy Template (testing)</span></a>
             </section>
 
             <section class="menu-section menu-opnsentral">
