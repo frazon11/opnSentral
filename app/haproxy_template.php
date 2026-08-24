@@ -1,220 +1,128 @@
 <?php
+
+declare(strict_types=1);
+
 require_once __DIR__ . '/inc/config.php';
-require_once __DIR__ . '/inc/opnsense.php';
+require_once __DIR__ . '/inc/haproxy_reverse_proxy.php';
 require_login();
 
 $firewalls = db()->query('SELECT * FROM firewalls ORDER BY name')->fetchAll();
 $error = '';
-$preflight = null;
-$preview = null;
 $pluginStatus = null;
+$preview = null;
+$preflight = null;
+$deployment = null;
 
 $defaults = [
     'template' => 'guacamole',
     'firewall_id' => '',
     'public_hostname' => '',
     'wan_interface' => 'wan',
+    'bind_address' => '*',
     'frontend_port' => '443',
     'backend_ip' => '',
     'backend_port' => '8348',
     'backend_protocol' => 'http',
     'certificate' => '',
-    'websocket' => '1',
     'healthcheck' => '1',
+    'backend_verify_tls' => '1',
 ];
+$form = array_merge($defaults, array_map(static fn($v) => is_string($v) ? trim($v) : $v, $_POST));
 
-$form = array_merge($defaults, array_map(
-    static fn($value) => is_string($value) ? trim($value) : $value,
-    $_POST
-));
-
-function reverse_proxy_slug(string $hostname): string
+function rp_page_validate(array $form): void
 {
-    $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '_', trim($hostname)) ?? '');
-    return trim($slug, '_');
-}
-
-function reverse_proxy_valid_hostname(string $hostname): bool
-{
-    return $hostname !== ''
-        && strlen($hostname) <= 253
-        && filter_var($hostname, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false;
-}
-
-function reverse_proxy_plugin_bool(mixed $value): bool
-{
-    if (is_bool($value)) return $value;
-    if (is_int($value) || is_float($value)) return $value !== 0;
-    return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on', 'installed', 'locked'], true);
-}
-
-function reverse_proxy_find_plugin(mixed $node, string $packageName): ?array
-{
-    if (!is_array($node)) return null;
-
-    $name = trim((string) ($node['name'] ?? $node['pkg_name'] ?? $node['package'] ?? ''));
-    if ($name === $packageName) {
-        $status = strtolower(trim((string) ($node['status'] ?? '')));
-        $current = trim((string) ($node['current'] ?? ''));
-        $installed = array_key_exists('installed', $node)
-            ? reverse_proxy_plugin_bool($node['installed'])
-            : ($status === 'installed' || $current !== '');
-
-        return [
-            'name' => $name,
-            'installed' => $installed,
-            'version' => trim((string) ($node['version'] ?? $node['installed_version'] ?? $current)),
-            'available_version' => trim((string) ($node['available_version'] ?? $node['new_version'] ?? $node['version'] ?? '')),
-        ];
-    }
-
-    foreach ($node as $value) {
-        $found = reverse_proxy_find_plugin($value, $packageName);
-        if ($found !== null) return $found;
-    }
-
-    return null;
-}
-
-function reverse_proxy_validate(array $form): void
-{
-    if (!in_array((string) ($form['template'] ?? ''), ['generic', 'guacamole', 'synology'], true)) {
+    if (!in_array((string) $form['template'], ['generic','guacamole','synology'], true)) {
         throw new RuntimeException('Unknown reverse proxy template.');
     }
-
-    if (!reverse_proxy_valid_hostname((string) ($form['public_hostname'] ?? ''))) {
-        throw new RuntimeException('Enter a valid public hostname, for example guac.example.com.');
+    $hostname = (string) $form['public_hostname'];
+    if ($hostname === '' || strlen($hostname) > 253 || filter_var($hostname, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false) {
+        throw new RuntimeException('Enter a valid public hostname.');
     }
-
-    $frontendPort = filter_var($form['frontend_port'] ?? null, FILTER_VALIDATE_INT, [
-        'options' => ['min_range' => 1, 'max_range' => 65535],
-    ]);
-    if ($frontendPort === false) {
-        throw new RuntimeException('Frontend port must be between 1 and 65535.');
-    }
-
-    if (filter_var((string) ($form['backend_ip'] ?? ''), FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+    if (filter_var((string) $form['backend_ip'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
         throw new RuntimeException('Backend IP must be a valid IPv4 address.');
     }
-
-    $backendPort = filter_var($form['backend_port'] ?? null, FILTER_VALIDATE_INT, [
-        'options' => ['min_range' => 1, 'max_range' => 65535],
-    ]);
-    if ($backendPort === false) {
-        throw new RuntimeException('Backend port must be between 1 and 65535.');
+    foreach (['frontend_port','backend_port'] as $field) {
+        if (filter_var($form[$field] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1,'max_range'=>65535]]) === false) {
+            throw new RuntimeException($field . ' must be between 1 and 65535.');
+        }
     }
-
-    if (!in_array((string) ($form['backend_protocol'] ?? ''), ['http', 'https'], true)) {
+    if (!in_array((string) $form['backend_protocol'], ['http','https'], true)) {
         throw new RuntimeException('Backend protocol must be HTTP or HTTPS.');
     }
-
-    if (!preg_match('/^[A-Za-z0-9_.:-]+$/', (string) ($form['wan_interface'] ?? ''))) {
+    if (!preg_match('/^[A-Za-z0-9_.:-]+$/', (string) $form['wan_interface'])) {
         throw new RuntimeException('WAN interface contains unsupported characters.');
+    }
+    if (!preg_match('/^(\*|[A-Za-z0-9_.:-]+)$/', (string) $form['bind_address'])) {
+        throw new RuntimeException('Bind address is invalid. Use *, an IP address, or a resolvable name.');
     }
 }
 
-function reverse_proxy_build_preview(array $form): array
+function rp_page_preview(array $form): array
 {
-    $slug = reverse_proxy_slug((string) $form['public_hostname']);
+    $slug = strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '_', (string) $form['public_hostname']), '_'));
+    $bindSlug = strtolower(trim((string) preg_replace('/[^a-z0-9]+/i', '_', (string) $form['bind_address']), '_')) ?: 'any';
     $prefix = 'opnsentral_' . $slug;
-    $frontendPort = (int) $form['frontend_port'];
-    $backendPort = (int) $form['backend_port'];
-    $backendProtocol = (string) $form['backend_protocol'];
-    $template = (string) $form['template'];
-    $websocket = isset($form['websocket']) && (string) $form['websocket'] !== '0';
-    $healthcheck = isset($form['healthcheck']) && (string) $form['healthcheck'] !== '0';
-
-    $timeouts = [
-        'client' => '30s',
-        'connect' => '10s',
-        'server' => $template === 'guacamole' ? '1h' : '30s',
-        'tunnel' => $template === 'guacamole' ? '1h' : '30s',
-    ];
-
     return [
         'required_plugin' => 'os-haproxy',
-        'managed_names' => [
+        'target' => [
+            'hostname' => $form['public_hostname'],
+            'frontend_bind' => $form['bind_address'] . ':' . (int) $form['frontend_port'],
+            'wan_interface' => $form['wan_interface'],
+            'backend' => $form['backend_protocol'] . '://' . $form['backend_ip'] . ':' . (int) $form['backend_port'],
+        ],
+        'managed_objects' => [
             'server' => $prefix . '_server',
             'backend' => $prefix . '_backend',
             'acl' => $prefix . '_host',
             'action' => $prefix . '_use_backend',
-            'frontend' => $prefix . '_frontend',
+            'shared_frontend' => 'opnsentral_https_' . $bindSlug . '_' . (int) $form['frontend_port'],
         ],
-        'frontend' => [
-            'bind' => (string) $form['wan_interface'] . ':' . $frontendPort,
-            'mode' => 'http',
-            'ssl_offloading' => true,
-            'certificate' => (string) $form['certificate'],
-            'hostname' => (string) $form['public_hostname'],
+        'safety' => [
+            'pre_change_backup' => true,
+            'plugin_required' => true,
+            'bind_conflict_check' => true,
+            'idempotent_upsert' => true,
+            'configtest_before_reconfigure' => true,
+            'firewall_rule_automation' => false,
         ],
-        'backend' => [
-            'target' => $backendProtocol . '://' . $form['backend_ip'] . ':' . $backendPort,
-            'mode' => 'http',
-            'healthcheck' => $healthcheck,
-            'websocket' => $websocket,
-            'timeouts' => $timeouts,
+        'notes' => [
+            'The HTTPS frontend is shared per bind address/port, so multiple hostnames can use the same TCP 443 listener.',
+            'No DNAT rule is created; HAProxy itself listens on the firewall.',
+            'WAN firewall rule creation is not automated in this testing build.',
         ],
-        'firewall_rule' => [
-            'interface' => (string) $form['wan_interface'],
-            'protocol' => 'TCP',
-            'source' => 'any',
-            'destination' => 'This Firewall',
-            'destination_port' => $frontendPort,
-        ],
-        'notes' => array_values(array_filter([
-            'No DNAT rule is required because HAProxy listens on the firewall itself.',
-            $template === 'guacamole' ? 'Guacamole preset uses long server/tunnel timeouts for interactive sessions.' : null,
-            $backendProtocol === 'https' ? 'Backend TLS certificate verification needs an explicit policy before deployment.' : null,
-            $websocket ? 'WebSocket/HTTP upgrade traffic is expected and preserved by the HTTP proxy path.' : null,
-        ])),
     ];
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
     try {
-        reverse_proxy_validate($form);
-
+        rp_page_validate($form);
         $firewallId = filter_var($form['firewall_id'] ?? null, FILTER_VALIDATE_INT);
-        if ($firewallId === false) {
-            throw new RuntimeException('Select a target firewall.');
-        }
+        if ($firewallId === false) throw new RuntimeException('Select a target firewall.');
+        $selectedFirewall = firewall_by_id((int) $firewallId);
+        $pluginStatus = rp_require_plugin($selectedFirewall);
+        $preview = rp_page_preview($form);
 
-        $selectedFirewall = null;
-        foreach ($firewalls as $firewall) {
-            if ((int) $firewall['id'] === (int) $firewallId) {
-                $selectedFirewall = $firewall;
-                break;
-            }
-        }
-        if ($selectedFirewall === null) {
-            throw new RuntimeException('Selected firewall no longer exists.');
-        }
-
-        // HAProxy is a hard requirement for this template. Check it before doing
-        // any HAProxy-specific API request or allowing a future deployment path.
-        $firmwareInfo = opn_request($selectedFirewall, 'core/firmware/info', 'GET', [], 30);
-        $pluginStatus = reverse_proxy_find_plugin($firmwareInfo, 'os-haproxy');
-        if ($pluginStatus === null || ($pluginStatus['installed'] ?? false) !== true) {
-            throw new RuntimeException(
-                'Required plugin os-haproxy is not installed on ' . (string) $selectedFirewall['name'] .
-                '. Install it under System → Firmware → Plugins in opnSentral before using this template.'
-            );
-        }
-
-        $preview = reverse_proxy_build_preview($form);
-
-        if (($_POST['operation'] ?? 'preview') === 'preflight') {
-            $status = opn_request($selectedFirewall, 'haproxy/service/status', 'GET', [], 15);
-            $frontends = opn_request($selectedFirewall, 'haproxy/settings/search_frontends', 'GET', [], 20);
-            $servers = opn_request($selectedFirewall, 'haproxy/settings/search_servers', 'GET', [], 20);
+        $operation = (string) ($_POST['operation'] ?? 'preview');
+        if ($operation === 'preflight') {
+            rp_validate_certificate($selectedFirewall, (string) $form['certificate']);
+            $frontendName = (string) $preview['managed_objects']['shared_frontend'];
+            $bind = (string) $preview['target']['frontend_bind'];
+            rp_assert_bind_available($selectedFirewall, $frontendName, $bind);
             $preflight = [
                 'firewall' => (string) $selectedFirewall['name'],
-                'required_plugin' => $pluginStatus,
-                'service_status' => $status,
-                'frontends' => $frontends,
-                'servers' => $servers,
+                'plugin' => $pluginStatus,
+                'service_status' => opn_request($selectedFirewall, 'haproxy/service/status', 'GET', [], 15),
+                'existing_server' => rp_find_exact($selectedFirewall, 'server', (string) $preview['managed_objects']['server']),
+                'existing_backend' => rp_find_exact($selectedFirewall, 'backend', (string) $preview['managed_objects']['backend']),
+                'existing_acl' => rp_find_exact($selectedFirewall, 'acl', (string) $preview['managed_objects']['acl']),
+                'existing_action' => rp_find_exact($selectedFirewall, 'action', (string) $preview['managed_objects']['action']),
+                'existing_frontend' => rp_find_exact($selectedFirewall, 'frontend', $frontendName),
             ];
+        } elseif ($operation === 'deploy') {
+            require_configuration_unlocked(false);
+            if (($_POST['confirm_deploy'] ?? '') !== '1') throw new RuntimeException('Deployment confirmation is required.');
+            $deployment = rp_deploy($selectedFirewall, $form);
         }
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
@@ -224,113 +132,96 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 require __DIR__ . '/inc/header.php';
 ?>
 <style>
-.rp-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(320px,.95fr);gap:20px}.rp-form label{display:block;font-weight:700;margin:13px 0 6px}.rp-form input,.rp-form select{width:100%;box-sizing:border-box}.rp-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.rp-option{display:flex!important;gap:8px;align-items:center;font-weight:600!important;margin:0!important;padding:10px;border:1px solid rgba(127,127,127,.25);border-radius:7px}.rp-option input{width:auto}.rp-preview{font-family:monospace;white-space:pre-wrap;overflow:auto}.rp-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.rp-actions button{width:auto}.rp-note{padding:10px 12px;border-radius:7px;background:rgba(127,127,127,.08);margin-top:10px}.rp-warning{border-left:4px solid #d9a400}.rp-ok{border-left:4px solid #2aa84a}.rp-raw{max-height:320px;overflow:auto;background:rgba(127,127,127,.08);padding:10px;border-radius:7px;font-family:monospace;font-size:.9em;white-space:pre-wrap}@media(max-width:900px){.rp-grid{grid-template-columns:1fr}.rp-options{grid-template-columns:1fr}}
+.rp-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(320px,.95fr);gap:20px}.rp-form label{display:block;font-weight:700;margin:13px 0 6px}.rp-form input,.rp-form select{width:100%;box-sizing:border-box}.rp-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.rp-options{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px}.rp-option{display:flex!important;align-items:center;gap:8px;margin:0!important}.rp-option input{width:auto}.rp-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.rp-actions button{width:auto}.rp-raw{max-height:430px;overflow:auto;background:rgba(127,127,127,.08);padding:10px;border-radius:7px;font-family:monospace;font-size:.9em;white-space:pre-wrap}.rp-note{padding:10px 12px;border-radius:7px;background:rgba(127,127,127,.08);margin:10px 0}.rp-danger{border-left:4px solid #d74747}.rp-good{border-left:4px solid #2aa84a}@media(max-width:900px){.rp-grid,.rp-two{grid-template-columns:1fr}}
 </style>
-<div class="page-title">
-    <div>
-        <h1>HAProxy Reverse Proxy Template (testing)</h1>
-        <p>Build and validate an opnSentral-managed HTTPS reverse proxy definition before deployment.</p>
-    </div>
-</div>
+<div class="page-title"><div><h1>HAProxy Reverse Proxy Template (testing)</h1><p>Preview, preflight and deploy an opnSentral-managed HTTPS reverse proxy.</p></div></div>
 
-<div class="alert warningbox">
-    <strong>Requirement:</strong> the selected OPNsense firewall must have <code>os-haproxy</code> installed. opnSentral checks this requirement before preview/preflight and refuses to continue when the plugin is missing.
-</div>
-
+<div class="alert warningbox"><strong>Requirement:</strong> <code>os-haproxy</code> must be installed on the selected firewall. Deployment also requires Configuration unlocked.</div>
 <?php if ($error): ?><div class="alert error"><?= h($error) ?></div><?php endif; ?>
-<?php if ($pluginStatus && ($pluginStatus['installed'] ?? false) === true): ?>
-<div class="alert goodbox"><strong>HAProxy plugin detected.</strong> <code>os-haproxy</code><?= !empty($pluginStatus['version']) ? ' ' . h((string) $pluginStatus['version']) : '' ?> is installed on the selected firewall.</div>
-<?php endif; ?>
+<?php if ($pluginStatus): ?><div class="alert goodbox"><strong>HAProxy plugin detected.</strong> <code>os-haproxy</code><?= !empty($pluginStatus['version']) ? ' ' . h((string)$pluginStatus['version']) : '' ?>.</div><?php endif; ?>
+<?php if ($deployment): ?><div class="alert goodbox"><strong>Deployment completed.</strong> HAProxy passed configtest and was reconfigured. Backup: <code><?= h((string)$deployment['backup']) ?></code>.</div><?php endif; ?>
 
 <div class="rp-grid">
 <section class="card">
-    <h2>Template parameters</h2>
-    <form method="post" class="rp-form">
-        <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+<h2>Template parameters</h2>
+<form method="post" class="rp-form" id="rp-form">
+<input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+<input type="hidden" name="confirm_deploy" id="confirm_deploy" value="0">
 
-        <label for="template">Template</label>
-        <select id="template" name="template">
-            <option value="guacamole" <?= $form['template'] === 'guacamole' ? 'selected' : '' ?>>Guacamole</option>
-            <option value="synology" <?= $form['template'] === 'synology' ? 'selected' : '' ?>>Synology DSM</option>
-            <option value="generic" <?= $form['template'] === 'generic' ? 'selected' : '' ?>>Generic HTTPS reverse proxy</option>
-        </select>
+<label for="template">Template</label>
+<select id="template" name="template">
+<option value="guacamole" <?= $form['template']==='guacamole'?'selected':'' ?>>Guacamole</option>
+<option value="synology" <?= $form['template']==='synology'?'selected':'' ?>>Synology DSM</option>
+<option value="generic" <?= $form['template']==='generic'?'selected':'' ?>>Generic HTTPS reverse proxy</option>
+</select>
 
-        <label for="firewall_id">Target firewall</label>
-        <select id="firewall_id" name="firewall_id" required>
-            <option value="">Select firewall…</option>
-            <?php foreach ($firewalls as $firewall): ?>
-                <option value="<?= (int) $firewall['id'] ?>" <?= (string) $form['firewall_id'] === (string) $firewall['id'] ? 'selected' : '' ?>><?= h((string) $firewall['name']) ?></option>
-            <?php endforeach; ?>
-        </select>
+<label for="firewall_id">Target firewall</label>
+<select id="firewall_id" name="firewall_id" required><option value="">Select firewall…</option><?php foreach($firewalls as $fw): ?><option value="<?= (int)$fw['id'] ?>" <?= (string)$form['firewall_id']===(string)$fw['id']?'selected':'' ?>><?= h((string)$fw['name']) ?></option><?php endforeach; ?></select>
 
-        <label for="public_hostname">Public hostname</label>
-        <input id="public_hostname" type="text" name="public_hostname" required value="<?= h((string) $form['public_hostname']) ?>" placeholder="guac.kryszon.eu">
+<label for="public_hostname">Public hostname</label>
+<input id="public_hostname" name="public_hostname" required value="<?= h((string)$form['public_hostname']) ?>" placeholder="guac.example.com">
 
-        <label for="wan_interface">WAN interface</label>
-        <input id="wan_interface" type="text" name="wan_interface" required value="<?= h((string) $form['wan_interface']) ?>" placeholder="wan">
+<div class="rp-two">
+<div><label for="wan_interface">WAN interface</label><input id="wan_interface" name="wan_interface" required value="<?= h((string)$form['wan_interface']) ?>" placeholder="wan"></div>
+<div><label for="bind_address">HAProxy bind address</label><input id="bind_address" name="bind_address" required value="<?= h((string)$form['bind_address']) ?>" placeholder="*"></div>
+</div>
 
-        <label for="frontend_port">Frontend HTTPS port</label>
-        <input id="frontend_port" type="number" min="1" max="65535" name="frontend_port" required value="<?= h((string) $form['frontend_port']) ?>">
+<div class="rp-two">
+<div><label for="frontend_port">Frontend HTTPS port</label><input id="frontend_port" type="number" min="1" max="65535" name="frontend_port" required value="<?= h((string)$form['frontend_port']) ?>"></div>
+<div><label for="certificate">Certificate reference (refid)</label><input id="certificate" name="certificate" required value="<?= h((string)$form['certificate']) ?>" placeholder="OPNsense certificate refid"></div>
+</div>
 
-        <label for="backend_ip">Backend IPv4</label>
-        <input id="backend_ip" type="text" name="backend_ip" required value="<?= h((string) $form['backend_ip']) ?>" placeholder="192.168.1.150">
+<div class="rp-two">
+<div><label for="backend_ip">Backend IPv4</label><input id="backend_ip" name="backend_ip" required value="<?= h((string)$form['backend_ip']) ?>" placeholder="192.168.1.150"></div>
+<div><label for="backend_port">Backend port</label><input id="backend_port" type="number" min="1" max="65535" name="backend_port" required value="<?= h((string)$form['backend_port']) ?>"></div>
+</div>
 
-        <label for="backend_port">Backend port</label>
-        <input id="backend_port" type="number" min="1" max="65535" name="backend_port" required value="<?= h((string) $form['backend_port']) ?>">
+<label for="backend_protocol">Backend protocol</label>
+<select id="backend_protocol" name="backend_protocol"><option value="http" <?= $form['backend_protocol']==='http'?'selected':'' ?>>HTTP</option><option value="https" <?= $form['backend_protocol']==='https'?'selected':'' ?>>HTTPS</option></select>
 
-        <label for="backend_protocol">Backend protocol</label>
-        <select id="backend_protocol" name="backend_protocol">
-            <option value="http" <?= $form['backend_protocol'] === 'http' ? 'selected' : '' ?>>HTTP</option>
-            <option value="https" <?= $form['backend_protocol'] === 'https' ? 'selected' : '' ?>>HTTPS</option>
-        </select>
+<div class="rp-options">
+<label class="rp-option"><input type="checkbox" name="healthcheck" value="1" <?= !empty($form['healthcheck'])?'checked':'' ?>> Health check</label>
+<label class="rp-option"><input type="checkbox" name="backend_verify_tls" value="1" <?= !empty($form['backend_verify_tls'])?'checked':'' ?>> Verify backend TLS certificate</label>
+</div>
 
-        <label for="certificate">Certificate / certificate reference</label>
-        <input id="certificate" type="text" name="certificate" value="<?= h((string) $form['certificate']) ?>" placeholder="guac.kryszon.eu">
-
-        <div class="rp-options">
-            <label class="rp-option"><input type="checkbox" name="websocket" value="1" <?= isset($form['websocket']) && (string) $form['websocket'] !== '0' ? 'checked' : '' ?>> WebSocket support</label>
-            <label class="rp-option"><input type="checkbox" name="healthcheck" value="1" <?= isset($form['healthcheck']) && (string) $form['healthcheck'] !== '0' ? 'checked' : '' ?>> Health check</label>
-        </div>
-
-        <div class="rp-actions">
-            <button type="submit" name="operation" value="preview">Preview template</button>
-            <button class="secondary" type="submit" name="operation" value="preflight">Run read-only preflight</button>
-        </div>
-    </form>
+<div class="rp-actions">
+<button type="submit" name="operation" value="preview">Preview</button>
+<button type="submit" name="operation" value="preflight" class="secondary">Preflight</button>
+<button type="submit" name="operation" value="deploy" id="deploy-button">Deploy (testing)</button>
+</div>
+</form>
+<div class="rp-note">Deployment sequence: plugin check → certificate check → pre-change backup → bind conflict check → idempotent HAProxy upsert → enable HAProxy → configtest → reconfigure.</div>
 </section>
 
 <section class="card">
-    <h2>Deployment preview</h2>
-    <?php if ($preview): ?>
-        <div class="rp-note rp-ok"><strong>Managed object names are deterministic.</strong> Reusing the same hostname will target the same opnSentral object names instead of inventing duplicates.</div>
-        <pre class="rp-preview"><?= h(json_encode($preview, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) ?></pre>
-        <div class="rp-note rp-warning"><strong>Deployment is intentionally disabled in this first prototype.</strong> It performs validation and read-only HAProxy API checks only. Write support should be added after validating the exact HAProxy model payloads on OPNsense 26.7.</div>
-    <?php else: ?>
-        <p>Enter the proxy parameters and select <strong>Preview template</strong>.</p>
-    <?php endif; ?>
+<h2>Result</h2>
+<?php if ($deployment): ?>
+<div class="rp-note rp-good"><strong>Applied to <?= h((string)($deployment['bind'] ?? '')) ?></strong></div>
+<div class="rp-raw"><?= h(json_encode($deployment, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)) ?></div>
+<?php elseif ($preflight): ?>
+<div class="rp-note rp-good"><strong>Preflight passed.</strong> Plugin, certificate and bind checks succeeded.</div>
+<div class="rp-raw"><?= h(json_encode($preflight, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)) ?></div>
+<?php elseif ($preview): ?>
+<div class="rp-raw"><?= h(json_encode($preview, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)) ?></div>
+<?php else: ?><p>Enter the parameters and run Preview or Preflight.</p><?php endif; ?>
 
-    <?php if ($preflight): ?>
-        <h3>Read-only preflight</h3>
-        <p>Target: <strong><?= h((string) $preflight['firewall']) ?></strong></p>
-        <div class="rp-raw"><?= h(json_encode($preflight, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) ?></div>
-    <?php endif; ?>
+<div class="rp-note rp-danger"><strong>Still manual in this testing build:</strong> the WAN firewall pass rule for TCP/<?= h((string)$form['frontend_port']) ?>. No DNAT is required.</div>
 </section>
 </div>
 <script>
 (function(){
-    const template=document.getElementById('template');
-    const port=document.getElementById('backend_port');
-    const websocket=document.querySelector('input[name="websocket"]');
-    function applyPreset(){
-        if(template.value==='guacamole'){
-            if(!port.dataset.userChanged) port.value='8348';
-            websocket.checked=true;
-        }else if(template.value==='synology'){
-            if(!port.dataset.userChanged) port.value='5001';
-        }
-    }
-    port.addEventListener('input',()=>port.dataset.userChanged='1');
-    template.addEventListener('change',applyPreset);
+ const form=document.getElementById('rp-form'), deploy=document.getElementById('deploy-button'), confirmField=document.getElementById('confirm_deploy');
+ const template=document.getElementById('template'), port=document.getElementById('backend_port'), protocol=document.getElementById('backend_protocol');
+ let portTouched=false;
+ port.addEventListener('input',()=>portTouched=true);
+ template.addEventListener('change',()=>{
+   if(!portTouched){ if(template.value==='guacamole'){port.value='8348';protocol.value='http';} if(template.value==='synology'){port.value='5001';protocol.value='https';} }
+ });
+ deploy.addEventListener('click',function(event){
+   if(!confirm('Deploy this HAProxy reverse proxy to the selected firewall?\n\nA pre-change configuration backup will be created first.')){event.preventDefault();return;}
+   confirmField.value='1';
+ });
+ form.addEventListener('submit',function(event){if(event.submitter!==deploy)confirmField.value='0';});
 })();
 </script>
 <?php require __DIR__ . '/inc/footer.php'; ?>
