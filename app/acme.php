@@ -14,6 +14,53 @@ $installedIds = plugin_feature_installed_firewall_ids('os-acme-client');
 $installedLookup = array_fill_keys($installedIds, true);
 $columns = [];
 
+function acme_scalar(mixed $value): string
+{
+    if ($value === null) return '';
+    if (is_string($value) || is_int($value) || is_float($value)) return trim((string) $value);
+    if (is_bool($value)) return $value ? '1' : '0';
+    if (!is_array($value)) return '';
+
+    foreach (['selected','value','name','id','uuid'] as $key) {
+        if (array_key_exists($key, $value) && !is_array($value[$key]) && !is_object($value[$key])) {
+            $text = trim((string) $value[$key]);
+            if ($text !== '') return $text;
+        }
+    }
+
+    foreach ($value as $key => $item) {
+        if (!is_array($item)) continue;
+        if (!acme_bool($item['selected'] ?? false)) continue;
+        if (isset($item['value']) && !is_array($item['value']) && !is_object($item['value'])) {
+            $text = trim((string) $item['value']);
+            if ($text !== '') return $text;
+        }
+        if (is_string($key) && $key !== '') return $key;
+    }
+
+    foreach ($value as $item) {
+        if (is_array($item) || is_object($item)) continue;
+        $text = trim((string) $item);
+        if ($text !== '') return $text;
+    }
+
+    return '';
+}
+
+function acme_bool(mixed $value): bool
+{
+    if (is_bool($value)) return $value;
+    if (is_int($value) || is_float($value)) return $value !== 0;
+    if (is_array($value)) $value = acme_scalar($value);
+    return in_array(strtolower(trim((string) $value)), ['1','true','yes','on','enabled','selected'], true);
+}
+
+function acme_setting(array $column, string $key, string $fallback = '—'): string
+{
+    $value = acme_scalar($column['settings'][$key] ?? '');
+    return $value !== '' ? $value : $fallback;
+}
+
 foreach ($firewalls as $firewallRow) {
     $id = (int) $firewallRow['id'];
     if (!isset($installedLookup[$id])) continue;
@@ -54,19 +101,6 @@ foreach ($firewalls as $firewallRow) {
     }
 
     $columns[] = $column;
-}
-
-function acme_bool(mixed $value): bool
-{
-    if (is_bool($value)) return $value;
-    if (is_int($value) || is_float($value)) return $value !== 0;
-    return in_array(strtolower(trim((string) $value)), ['1','true','yes','on','enabled'], true);
-}
-
-function acme_setting(array $column, string $key, string $fallback = '—'): string
-{
-    $value = trim((string) ($column['settings'][$key] ?? ''));
-    return $value !== '' ? $value : $fallback;
 }
 
 require __DIR__ . '/inc/header.php';
@@ -155,9 +189,14 @@ require __DIR__ . '/inc/header.php';
                     <?php elseif ($column['certificates'] === []): ?><span class="muted">No certificates</span>
                     <?php else: ?>
                         <?php foreach ($column['certificates'] as $certificate): ?>
+                            <?php
+                                $certificateName = acme_scalar($certificate['name'] ?? '');
+                                $certificateName = $certificateName !== '' ? $certificateName : 'Unnamed certificate';
+                                $lastUpdate = acme_scalar($certificate['lastUpdate'] ?? '');
+                            ?>
                             <div class="acme-cert">
-                                <strong><?= h((string) (($certificate['name'] ?? '') ?: 'Unnamed certificate')) ?></strong>
-                                <small><?= acme_bool($certificate['enabled'] ?? false) ? 'Enabled' : 'Disabled' ?><?= trim((string) ($certificate['lastUpdate'] ?? '')) !== '' ? ' · Last update: ' . h((string) $certificate['lastUpdate']) : '' ?></small>
+                                <strong><?= h($certificateName) ?></strong>
+                                <small><?= acme_bool($certificate['enabled'] ?? false) ? 'Enabled' : 'Disabled' ?><?= $lastUpdate !== '' ? ' · Last update: ' . h($lastUpdate) : '' ?></small>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
