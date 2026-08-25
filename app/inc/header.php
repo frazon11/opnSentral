@@ -1,8 +1,10 @@
 <?php
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/update_check.php';
+require_once __DIR__ . '/plugin_features.php';
 start_session_secure();
 $presentationFirewallNames = [];
+$hasDynDnsPlugin = false;
 
 if (logged_in()) {
     try {
@@ -18,6 +20,12 @@ if (logged_in()) {
         );
     } catch (Throwable $exception) {
         $presentationFirewallNames = [];
+    }
+
+    try {
+        $hasDynDnsPlugin = plugin_feature_installed_anywhere('os-ddclient');
+    } catch (Throwable $exception) {
+        $hasDynDnsPlugin = false;
     }
 }
 
@@ -135,6 +143,11 @@ function nav_active_query(string $path, string $key, string $value): string {
                 <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','alerts') ?>" href="/intrusion_detection.php?view=alerts"><span>Alerts</span></a>
                 <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','schedule') ?>" href="/intrusion_detection.php?view=schedule"><span>Schedule</span></a>
                 <a class="menu-link<?= nav_active_query('/intrusion_detection.php','view','log-file') ?>" href="/intrusion_detection.php?view=log-file"><span>Log File</span></a>
+
+                <?php if ($hasDynDnsPlugin || $currentPath === '/dyndns.php'): ?>
+                    <span class="menu-level2">DynDNS</span>
+                    <a class="menu-link<?= nav_active(['/dyndns.php']) ?>" href="/dyndns.php"><span>Status</span></a>
+                <?php endif; ?>
 
                 <span class="menu-level2">HAProxy</span>
                 <a class="menu-link<?= nav_active(['/haproxy_template.php']) ?>" href="/haproxy_template.php"><span>Reverse Proxy Template (testing)</span></a>
