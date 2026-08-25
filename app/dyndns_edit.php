@@ -7,11 +7,63 @@ require_once __DIR__ . '/inc/opnsense.php';
 require_once __DIR__ . '/inc/backups.php';
 require_login();
 
-function dyn_bool(mixed $value): bool
+function dyn_truthy_scalar(mixed $value): bool
 {
     if (is_bool($value)) return $value;
     if (is_int($value) || is_float($value)) return $value !== 0;
-    return in_array(strtolower(trim((string)$value)), ['1','true','yes','on','installed','running'], true);
+    if (!is_string($value)) return false;
+    return in_array(strtolower(trim($value)), ['1','true','yes','on','installed','running','selected'], true);
+}
+
+function dyn_value(mixed $value, mixed $default = ''): mixed
+{
+    if (!is_array($value)) return $value;
+
+    if (array_key_exists('selected', $value) && dyn_truthy_scalar($value['selected'])) {
+        $selectedValue = $value['value'] ?? $default;
+        return is_array($selectedValue) ? $default : $selectedValue;
+    }
+
+    foreach ($value as $key => $option) {
+        if (!is_array($option) || !dyn_truthy_scalar($option['selected'] ?? false)) continue;
+        return is_string($key) || is_int($key) ? (string) $key : $default;
+    }
+
+    if (array_key_exists('value', $value) && !is_array($value['value'])) return $value['value'];
+
+    if (count($value) === 1) {
+        $only = reset($value);
+        if (!is_array($only)) return $only;
+        if (array_key_exists('value', $only) && !is_array($only['value'])) return $only['value'];
+    }
+
+    return $default;
+}
+
+function dyn_text(mixed $value, string $default = ''): string
+{
+    $value = dyn_value($value, $default);
+    if (is_bool($value)) return $value ? '1' : '0';
+    if (!is_scalar($value) && $value !== null) return $default;
+    $text = trim((string) $value);
+    return $text === '' ? $default : $text;
+}
+
+function dyn_bool(mixed $value): bool
+{
+    $value = dyn_value($value, false);
+    if (is_bool($value)) return $value;
+    if (is_int($value) || is_float($value)) return $value !== 0;
+    if (!is_string($value)) return false;
+    return in_array(strtolower(trim($value)), ['1','true','yes','on','installed','running'], true);
+}
+
+function dyn_normalize_fields(array $record, array $fields): array
+{
+    foreach ($fields as $field) {
+        if (array_key_exists($field, $record)) $record[$field] = dyn_value($record[$field], '');
+    }
+    return $record;
 }
 
 function dyn_api_ok(array $response, string $operation): void
@@ -21,7 +73,7 @@ function dyn_api_ok(array $response, string $operation): void
     }
     foreach (['result','status'] as $field) {
         if (!array_key_exists($field, $response)) continue;
-        $value = strtolower(trim((string)$response[$field]));
+        $value = strtolower(dyn_text($response[$field]));
         if (in_array($value, ['failed','failure','error','invalid','rejected','0','false'], true)) {
             throw new RuntimeException($operation . ' failed: ' . json_encode($response, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE));
         }
@@ -44,7 +96,7 @@ function dyn_load_general(array $firewall): array
     $settings = opn_request($firewall, 'dyndns/settings/get', 'GET', [], 25);
     $general = $settings['ddclient']['general'] ?? null;
     if (!is_array($general)) throw new RuntimeException('Unexpected Dynamic DNS settings response.');
-    return $general;
+    return dyn_normalize_fields($general, ['enabled','verbose','allowipv6','backend','daemon_delay']);
 }
 
 function dyn_load_account(array $firewall, string $uuid): array
@@ -53,7 +105,10 @@ function dyn_load_account(array $firewall, string $uuid): array
     $response = opn_request($firewall, 'dyndns/accounts/get_item/' . rawurlencode($uuid), 'GET', [], 25);
     $account = $response['account'] ?? null;
     if (!is_array($account)) throw new RuntimeException('Unexpected Dynamic DNS account response.');
-    return $account;
+    return dyn_normalize_fields($account, [
+        'enabled','description','service','username','hostnames','resourceId','zone','checkip','interface',
+        'protocol','server','wildcard','force_ssl','checkip_timeout','ttl','current_ip','current_mtime'
+    ]);
 }
 
 try {
