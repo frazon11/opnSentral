@@ -5,6 +5,7 @@ require_once __DIR__ . '/plugin_features.php';
 start_session_secure();
 $presentationFirewallNames = [];
 $hasDynDnsPlugin = false;
+$hasAcmePlugin = false;
 
 if (logged_in()) {
     try {
@@ -26,6 +27,12 @@ if (logged_in()) {
         $hasDynDnsPlugin = plugin_feature_installed_anywhere('os-ddclient');
     } catch (Throwable $exception) {
         $hasDynDnsPlugin = false;
+    }
+
+    try {
+        $hasAcmePlugin = plugin_feature_installed_anywhere('os-acme-client');
+    } catch (Throwable $exception) {
+        $hasAcmePlugin = false;
     }
 }
 
@@ -147,6 +154,11 @@ function nav_active_query(string $path, string $key, string $value): string {
                 <?php if ($hasDynDnsPlugin || $currentPath === '/dyndns.php'): ?>
                     <span class="menu-level2">DynDNS</span>
                     <a class="menu-link<?= nav_active(['/dyndns.php']) ?>" href="/dyndns.php"><span>Status</span></a>
+                <?php endif; ?>
+
+                <?php if ($hasAcmePlugin || $currentPath === '/acme.php'): ?>
+                    <span class="menu-level2">ACME Client</span>
+                    <a class="menu-link<?= nav_active(['/acme.php']) ?>" href="/acme.php"><span>Overview</span></a>
                 <?php endif; ?>
 
                 <span class="menu-level2">HAProxy</span>
