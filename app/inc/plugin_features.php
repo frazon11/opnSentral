@@ -7,32 +7,68 @@ function plugin_feature_cache_path(): string
     return DATA_DIR . '/plugins-cache.json';
 }
 
+function plugin_feature_scalar(mixed $value): string
+{
+    if ($value === null) return '';
+    if (is_string($value) || is_int($value) || is_float($value)) return trim((string) $value);
+    if (is_bool($value)) return $value ? '1' : '0';
+    if (!is_array($value)) return '';
+
+    foreach (['selected','value','name','id','uuid'] as $key) {
+        if (array_key_exists($key, $value) && !is_array($value[$key]) && !is_object($value[$key])) {
+            $text = trim((string) $value[$key]);
+            if ($text !== '') return $text;
+        }
+    }
+
+    foreach ($value as $key => $item) {
+        if (!is_array($item)) continue;
+        if (!plugin_feature_bool($item['selected'] ?? false)) continue;
+        if (isset($item['value']) && !is_array($item['value']) && !is_object($item['value'])) {
+            $text = trim((string) $item['value']);
+            if ($text !== '') return $text;
+        }
+        if (is_string($key) && $key !== '') return $key;
+    }
+
+    foreach ($value as $item) {
+        if (is_array($item) || is_object($item)) continue;
+        $text = trim((string) $item);
+        if ($text !== '') return $text;
+    }
+
+    return '';
+}
+
 function plugin_feature_bool(mixed $value): bool
 {
     if (is_bool($value)) return $value;
     if (is_int($value) || is_float($value)) return $value !== 0;
-    return in_array(strtolower(trim((string) $value)), ['1','true','yes','on','installed','locked'], true);
+    if (is_array($value)) {
+        $value = plugin_feature_scalar($value);
+    }
+    return in_array(strtolower(trim((string) $value)), ['1','true','yes','on','installed','locked','enabled','running'], true);
 }
 
 function plugin_feature_find_packages(mixed $node, array &$output): void
 {
     if (!is_array($node)) return;
 
-    $name = trim((string) ($node['name'] ?? $node['pkg_name'] ?? $node['package'] ?? ''));
+    $name = plugin_feature_scalar($node['name'] ?? $node['pkg_name'] ?? $node['package'] ?? '');
     if ($name !== '' && str_starts_with($name, 'os-')) {
-        $status = strtolower(trim((string) ($node['status'] ?? '')));
-        $current = trim((string) ($node['current'] ?? ''));
+        $status = strtolower(plugin_feature_scalar($node['status'] ?? ''));
+        $current = plugin_feature_scalar($node['current'] ?? '');
         $installed = array_key_exists('installed', $node)
             ? plugin_feature_bool($node['installed'])
             : ($status === 'installed' || $current !== '');
 
         $output[$name] = [
             'name' => $name,
-            'version' => trim((string) ($node['version'] ?? $node['installed_version'] ?? $current)),
-            'available_version' => trim((string) ($node['available_version'] ?? $node['new_version'] ?? $node['version'] ?? '')),
+            'version' => plugin_feature_scalar($node['version'] ?? $node['installed_version'] ?? $current),
+            'available_version' => plugin_feature_scalar($node['available_version'] ?? $node['new_version'] ?? $node['version'] ?? ''),
             'installed' => $installed,
             'locked' => plugin_feature_bool($node['locked'] ?? false),
-            'description' => trim((string) ($node['comment'] ?? $node['description'] ?? '')),
+            'description' => plugin_feature_scalar($node['comment'] ?? $node['description'] ?? ''),
         ];
     }
 
@@ -125,7 +161,7 @@ function plugin_feature_installed_firewall_ids(string $packageName): array
 
         foreach (($firewall['plugins'] ?? []) as $plugin) {
             if (!is_array($plugin)) continue;
-            if ((string) ($plugin['name'] ?? '') !== $packageName) continue;
+            if (plugin_feature_scalar($plugin['name'] ?? '') !== $packageName) continue;
             if (!plugin_feature_bool($plugin['installed'] ?? false)) continue;
 
             $id = (int) ($firewall['id'] ?? 0);
