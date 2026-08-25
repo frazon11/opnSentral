@@ -6,25 +6,71 @@ require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/opnsense.php';
 require_login();
 
-function dyndns_bool(mixed $value): bool
+function dyndns_truthy_scalar(mixed $value): bool
 {
     if (is_bool($value)) return $value;
     if (is_int($value) || is_float($value)) return $value !== 0;
-    return in_array(strtolower(trim((string) $value)), ['1','true','yes','on','installed','running'], true);
+    if (!is_string($value)) return false;
+    return in_array(strtolower(trim($value)), ['1','true','yes','on','installed','running','selected'], true);
+}
+
+function dyndns_value(mixed $value, mixed $default = ''): mixed
+{
+    if (!is_array($value)) return $value;
+
+    if (array_key_exists('selected', $value) && dyndns_truthy_scalar($value['selected'])) {
+        $selectedValue = $value['value'] ?? $default;
+        return is_array($selectedValue) ? $default : $selectedValue;
+    }
+
+    foreach ($value as $key => $option) {
+        if (!is_array($option) || !dyndns_truthy_scalar($option['selected'] ?? false)) continue;
+        return is_string($key) || is_int($key) ? (string) $key : $default;
+    }
+
+    if (array_key_exists('value', $value) && !is_array($value['value'])) {
+        return $value['value'];
+    }
+
+    if (count($value) === 1) {
+        $only = reset($value);
+        if (!is_array($only)) return $only;
+        if (array_key_exists('value', $only) && !is_array($only['value'])) return $only['value'];
+    }
+
+    return $default;
+}
+
+function dyndns_text(mixed $value, string $default = ''): string
+{
+    $value = dyndns_value($value, $default);
+    if (is_bool($value)) return $value ? '1' : '0';
+    if (!is_scalar($value) && $value !== null) return $default;
+    $text = trim((string) $value);
+    return $text === '' ? $default : $text;
+}
+
+function dyndns_bool(mixed $value): bool
+{
+    $value = dyndns_value($value, false);
+    if (is_bool($value)) return $value;
+    if (is_int($value) || is_float($value)) return $value !== 0;
+    if (!is_string($value)) return false;
+    return in_array(strtolower(trim($value)), ['1','true','yes','on','installed','running'], true);
 }
 
 function dyndns_plugin_find(mixed $node): ?array
 {
     if (!is_array($node)) return null;
-    $name = trim((string) ($node['name'] ?? $node['pkg_name'] ?? $node['package'] ?? ''));
+    $name = dyndns_text($node['name'] ?? $node['pkg_name'] ?? $node['package'] ?? '');
     if ($name === 'os-ddclient') {
-        $status = strtolower(trim((string) ($node['status'] ?? '')));
-        $current = trim((string) ($node['current'] ?? ''));
+        $status = strtolower(dyndns_text($node['status'] ?? ''));
+        $current = dyndns_text($node['current'] ?? '');
         return [
             'installed' => array_key_exists('installed', $node)
                 ? dyndns_bool($node['installed'])
                 : ($status === 'installed' || $current !== ''),
-            'version' => trim((string) ($node['version'] ?? $node['installed_version'] ?? $current)),
+            'version' => dyndns_text($node['version'] ?? $node['installed_version'] ?? $current),
         ];
     }
     foreach ($node as $value) {
@@ -62,7 +108,7 @@ foreach ($firewalls as $firewall) {
         'firewall' => $firewall,
         'plugin' => $plugin,
         'installed' => $installed,
-        'error' => ($firmwareResult['ok'] ?? false) === true ? '' : (string) ($firmwareResult['error'] ?? 'Firmware inventory failed.'),
+        'error' => ($firmwareResult['ok'] ?? false) === true ? '' : dyndns_text($firmwareResult['error'] ?? 'Firmware inventory failed.', 'Firmware inventory failed.'),
         'general' => [],
         'accounts' => [],
         'service' => [],
@@ -92,14 +138,14 @@ foreach ($states as $id => &$state) {
         $settings = $settingsResult['value'] ?? [];
         $state['general'] = is_array($settings['ddclient']['general'] ?? null) ? $settings['ddclient']['general'] : [];
     } else {
-        $state['error'] = (string) ($settingsResult['error'] ?? 'Could not read Dynamic DNS settings.');
+        $state['error'] = dyndns_text($settingsResult['error'] ?? 'Could not read Dynamic DNS settings.', 'Could not read Dynamic DNS settings.');
     }
 
     if (($accountsResult['ok'] ?? false) === true) {
         $accountData = $accountsResult['value'] ?? [];
         $state['accounts'] = is_array($accountData['rows'] ?? null) ? $accountData['rows'] : [];
     } elseif ($state['error'] === '') {
-        $state['error'] = (string) ($accountsResult['error'] ?? 'Could not read Dynamic DNS accounts.');
+        $state['error'] = dyndns_text($accountsResult['error'] ?? 'Could not read Dynamic DNS accounts.', 'Could not read Dynamic DNS accounts.');
     }
 
     if (($serviceResult['ok'] ?? false) === true) {
@@ -139,14 +185,14 @@ require __DIR__ . '/inc/header.php';
 <?php endforeach; ?>
 </tr></thead>
 <tbody>
-<tr><td class="setting-col">Plugin</td><?php foreach($states as $state): ?><td><?php if($state['installed']): ?><span class="badge good">os-ddclient <?= h((string)($state['plugin']['version']??'')) ?></span><?php else: ?><span class="badge neutral">Not installed</span><?php endif; ?></td><?php endforeach; ?></tr>
+<tr><td class="setting-col">Plugin</td><?php foreach($states as $state): ?><td><?php if($state['installed']): ?><span class="badge good">os-ddclient <?= h(dyndns_text($state['plugin']['version']??'')) ?></span><?php else: ?><span class="badge neutral">Not installed</span><?php endif; ?></td><?php endforeach; ?></tr>
 <tr><td class="setting-col">Global service</td><?php foreach($states as $state): ?><td><?php if(!$state['installed']): ?><span class="dyndns-na">—</span><?php elseif($state['error']!==''): ?><span class="badge bad">Read failed</span><small><?= h($state['error']) ?></small><?php else: $enabled=dyndns_bool($state['general']['enabled']??false); ?><span class="badge <?= $enabled?'good':'neutral' ?>"><?= $enabled?'Enabled':'Disabled' ?></span><div class="dyndns-actions"><a class="button secondary" href="/dyndns_edit.php?firewall_id=<?= (int)$state['firewall']['id'] ?>&mode=general">Edit settings</a></div><?php endif; ?></td><?php endforeach; ?></tr>
-<tr><td class="setting-col">Backend</td><?php foreach($states as $state): ?><td><?= $state['installed']&&$state['error']==='' ? h((string)($state['general']['backend']??'—')) : '<span class="dyndns-na">—</span>' ?></td><?php endforeach; ?></tr>
-<tr><td class="setting-col">Daemon delay</td><?php foreach($states as $state): ?><td><?= $state['installed']&&$state['error']==='' ? h((string)($state['general']['daemon_delay']??'—')).' s' : '<span class="dyndns-na">—</span>' ?></td><?php endforeach; ?></tr>
+<tr><td class="setting-col">Backend</td><?php foreach($states as $state): ?><td><?= $state['installed']&&$state['error']==='' ? h(dyndns_text($state['general']['backend']??'—','—')) : '<span class="dyndns-na">—</span>' ?></td><?php endforeach; ?></tr>
+<tr><td class="setting-col">Daemon delay</td><?php foreach($states as $state): ?><td><?= $state['installed']&&$state['error']==='' ? h(dyndns_text($state['general']['daemon_delay']??'—','—')).' s' : '<span class="dyndns-na">—</span>' ?></td><?php endforeach; ?></tr>
 <tr><td class="setting-col">Verbose</td><?php foreach($states as $state): ?><td><?= $state['installed']&&$state['error']==='' ? (dyndns_bool($state['general']['verbose']??false)?'Yes':'No') : '<span class="dyndns-na">—</span>' ?></td><?php endforeach; ?></tr>
 <tr><td class="setting-col">IPv6 allowed</td><?php foreach($states as $state): ?><td><?= $state['installed']&&$state['error']==='' ? (dyndns_bool($state['general']['allowipv6']??false)?'Yes':'No') : '<span class="dyndns-na">—</span>' ?></td><?php endforeach; ?></tr>
 <tr><td class="setting-col">Service state</td><?php foreach($states as $state): ?><td><?php if($state['installed']&&$state['error']===''): $status=strtolower((string)json_encode($state['service'])); ?><span class="badge <?= str_contains($status,'running')?'good':'neutral' ?>"><?= str_contains($status,'running')?'Running':'Unknown / stopped' ?></span><?php else: ?><span class="dyndns-na">—</span><?php endif; ?></td><?php endforeach; ?></tr>
-<tr><td class="setting-col">Accounts</td><?php foreach($states as $state): ?><td><?php if(!$state['installed']||$state['error']!==''): ?><span class="dyndns-na">—</span><?php elseif($state['accounts']===[]): ?><span class="dyndns-na">No accounts configured</span><?php else: ?><?php foreach($state['accounts'] as $account): $uuid=(string)($account['uuid']??$account['id']??''); $on=dyndns_bool($account['enabled']??false); ?><div class="dyndns-account"><div class="dyndns-account-head"><strong><?= h((string)(($account['description']??'')?:($account['hostnames']??'DynDNS account'))) ?></strong><span class="badge <?= $on?'good':'neutral' ?>"><?= $on?'Enabled':'Disabled' ?></span></div><small><?= h((string)(($account['service']??'')?:'—')) ?> · <?= h((string)(($account['hostnames']??'')?:'—')) ?></small><small>IP: <?= h((string)(($account['current_ip']??'')?:'—')) ?> · Interface: <?= h((string)(($account['interface']??'')?:'—')) ?></small><?php if($uuid!==''): ?><div class="dyndns-actions"><a class="button secondary" href="/dyndns_edit.php?firewall_id=<?= (int)$state['firewall']['id'] ?>&mode=account&uuid=<?= rawurlencode($uuid) ?>">Edit</a></div><?php endif; ?></div><?php endforeach; ?><?php endif; ?></td><?php endforeach; ?></tr>
+<tr><td class="setting-col">Accounts</td><?php foreach($states as $state): ?><td><?php if(!$state['installed']||$state['error']!==''): ?><span class="dyndns-na">—</span><?php elseif($state['accounts']===[]): ?><span class="dyndns-na">No accounts configured</span><?php else: ?><?php foreach($state['accounts'] as $account): $uuid=dyndns_text($account['uuid']??$account['id']??''); $on=dyndns_bool($account['enabled']??false); $description=dyndns_text($account['description']??''); $hostnames=dyndns_text($account['hostnames']??'DynDNS account','DynDNS account'); ?><div class="dyndns-account"><div class="dyndns-account-head"><strong><?= h($description!==''?$description:$hostnames) ?></strong><span class="badge <?= $on?'good':'neutral' ?>"><?= $on?'Enabled':'Disabled' ?></span></div><small><?= h(dyndns_text($account['service']??'—','—')) ?> · <?= h(dyndns_text($account['hostnames']??'—','—')) ?></small><small>IP: <?= h(dyndns_text($account['current_ip']??'—','—')) ?> · Interface: <?= h(dyndns_text($account['interface']??'—','—')) ?></small><?php if($uuid!==''): ?><div class="dyndns-actions"><a class="button secondary" href="/dyndns_edit.php?firewall_id=<?= (int)$state['firewall']['id'] ?>&mode=account&uuid=<?= rawurlencode($uuid) ?>">Edit</a></div><?php endif; ?></div><?php endforeach; ?><?php endif; ?></td><?php endforeach; ?></tr>
 </tbody>
 </table>
 </div>
