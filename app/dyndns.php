@@ -4,12 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/opnsense.php';
-require_once __DIR__ . '/inc/plugin_features.php';
 require_login();
-
-$firewalls = db()
-    ->query('SELECT id,name,base_url FROM firewalls ORDER BY name')
-    ->fetchAll();
 
 function dyndns_bool(mixed $value): bool
 {
@@ -21,170 +16,138 @@ function dyndns_bool(mixed $value): bool
 function dyndns_plugin_find(mixed $node): ?array
 {
     if (!is_array($node)) return null;
-
     $name = trim((string) ($node['name'] ?? $node['pkg_name'] ?? $node['package'] ?? ''));
     if ($name === 'os-ddclient') {
         $status = strtolower(trim((string) ($node['status'] ?? '')));
         $current = trim((string) ($node['current'] ?? ''));
-        $installed = array_key_exists('installed', $node)
-            ? dyndns_bool($node['installed'])
-            : ($status === 'installed' || $current !== '');
-
         return [
-            'installed' => $installed,
+            'installed' => array_key_exists('installed', $node)
+                ? dyndns_bool($node['installed'])
+                : ($status === 'installed' || $current !== ''),
             'version' => trim((string) ($node['version'] ?? $node['installed_version'] ?? $current)),
         ];
     }
-
     foreach ($node as $value) {
         $found = dyndns_plugin_find($value);
         if ($found !== null) return $found;
     }
-
     return null;
 }
 
-$cachedInstalledIds = plugin_feature_installed_firewall_ids('os-ddclient');
-$requestedId = (int) ($_GET['firewall_id'] ?? 0);
-$selectedId = $requestedId > 0
-    ? $requestedId
-    : ($cachedInstalledIds[0] ?? (int) ($firewalls[0]['id'] ?? 0));
+$firewalls = db()->query(
+    'SELECT id,name,base_url,api_key_enc,api_secret_enc,verify_tls FROM firewalls ORDER BY name'
+)->fetchAll();
 
-$selectedFirewall = null;
+$firmwareRequests = [];
 foreach ($firewalls as $firewall) {
-    if ((int) $firewall['id'] === $selectedId) {
-        $selectedFirewall = firewall_by_id($selectedId);
-        break;
-    }
+    $firmwareRequests['fw-' . (int) $firewall['id']] = [
+        'firewall' => $firewall,
+        'path' => 'core/firmware/info',
+        'timeout' => 30,
+    ];
+}
+$firmwareResponses = $firmwareRequests ? opn_requests_parallel($firmwareRequests) : [];
+
+$states = [];
+$dataRequests = [];
+foreach ($firewalls as $firewall) {
+    $id = (int) $firewall['id'];
+    $firmwareResult = $firmwareResponses['fw-' . $id] ?? ['ok'=>false,'error'=>'No firmware result'];
+    $plugin = ($firmwareResult['ok'] ?? false) === true
+        ? dyndns_plugin_find($firmwareResult['value'] ?? [])
+        : null;
+    $installed = $plugin !== null && ($plugin['installed'] ?? false) === true;
+
+    $states[$id] = [
+        'firewall' => $firewall,
+        'plugin' => $plugin,
+        'installed' => $installed,
+        'error' => ($firmwareResult['ok'] ?? false) === true ? '' : (string) ($firmwareResult['error'] ?? 'Firmware inventory failed.'),
+        'general' => [],
+        'accounts' => [],
+        'service' => [],
+    ];
+
+    if (!$installed) continue;
+    $dataRequests['settings-' . $id] = ['firewall'=>$firewall,'path'=>'dyndns/settings/get','timeout'=>25];
+    $dataRequests['accounts-' . $id] = [
+        'firewall'=>$firewall,
+        'path'=>'dyndns/accounts/search_item',
+        'method'=>'POST',
+        'payload'=>['current'=>1,'rowCount'=>500,'searchPhrase'=>''],
+        'timeout'=>30,
+    ];
+    $dataRequests['service-' . $id] = ['firewall'=>$firewall,'path'=>'dyndns/service/status','timeout'=>20];
 }
 
-$error = '';
-$plugin = null;
-$accounts = [];
-$serviceStatus = [];
-$general = [];
+$dataResponses = $dataRequests ? opn_requests_parallel($dataRequests) : [];
+foreach ($states as $id => &$state) {
+    if (!$state['installed']) continue;
 
-if ($selectedFirewall !== null) {
-    try {
-        $firmware = opn_request($selectedFirewall, 'core/firmware/info', 'GET', [], 30);
-        $plugin = dyndns_plugin_find($firmware);
+    $settingsResult = $dataResponses['settings-' . $id] ?? ['ok'=>false,'error'=>'No settings result'];
+    $accountsResult = $dataResponses['accounts-' . $id] ?? ['ok'=>false,'error'=>'No accounts result'];
+    $serviceResult = $dataResponses['service-' . $id] ?? ['ok'=>false,'error'=>'No service result'];
 
-        if ($plugin === null || ($plugin['installed'] ?? false) !== true) {
-            throw new RuntimeException(
-                'os-ddclient is not installed on ' . (string) $selectedFirewall['name'] . '.'
-            );
-        }
+    if (($settingsResult['ok'] ?? false) === true) {
+        $settings = $settingsResult['value'] ?? [];
+        $state['general'] = is_array($settings['ddclient']['general'] ?? null) ? $settings['ddclient']['general'] : [];
+    } else {
+        $state['error'] = (string) ($settingsResult['error'] ?? 'Could not read Dynamic DNS settings.');
+    }
 
-        $accountResponse = opn_request(
-            $selectedFirewall,
-            'dyndns/accounts/search_item',
-            'POST',
-            ['current' => 1, 'rowCount' => 500, 'searchPhrase' => ''],
-            30
-        );
-        $accounts = is_array($accountResponse['rows'] ?? null)
-            ? $accountResponse['rows']
-            : [];
+    if (($accountsResult['ok'] ?? false) === true) {
+        $accountData = $accountsResult['value'] ?? [];
+        $state['accounts'] = is_array($accountData['rows'] ?? null) ? $accountData['rows'] : [];
+    } elseif ($state['error'] === '') {
+        $state['error'] = (string) ($accountsResult['error'] ?? 'Could not read Dynamic DNS accounts.');
+    }
 
-        $serviceStatus = opn_request($selectedFirewall, 'dyndns/service/status', 'GET', [], 20);
-        $settings = opn_request($selectedFirewall, 'dyndns/settings/get', 'GET', [], 20);
-        $general = is_array($settings['ddclient']['general'] ?? null)
-            ? $settings['ddclient']['general']
-            : [];
-    } catch (Throwable $exception) {
-        $error = $exception->getMessage();
+    if (($serviceResult['ok'] ?? false) === true) {
+        $state['service'] = is_array($serviceResult['value'] ?? null) ? $serviceResult['value'] : [];
     }
 }
+unset($state);
 
 require __DIR__ . '/inc/header.php';
 ?>
-
 <style>
-.dyndns-toolbar{display:flex;gap:10px;align-items:end;justify-content:space-between;flex-wrap:wrap;margin-bottom:14px}
-.dyndns-toolbar form{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.dyndns-toolbar label{display:block;font-weight:700}.dyndns-toolbar select{min-width:240px;margin-top:5px}
-.dyndns-summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}.dyndns-summary .card{padding:12px 15px;min-width:160px}.dyndns-summary strong{display:block;font-size:1.05rem}.dyndns-summary small{display:block;color:var(--muted);margin-top:3px}
-.dyndns-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--card)}.dyndns-table{width:100%;border-collapse:collapse;min-width:980px}.dyndns-table th,.dyndns-table td{padding:10px 12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:middle}.dyndns-table th{background:var(--table-head)}.dyndns-table tr:last-child td{border-bottom:0}.dyndns-hosts{max-width:310px;overflow-wrap:anywhere}.dyndns-muted{color:var(--muted)}
+.dyndns-matrix-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--card)}
+.dyndns-matrix{border-collapse:separate;border-spacing:0;min-width:max(1100px,100%);width:100%}
+.dyndns-matrix th,.dyndns-matrix td{padding:10px 12px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);vertical-align:top;text-align:left}
+.dyndns-matrix th:last-child,.dyndns-matrix td:last-child{border-right:0}.dyndns-matrix tr:last-child td{border-bottom:0}
+.dyndns-matrix thead th{position:sticky;top:0;z-index:3;background:var(--table-head);text-align:center;min-width:230px}
+.dyndns-matrix .setting-col{position:sticky;left:0;z-index:2;background:var(--card);min-width:190px;font-weight:700}
+.dyndns-matrix thead .setting-col{z-index:4;background:var(--table-head)}
+.dyndns-fw-head strong,.dyndns-fw-head small{display:block}.dyndns-fw-head small{margin-top:3px;color:var(--muted);font-weight:400}
+.dyndns-account{padding:9px 10px;margin:0 0 8px;border-radius:7px;background:rgba(127,127,127,.08)}.dyndns-account:last-child{margin-bottom:0}
+.dyndns-account-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.dyndns-account small{display:block;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
+.dyndns-actions{margin-top:8px}.dyndns-actions .button{padding:5px 9px;font-size:.82rem}
+.dyndns-na{color:var(--muted)}
 </style>
-
 <div class="page-title">
     <div>
-        <h1>Services → Dynamic DNS</h1>
-        <p>Read-only Dynamic DNS status from the OPNsense <code>os-ddclient</code> plugin.</p>
+        <h1>Services → DynDNS</h1>
+        <p>Dynamic DNS settings across all managed OPNsense firewalls.</p>
     </div>
 </div>
 
-<div class="dyndns-toolbar">
-    <form method="get">
-        <div>
-            <label for="firewall_id">Firewall</label>
-            <select id="firewall_id" name="firewall_id" onchange="this.form.submit()">
-                <?php foreach ($firewalls as $firewall): ?>
-                    <option value="<?= (int) $firewall['id'] ?>" <?= (int) $firewall['id'] === $selectedId ? 'selected' : '' ?>>
-                        <?= h((string) $firewall['name']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <button type="submit" class="button secondary">Refresh</button>
-    </form>
+<div class="dyndns-matrix-wrap">
+<table class="dyndns-matrix">
+<thead><tr><th class="setting-col">Setting</th>
+<?php foreach ($states as $state): $fw=$state['firewall']; ?>
+<th class="dyndns-fw-head"><strong><?= h((string)$fw['name']) ?></strong><small><?= h((string)$fw['base_url']) ?></small></th>
+<?php endforeach; ?>
+</tr></thead>
+<tbody>
+<tr><td class="setting-col">Plugin</td><?php foreach($states as $state): ?><td><?php if($state['installed']): ?><span class="badge good">os-ddclient <?= h((string)($state['plugin']['version']??'')) ?></span><?php else: ?><span class="badge neutral">Not installed</span><?php endif; ?></td><?php endforeach; ?></tr>
+<tr><td class="setting-col">Global service</td><?php foreach($states as $state): ?><td><?php if(!$state['installed']): ?><span class="dyndns-na">—</span><?php elseif($state['error']!==''): ?><span class="badge bad">Read failed</span><small><?= h($state['error']) ?></small><?php else: $enabled=dyndns_bool($state['general']['enabled']??false); ?><span class="badge <?= $enabled?'good':'neutral' ?>"><?= $enabled?'Enabled':'Disabled' ?></span><div class="dyndns-actions"><a class="button secondary" href="/dyndns_edit.php?firewall_id=<?= (int)$state['firewall']['id'] ?>&mode=general">Edit settings</a></div><?php endif; ?></td><?php endforeach; ?></tr>
+<tr><td class="setting-col">Backend</td><?php foreach($states as $state): ?><td><?= $state['installed']&&$state['error']==='' ? h((string)($state['general']['backend']??'—')) : '<span class="dyndns-na">—</span>' ?></td><?php endforeach; ?></tr>
+<tr><td class="setting-col">Daemon delay</td><?php foreach($states as $state): ?><td><?= $state['installed']&&$state['error']==='' ? h((string)($state['general']['daemon_delay']??'—')).' s' : '<span class="dyndns-na">—</span>' ?></td><?php endforeach; ?></tr>
+<tr><td class="setting-col">Verbose</td><?php foreach($states as $state): ?><td><?= $state['installed']&&$state['error']==='' ? (dyndns_bool($state['general']['verbose']??false)?'Yes':'No') : '<span class="dyndns-na">—</span>' ?></td><?php endforeach; ?></tr>
+<tr><td class="setting-col">IPv6 allowed</td><?php foreach($states as $state): ?><td><?= $state['installed']&&$state['error']==='' ? (dyndns_bool($state['general']['allowipv6']??false)?'Yes':'No') : '<span class="dyndns-na">—</span>' ?></td><?php endforeach; ?></tr>
+<tr><td class="setting-col">Service state</td><?php foreach($states as $state): ?><td><?php if($state['installed']&&$state['error']===''): $status=strtolower((string)json_encode($state['service'])); ?><span class="badge <?= str_contains($status,'running')?'good':'neutral' ?>"><?= str_contains($status,'running')?'Running':'Unknown / stopped' ?></span><?php else: ?><span class="dyndns-na">—</span><?php endif; ?></td><?php endforeach; ?></tr>
+<tr><td class="setting-col">Accounts</td><?php foreach($states as $state): ?><td><?php if(!$state['installed']||$state['error']!==''): ?><span class="dyndns-na">—</span><?php elseif($state['accounts']===[]): ?><span class="dyndns-na">No accounts configured</span><?php else: ?><?php foreach($state['accounts'] as $account): $uuid=(string)($account['uuid']??$account['id']??''); $on=dyndns_bool($account['enabled']??false); ?><div class="dyndns-account"><div class="dyndns-account-head"><strong><?= h((string)(($account['description']??'')?:($account['hostnames']??'DynDNS account'))) ?></strong><span class="badge <?= $on?'good':'neutral' ?>"><?= $on?'Enabled':'Disabled' ?></span></div><small><?= h((string)(($account['service']??'')?:'—')) ?> · <?= h((string)(($account['hostnames']??'')?:'—')) ?></small><small>IP: <?= h((string)(($account['current_ip']??'')?:'—')) ?> · Interface: <?= h((string)(($account['interface']??'')?:'—')) ?></small><?php if($uuid!==''): ?><div class="dyndns-actions"><a class="button secondary" href="/dyndns_edit.php?firewall_id=<?= (int)$state['firewall']['id'] ?>&mode=account&uuid=<?= rawurlencode($uuid) ?>">Edit</a></div><?php endif; ?></div><?php endforeach; ?><?php endif; ?></td><?php endforeach; ?></tr>
+</tbody>
+</table>
 </div>
-
-<?php if ($error !== ''): ?>
-    <div class="alert error"><?= h($error) ?></div>
-<?php elseif ($selectedFirewall !== null): ?>
-    <div class="alert goodbox">
-        <strong>Dynamic DNS plugin detected.</strong>
-        <code>os-ddclient<?= !empty($plugin['version']) ? ' ' . h((string) $plugin['version']) : '' ?></code>
-        on <?= h((string) $selectedFirewall['name']) ?>.
-    </div>
-
-    <?php
-    $enabled = dyndns_bool($general['enabled'] ?? false);
-    $enabledAccounts = count(array_filter($accounts, static fn(array $row): bool => dyndns_bool($row['enabled'] ?? false)));
-    $statusText = strtolower((string) json_encode($serviceStatus, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-    $running = str_contains($statusText, 'running');
-    ?>
-
-    <div class="dyndns-summary">
-        <div class="card"><strong><?= $enabled ? 'Enabled' : 'Disabled' ?></strong><small>Global service</small></div>
-        <div class="card"><strong><?= $running ? 'Running' : 'Status unknown' ?></strong><small>Service state</small></div>
-        <div class="card"><strong><?= count($accounts) ?></strong><small>Configured accounts</small></div>
-        <div class="card"><strong><?= $enabledAccounts ?></strong><small>Enabled accounts</small></div>
-    </div>
-
-    <div class="dyndns-table-wrap">
-        <table class="dyndns-table">
-            <thead>
-                <tr>
-                    <th>Status</th>
-                    <th>Description</th>
-                    <th>Service</th>
-                    <th>Hostname(s)</th>
-                    <th>Current IP</th>
-                    <th>Last update</th>
-                    <th>Interface</th>
-                </tr>
-            </thead>
-            <tbody>
-            <?php if ($accounts === []): ?>
-                <tr><td colspan="7" class="dyndns-muted">No Dynamic DNS accounts configured.</td></tr>
-            <?php else: ?>
-                <?php foreach ($accounts as $account): ?>
-                    <?php $accountEnabled = dyndns_bool($account['enabled'] ?? false); ?>
-                    <tr>
-                        <td><span class="badge <?= $accountEnabled ? 'good' : 'neutral' ?>"><?= $accountEnabled ? 'Enabled' : 'Disabled' ?></span></td>
-                        <td><?= h((string) (($account['description'] ?? '') ?: '—')) ?></td>
-                        <td><?= h((string) (($account['service'] ?? '') ?: '—')) ?></td>
-                        <td class="dyndns-hosts"><?= h((string) (($account['hostnames'] ?? '') ?: '—')) ?></td>
-                        <td><code><?= h((string) (($account['current_ip'] ?? '') ?: '—')) ?></code></td>
-                        <td><?= h((string) (($account['current_mtime'] ?? '') ?: '—')) ?></td>
-                        <td><?= h((string) (($account['interface'] ?? '') ?: '—')) ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-<?php endif; ?>
-
 <?php require __DIR__ . '/inc/footer.php'; ?>
