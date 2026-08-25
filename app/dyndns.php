@@ -11,6 +11,13 @@ $firewalls = db()
     ->query('SELECT id,name,base_url FROM firewalls ORDER BY name')
     ->fetchAll();
 
+function dyndns_bool(mixed $value): bool
+{
+    if (is_bool($value)) return $value;
+    if (is_int($value) || is_float($value)) return $value !== 0;
+    return in_array(strtolower(trim((string) $value)), ['1','true','yes','on','installed','running'], true);
+}
+
 function dyndns_plugin_find(mixed $node): ?array
 {
     if (!is_array($node)) return null;
@@ -20,7 +27,7 @@ function dyndns_plugin_find(mixed $node): ?array
         $status = strtolower(trim((string) ($node['status'] ?? '')));
         $current = trim((string) ($node['current'] ?? ''));
         $installed = array_key_exists('installed', $node)
-            ? (bool) $node['installed']
+            ? dyndns_bool($node['installed'])
             : ($status === 'installed' || $current !== '');
 
         return [
@@ -132,10 +139,10 @@ require __DIR__ . '/inc/header.php';
     </div>
 
     <?php
-    $enabled = in_array(strtolower(trim((string) ($general['enabled'] ?? ''))), ['1','true','yes','on'], true);
-    $enabledAccounts = count(array_filter($accounts, static fn(array $row): bool => in_array(strtolower(trim((string) ($row['enabled'] ?? ''))), ['1','true','yes','on'], true)));
+    $enabled = dyndns_bool($general['enabled'] ?? false);
+    $enabledAccounts = count(array_filter($accounts, static fn(array $row): bool => dyndns_bool($row['enabled'] ?? false)));
     $statusText = strtolower((string) json_encode($serviceStatus, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-    $running = str_contains($statusText, 'running') || str_contains($statusText, 'ok');
+    $running = str_contains($statusText, 'running');
     ?>
 
     <div class="dyndns-summary">
@@ -163,7 +170,7 @@ require __DIR__ . '/inc/header.php';
                 <tr><td colspan="7" class="dyndns-muted">No Dynamic DNS accounts configured.</td></tr>
             <?php else: ?>
                 <?php foreach ($accounts as $account): ?>
-                    <?php $accountEnabled = in_array(strtolower(trim((string) ($account['enabled'] ?? ''))), ['1','true','yes','on'], true); ?>
+                    <?php $accountEnabled = dyndns_bool($account['enabled'] ?? false); ?>
                     <tr>
                         <td><span class="badge <?= $accountEnabled ? 'good' : 'neutral' ?>"><?= $accountEnabled ? 'Enabled' : 'Disabled' ?></span></td>
                         <td><?= h((string) (($account['description'] ?? '') ?: '—')) ?></td>
