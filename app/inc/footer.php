@@ -4,7 +4,7 @@
 <link rel="stylesheet" href="/assets/topbar-controls.css?v=06215">
 <link rel="stylesheet" href="/assets/ids-bulk-actions.css?v=06215">
 <link rel="stylesheet" href="/assets/sidebar-collapse.css?v=062119">
-<link rel="stylesheet" href="/assets/system-status-indicator.css?v=062162">
+<link rel="stylesheet" href="/assets/system-status-indicator.css?v=062163">
 <script src="/assets/sidebar-collapse.js?v=062119"></script>
 <script src="/assets/sidebar-scroll.js?v=062116"></script>
 <script src="/assets/ids-write-label.js?v=06215"></script>
@@ -19,7 +19,7 @@
 <script src="/assets/presentation-settings.js?v=062020"></script>
 <script src="/assets/alias-geoip-type.js?v=06215"></script>
 <script src="/assets/deployment-results.js?v=062106"></script>
-<script src="/assets/system-status-indicator.js?v=062162"></script>
+<script src="/assets/system-status-indicator.js?v=062163"></script>
 <script>
 (function(){
     document.title = 'opnSentral';
