@@ -45,21 +45,35 @@
 
     function addDashboardLed(card){
         const head=card.querySelector('.card-head');
-        if(!head||head.querySelector('.opnsentral-system-led')) return null;
+        if(!head) return null;
+        const existing=head.querySelector('.opnsentral-system-led-link');
+        if(existing) return existing.querySelector('.opnsentral-system-led');
+
+        const id=card.dataset.firewallId;
+        if(!id) return null;
+
         const existingBadge=head.querySelector('.status-badge');
         const wrap=document.createElement('div');
         wrap.className='opnsentral-system-indicator-wrap';
+
+        const link=document.createElement('a');
+        link.className='opnsentral-system-led-link';
+        link.href='/firewall_view.php?id='+encodeURIComponent(id)+'#system-notifications';
+        link.setAttribute('aria-label','Open OPNsense system notifications');
+
         const led=document.createElement('span');
         led.className='opnsentral-system-led loading';
         led.setAttribute('role','img');
         led.setAttribute('aria-label','Loading OPNsense system status');
         led.title='Loading OPNsense system status…';
+        link.appendChild(led);
+
         if(existingBadge){
             existingBadge.parentNode.insertBefore(wrap,existingBadge);
-            wrap.append(existingBadge,led);
+            wrap.append(existingBadge,link);
         }else{
             head.appendChild(wrap);
-            wrap.appendChild(led);
+            wrap.appendChild(link);
         }
         return led;
     }
@@ -68,7 +82,10 @@
         const id=card.dataset.firewallId;
         const led=addDashboardLed(card)||card.querySelector('.opnsentral-system-led');
         if(!id||!led) return;
+
         led.className='opnsentral-system-led loading';
+        led.title='Loading OPNsense system status…';
+
         try{
             const data=await fetchSystemStatus(id);
             const top=highestStatus(data);
@@ -77,18 +94,36 @@
             const description=(top.title&&top.title!=='System'?top.title+': ':'')+(top.message||statusLabel(top.status));
             led.title=description;
             led.setAttribute('aria-label',description);
+            const link=led.closest('.opnsentral-system-led-link');
+            if(link){
+                link.title=description+' — click for details';
+                link.setAttribute('aria-label',description+'. Open system notifications.');
+            }
         }catch(error){
-            led.className='opnsentral-system-led bad';
+            led.className='opnsentral-system-led unavailable';
             led.title='System status unavailable: '+error.message;
             led.setAttribute('aria-label',led.title);
+            const link=led.closest('.opnsentral-system-led-link');
+            if(link){
+                link.title=led.title+' — click for details';
+                link.setAttribute('aria-label',led.title+'. Open firewall details.');
+            }
         }
+    }
+
+    function refreshDashboardLeds(){
+        document.querySelectorAll('.firewall-card[data-firewall-id]').forEach(loadDashboardLed);
     }
 
     function renderDetails(data){
         const systemPanel=document.getElementById('system-state')?.closest('.firewall-opn-panel');
-        if(!systemPanel||systemPanel.querySelector('.opnsentral-system-notifications')) return;
+        if(!systemPanel) return;
+
+        const old=systemPanel.querySelector('.opnsentral-system-notifications');
+        if(old) old.remove();
 
         const details=document.createElement('details');
+        details.id='system-notifications';
         details.className='firewall-opn-section opnsentral-system-notifications';
         const summary=document.createElement('summary');
         summary.textContent='System notifications / Reporter';
@@ -135,7 +170,12 @@
         if(firstSection) firstSection.insertAdjacentElement('beforebegin',details);
         else systemPanel.appendChild(details);
 
-        if(items.some(item=>classifyStatus(item.status)!=='ok')) details.open=true;
+        if(items.some(item=>classifyStatus(item.status)!=='ok')||location.hash==='#system-notifications'){
+            details.open=true;
+        }
+        if(location.hash==='#system-notifications'){
+            window.setTimeout(()=>details.scrollIntoView({block:'start'}),50);
+        }
     }
 
     async function initDetails(){
@@ -147,6 +187,22 @@
         }
     }
 
-    document.querySelectorAll('.firewall-card[data-firewall-id]').forEach(loadDashboardLed);
+    refreshDashboardLeds();
     initDetails();
+
+    document.addEventListener('click',function(event){
+        if(event.target.closest('.refresh-one')){
+            const card=event.target.closest('.firewall-card[data-firewall-id]');
+            if(card) window.setTimeout(()=>loadDashboardLed(card),350);
+        }
+        if(event.target.closest('#refresh-all')){
+            window.setTimeout(refreshDashboardLeds,350);
+        }
+    });
+
+    if(document.querySelector('.firewall-card[data-firewall-id]')){
+        window.setInterval(refreshDashboardLeds,60000);
+    }
+
+    window.opnSentralRefreshSystemLeds=refreshDashboardLeds;
 })();
