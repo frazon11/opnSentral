@@ -265,22 +265,28 @@ function ssh_access_ensure_rule(array $firewall, string $categoryUuid): void
         'description' => SSH_ACCESS_RULE_DESCRIPTION,
     ];
 
-    $savepoint = opn_request($firewall, 'firewall/filter_base/savepoint', 'POST', [], 20);
-    $revision = trim((string) ($savepoint['revision'] ?? ''));
-    if ($revision === '') throw new RuntimeException('Could not create firewall-rule rollback savepoint.');
-
     if ($uuid !== '') {
         opn_request($firewall, 'firewall/filter/set_rule/' . rawurlencode($uuid), 'POST', ['rule' => $payload], 25);
     } else {
         opn_request($firewall, 'firewall/filter/add_rule', 'POST', ['rule' => $payload], 25);
     }
-    opn_request($firewall, 'firewall/filter_base/apply/' . rawurlencode($revision), 'POST', [], 40);
+
+    /*
+     * OPNsense 26.7 removed the old filter_base savepoint/apply endpoints.
+     * A full configuration backup is already created by ssh_access_action.php
+     * before this function is reached, so apply through the supported Filter
+     * controller and verify the exact rule afterwards.
+     */
+    $apply = opn_request($firewall, 'firewall/filter/apply', 'POST', [], 40);
+    $applyStatus = strtolower(trim((string) ($apply['status'] ?? '')));
+    if ($applyStatus !== '' && !in_array($applyStatus, ['ok', 'done'], true)) {
+        throw new RuntimeException('OPNsense rejected the SSH firewall-rule apply: ' . ($apply['status'] ?? 'unknown status'));
+    }
 
     $verified = ssh_access_rule_status($firewall, $categoryUuid);
     if (($verified['ok'] ?? false) !== true) {
-        throw new RuntimeException('SSH firewall rule did not verify after apply; OPNsense rollback remains armed.');
+        throw new RuntimeException('SSH firewall rule did not verify after apply. Restore the pre-change opnSentral backup if required.');
     }
-    opn_request($firewall, 'firewall/filter_base/cancel_rollback/' . rawurlencode($revision), 'POST', [], 20);
 }
 
 function ssh_access_objects_status(array $firewall, string $source): array
