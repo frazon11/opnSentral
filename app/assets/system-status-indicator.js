@@ -2,10 +2,27 @@
     'use strict';
 
     function classifyStatus(status){
-        const value=String(status??'').trim().toLowerCase();
-        if(value===''||['ok','success','normal','none','green'].includes(value)) return 'ok';
-        if(value.includes('warn')||value.includes('notice')||value.includes('orange')||value.includes('yellow')) return 'warning';
+        const value=String(status??'').trim().toUpperCase();
+        if(value===''||value==='OK'||value==='SUCCESS'||value==='NORMAL'||value==='NONE'||value==='GREEN'||value==='2') return 'ok';
+        if(value==='WARNING'||value==='WARN'||value==='YELLOW'||value==='ORANGE'||value==='0') return 'warning';
+        if(value==='NOTICE'||value==='1') return 'warning';
+        if(value==='ERROR'||value==='ERR'||value==='RED'||value==='CRITICAL'||value==='-1') return 'bad';
         return 'bad';
+    }
+
+    function ledPalette(cls){
+        if(cls==='ok') return {background:'#35b46a',shadow:'0 0 0 2px rgba(53,180,106,.18)'};
+        if(cls==='warning') return {background:'#e4a72a',shadow:'0 0 0 2px rgba(228,167,42,.18)'};
+        if(cls==='bad') return {background:'#f04d58',shadow:'0 0 0 2px rgba(240,77,88,.20)'};
+        return {background:'#7b8087',shadow:'0 0 0 2px rgba(127,127,127,.14)'};
+    }
+
+    function applyLedState(led,cls){
+        const palette=ledPalette(cls);
+        led.className='opnsentral-system-led '+cls;
+        led.style.setProperty('background-color',palette.background,'important');
+        led.style.setProperty('box-shadow',palette.shadow,'important');
+        led.style.opacity='1';
     }
 
     function statusLabel(status){
@@ -84,23 +101,26 @@
         if(!id||!led) return;
 
         led.className='opnsentral-system-led loading';
+        led.style.removeProperty('background-color');
+        led.style.removeProperty('box-shadow');
         led.title='Loading OPNsense system status…';
 
         try{
             const data=await fetchSystemStatus(id);
             const top=highestStatus(data);
             const cls=classifyStatus(top.status);
-            led.className='opnsentral-system-led '+cls;
+            applyLedState(led,cls);
             const description=(top.title&&top.title!=='System'?top.title+': ':'')+(top.message||statusLabel(top.status));
             led.title=description;
             led.setAttribute('aria-label',description);
+            led.dataset.opnsenseStatus=String(top.status??'');
             const link=led.closest('.opnsentral-system-led-link');
             if(link){
                 link.title=description+' — click for details';
                 link.setAttribute('aria-label',description+'. Open system notifications.');
             }
         }catch(error){
-            led.className='opnsentral-system-led unavailable';
+            applyLedState(led,'unavailable');
             led.title='System status unavailable: '+error.message;
             led.setAttribute('aria-label',led.title);
             const link=led.closest('.opnsentral-system-led-link');
@@ -146,7 +166,7 @@
                 const head=document.createElement('div');
                 head.className='opnsentral-system-notification-head';
                 const led=document.createElement('span');
-                led.className='opnsentral-system-led '+classifyStatus(item.status);
+                applyLedState(led,classifyStatus(item.status));
                 const title=document.createElement('span');
                 title.className='opnsentral-system-notification-title';
                 title.textContent=String(item.title||'System notification');
@@ -170,12 +190,8 @@
         if(firstSection) firstSection.insertAdjacentElement('beforebegin',details);
         else systemPanel.appendChild(details);
 
-        if(items.some(item=>classifyStatus(item.status)!=='ok')||location.hash==='#system-notifications'){
-            details.open=true;
-        }
-        if(location.hash==='#system-notifications'){
-            window.setTimeout(()=>details.scrollIntoView({block:'start'}),50);
-        }
+        if(items.some(item=>classifyStatus(item.status)!=='ok')||location.hash==='#system-notifications') details.open=true;
+        if(location.hash==='#system-notifications') window.setTimeout(()=>details.scrollIntoView({block:'start'}),50);
     }
 
     async function initDetails(){
@@ -183,7 +199,7 @@
         const id=new URLSearchParams(location.search).get('id');
         if(!id) return;
         try{renderDetails(await fetchSystemStatus(id));}catch(error){
-            renderDetails({subsystems:{opnsentral:{status:'error',title:'System status',message:'Could not load reporter details: '+error.message}}});
+            renderDetails({subsystems:{opnsentral:{status:'ERROR',title:'System status',message:'Could not load reporter details: '+error.message}}});
         }
     }
 
@@ -195,14 +211,10 @@
             const card=event.target.closest('.firewall-card[data-firewall-id]');
             if(card) window.setTimeout(()=>loadDashboardLed(card),350);
         }
-        if(event.target.closest('#refresh-all')){
-            window.setTimeout(refreshDashboardLeds,350);
-        }
+        if(event.target.closest('#refresh-all')) window.setTimeout(refreshDashboardLeds,350);
     });
 
-    if(document.querySelector('.firewall-card[data-firewall-id]')){
-        window.setInterval(refreshDashboardLeds,60000);
-    }
+    if(document.querySelector('.firewall-card[data-firewall-id]')) window.setInterval(refreshDashboardLeds,60000);
 
     window.opnSentralRefreshSystemLeds=refreshDashboardLeds;
 })();
