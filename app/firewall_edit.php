@@ -87,7 +87,7 @@ require __DIR__ . '/inc/header.php';
 .firewall-edit-layout{display:grid;grid-template-columns:minmax(520px,820px) minmax(360px,1fr);gap:22px;align-items:start}
 .firewall-edit-layout .form-card{margin:0;max-width:none}
 .onboarding-guide{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px 20px;position:sticky;top:16px}
-.onboarding-guide h2{margin:0 0 8px;font-size:1.2rem}.onboarding-guide h3{margin:18px 0 7px;font-size:1rem}.onboarding-guide p{margin:6px 0;line-height:1.45}.onboarding-guide ol{margin:8px 0 0 20px;padding:0}.onboarding-guide li{margin:7px 0;line-height:1.4}.onboarding-guide code{overflow-wrap:anywhere}.guide-example{background:rgba(127,127,127,.09);border-radius:6px;padding:9px 11px;margin:8px 0}.guide-note{margin-top:14px;padding:10px 12px;border-left:4px solid #d39b22;background:rgba(211,155,34,.08)}
+.onboarding-guide h2{margin:0 0 8px;font-size:1.2rem}.onboarding-guide h3{margin:18px 0 7px;font-size:1rem}.onboarding-guide p{margin:6px 0;line-height:1.45}.onboarding-guide ol,.onboarding-guide ul{margin:8px 0 0 20px;padding:0}.onboarding-guide li{margin:7px 0;line-height:1.4}.onboarding-guide code{overflow-wrap:anywhere}.guide-example{background:rgba(127,127,127,.09);border-radius:6px;padding:9px 11px;margin:8px 0}.guide-note{margin-top:14px;padding:10px 12px;border-left:4px solid #d39b22;background:rgba(211,155,34,.08)}.guide-good{margin-top:10px;padding:10px 12px;border-left:4px solid #2aa84a;background:rgba(42,168,74,.08)}
 @media(max-width:1100px){.firewall-edit-layout{grid-template-columns:1fr}.onboarding-guide{position:static}}
 </style>
 
@@ -153,9 +153,24 @@ require __DIR__ . '/inc/header.php';
         <li>In OPNsense open <strong>System → Access → Users</strong>.</li>
         <li>Click <strong>+</strong> to create a new user.</li>
         <li>Use a dedicated username such as <code>opnsentral</code>.</li>
-        <li>For full current opnSentral functionality, add the account to the <strong>admins</strong> group.</li>
+        <li><strong>Do not disable the user.</strong> A disabled user cannot authenticate with the API key.</li>
+        <li>Use <strong>Scrambled Password</strong> so the account is not usable for normal password login.</li>
+        <li>Do not configure SSH authorized keys for this account.</li>
         <li>Save the user.</li>
     </ol>
+
+    <div class="guide-good">
+        <strong>Recommended lockdown</strong>
+        <ul>
+            <li>Dedicated <code>opnsentral</code> user</li>
+            <li>Scrambled Password enabled</li>
+            <li>No SSH keys</li>
+            <li>Dedicated API key/secret used only by opnSentral</li>
+            <li>Grant only the OPNsense privileges required by the opnSentral features you use</li>
+        </ul>
+    </div>
+
+    <p><strong>Compatibility fallback:</strong> adding the service account to the <strong>admins</strong> group gives all current opnSentral features access without maintaining individual privileges, but is less restrictive.</p>
 
     <h3>3. Create API credentials</h3>
     <ol>
