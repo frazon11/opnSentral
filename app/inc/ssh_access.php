@@ -54,6 +54,16 @@ function ssh_access_selected_values(mixed $value): array
     if (!is_array($value)) return [];
 
     $result = [];
+
+    /*
+     * OPNsense MVC fields are returned in more than one shape depending on
+     * endpoint/field type. Examples seen from get_rule/search_rule include:
+     *   {"pass":"Pass"}
+     *   {"uuid":"Managed by opnSentral"}
+     *   {"wan":{"selected":1,"value":"wan"}}
+     *   ["wan","lan"]
+     * Normalize all of them to the underlying selected values/keys.
+     */
     foreach ($value as $key => $item) {
         if (is_array($item)) {
             $selected = $item['selected'] ?? false;
@@ -62,15 +72,40 @@ function ssh_access_selected_values(mixed $value): array
                     ? $key
                     : trim((string) ($item['value'] ?? ''));
                 if ($candidate !== '') $result[] = $candidate;
+                continue;
             }
-        } elseif (is_int($key)) {
+
+            if (array_key_exists('value', $item) && count($item) === 1) {
+                $candidate = trim((string) $item['value']);
+                if ($candidate !== '') $result[] = $candidate;
+            }
+            continue;
+        }
+
+        if (is_int($key)) {
             $candidate = trim((string) $item);
             if ($candidate !== '') $result[] = $candidate;
-        } elseif (in_array($item, [1, '1', true, 'true', 'selected'], true)) {
+            continue;
+        }
+
+        if (in_array($item, [1, '1', true, 'true', 'selected'], true)) {
+            $result[] = (string) $key;
+            continue;
+        }
+
+        /*
+         * get_rule() renders selected OptionField/ModelRelation choices as
+         * associative key => display-label maps, e.g. "pass" => "Pass".
+         */
+        if (is_scalar($item) && trim((string) $key) !== '') {
             $result[] = (string) $key;
         }
     }
-    return array_values(array_unique($result));
+
+    return array_values(array_unique(array_filter(
+        $result,
+        static fn(string $item): bool => trim($item) !== ''
+    )));
 }
 
 function ssh_access_single_value(mixed $value): string
@@ -204,36 +239,73 @@ function ssh_access_rule_status(array $firewall, ?string $categoryUuid): array
     $present = is_array($rule);
     $categories = $present ? ssh_access_selected_values($rule['categories'] ?? '') : [];
     $interfaces = $present ? ssh_access_selected_values($rule['interface'] ?? '') : [];
-    $action = $present ? ssh_access_single_value($rule['action'] ?? '') : '';
+    $action = $present ? strtolower(ssh_access_single_value($rule['action'] ?? '')) : '';
     $protocol = $present ? strtolower(ssh_access_single_value($rule['protocol'] ?? '')) : '';
-    $direction = $present ? ssh_access_single_value($rule['direction'] ?? '') : '';
+    $direction = $present ? strtolower(ssh_access_single_value($rule['direction'] ?? '')) : '';
     $sourceNet = $present ? ssh_access_single_value($rule['source_net'] ?? '') : '';
     $destination = $present ? ssh_access_single_value($rule['destination_net'] ?? '') : '';
     $port = $present ? ssh_access_single_value($rule['destination_port'] ?? '') : '';
-    $replyTo = $present ? ssh_access_single_value($rule['disablereplyto'] ?? '0') : '0';
-    $enabledValue = $present ? ssh_access_single_value($rule['enabled'] ?? '1') : '0';
+    $replyTo = $present ? strtolower(ssh_access_single_value($rule['disablereplyto'] ?? '0')) : '0';
+    $enabledValue = $present ? strtolower(ssh_access_single_value($rule['enabled'] ?? '1')) : '0';
 
-    $interfaceOk = in_array('any', $interfaces, true)
-        || ($interfaces === [] && ssh_access_single_value($rule['interface'] ?? '') === 'any');
+    /* Empty interface is how OPNsense returns an all-interface/floating rule. */
+    $interfaceOk = $interfaces === [] || in_array('any', array_map('strtolower', $interfaces), true);
     $categoryOk = $present && $categoryUuid !== null && in_array($categoryUuid, $categories, true);
-    $enabled = $present && !in_array($enabledValue, ['0', 'false'], true);
+    $enabled = $present && !in_array($enabledValue, ['0', 'false', 'off', 'disabled'], true);
 
-    return [
+    $status = [
         'present' => $present,
         'enabled' => $enabled,
         'action_ok' => $action === 'pass',
         'protocol_ok' => $protocol === 'tcp',
         'direction_ok' => $direction === 'in',
         'interface_ok' => $interfaceOk,
-        'source_ok' => $sourceNet === SSH_ACCESS_ALIAS,
+        'source_ok' => strcasecmp($sourceNet, SSH_ACCESS_ALIAS) === 0,
         'destination_ok' => $destination === '(self)',
         'port_ok' => $port === '22',
         'category_ok' => $categoryOk,
-        'reply_to_disabled' => $replyTo === '1',
-        'ok' => $present && $enabled && $action === 'pass' && $protocol === 'tcp' && $direction === 'in'
-            && $interfaceOk && $sourceNet === SSH_ACCESS_ALIAS && $destination === '(self)' && $port === '22'
-            && $categoryOk && $replyTo === '1',
+        'reply_to_disabled' => in_array($replyTo, ['1', 'true', 'on', 'enabled'], true),
+        'actual' => [
+            'enabled' => $enabledValue,
+            'action' => $action,
+            'protocol' => $protocol,
+            'direction' => $direction,
+            'interfaces' => $interfaces,
+            'source_net' => $sourceNet,
+            'destination_net' => $destination,
+            'destination_port' => $port,
+            'categories' => $categories,
+            'disablereplyto' => $replyTo,
+        ],
     ];
+
+    $status['ok'] = $status['present'] && $status['enabled'] && $status['action_ok'] && $status['protocol_ok']
+        && $status['direction_ok'] && $status['interface_ok'] && $status['source_ok'] && $status['destination_ok']
+        && $status['port_ok'] && $status['category_ok'] && $status['reply_to_disabled'];
+
+    return $status;
+}
+
+function ssh_access_rule_verification_failures(array $status): array
+{
+    $labels = [
+        'present' => 'rule missing',
+        'enabled' => 'enabled',
+        'action_ok' => 'action',
+        'protocol_ok' => 'protocol',
+        'direction_ok' => 'direction',
+        'interface_ok' => 'interface',
+        'source_ok' => 'source',
+        'destination_ok' => 'destination',
+        'port_ok' => 'port',
+        'category_ok' => 'category',
+        'reply_to_disabled' => 'disable-reply-to',
+    ];
+    $failed = [];
+    foreach ($labels as $key => $label) {
+        if (($status[$key] ?? false) !== true) $failed[] = $label;
+    }
+    return $failed;
 }
 
 function ssh_access_ensure_rule(array $firewall, string $categoryUuid): void
@@ -271,12 +343,6 @@ function ssh_access_ensure_rule(array $firewall, string $categoryUuid): void
         opn_request($firewall, 'firewall/filter/add_rule', 'POST', ['rule' => $payload], 25);
     }
 
-    /*
-     * OPNsense 26.7 removed the old filter_base savepoint/apply endpoints.
-     * A full configuration backup is already created by ssh_access_action.php
-     * before this function is reached, so apply through the supported Filter
-     * controller and verify the exact rule afterwards.
-     */
     $apply = opn_request($firewall, 'firewall/filter/apply', 'POST', [], 40);
     $applyStatus = strtolower(trim((string) ($apply['status'] ?? '')));
     if ($applyStatus !== '' && !in_array($applyStatus, ['ok', 'done'], true)) {
@@ -285,7 +351,13 @@ function ssh_access_ensure_rule(array $firewall, string $categoryUuid): void
 
     $verified = ssh_access_rule_status($firewall, $categoryUuid);
     if (($verified['ok'] ?? false) !== true) {
-        throw new RuntimeException('SSH firewall rule did not verify after apply. Restore the pre-change opnSentral backup if required.');
+        $failed = ssh_access_rule_verification_failures($verified);
+        $actual = json_encode($verified['actual'] ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        throw new RuntimeException(
+            'SSH firewall rule verification failed for: ' . implode(', ', $failed) .
+            '. Actual OPNsense values: ' . ($actual !== false ? $actual : 'unavailable') .
+            '. Restore the pre-change opnSentral backup if required.'
+        );
     }
 }
 
