@@ -49,7 +49,7 @@ function central_alias_lines(string $content): array
  *
  * Depending on the field and OPNsense version, get_item can return a scalar,
  * a numeric list, an associative map such as ["geoip" => "GeoIP"], or the
- * older nested selected/value representation.  The keys of associative maps
+ * older nested selected/value representation. The keys of associative maps
  * are the actual stored values (for example alias type or category UUID).
  */
 function central_alias_selected_values(mixed $value): array
@@ -124,21 +124,29 @@ function central_alias_content_value(mixed $value): string
     }
 
     $result = [];
-    $walk = static function (mixed $item) use (&$walk, &$result): void {
+    foreach ($value as $key => $item) {
+        $candidate = '';
+
         if (is_array($item)) {
-            foreach ($item as $nested) {
-                $walk($nested);
+            // AliasContentField::getNodeData() exposes configured items as
+            // value => [value => ..., selected => 1]. AliasController::getItemAction()
+            // also appends every other alias with selected => 0 for the UI chooser.
+            // Only selected entries are actual alias content.
+            $selected = $item['selected'] ?? null;
+            if (!in_array($selected, [1, '1', true, 'true', 'selected'], true)) {
+                continue;
             }
-            return;
-        }
-        if (is_string($item) || is_int($item) || is_float($item)) {
+            $candidate = trim((string) ($item['value'] ?? (is_string($key) ? $key : '')));
+        } elseif (is_int($key)) {
+            // Be tolerant of plain numeric lists returned by older APIs.
             $candidate = trim((string) $item);
-            if ($candidate !== '' && !in_array($candidate, $result, true)) {
-                $result[] = $candidate;
-            }
         }
-    };
-    $walk($value);
+
+        if ($candidate !== '' && !in_array($candidate, $result, true)) {
+            $result[] = $candidate;
+        }
+    }
+
     return implode("\n", $result);
 }
 
