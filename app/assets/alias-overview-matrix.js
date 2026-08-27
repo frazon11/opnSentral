@@ -5,7 +5,6 @@ window.opnSentralAliasOverviewMatrix = function(options){
     const summary = document.getElementById(options.summaryId);
     const errorBox = document.getElementById(options.errorId);
     const refresh = document.getElementById(options.refreshId);
-    const filter = document.getElementById(options.filterId);
     let inventoryData = null;
 
     function escapeHtml(value){
@@ -119,24 +118,62 @@ window.opnSentralAliasOverviewMatrix = function(options){
         }
     }
 
-    function applyFilter(){
-        if(!filter || !list) return;
-        const mode = filter.value;
-        let visible = 0;
+    async function deployMissing(button){
+        const name = button.dataset.name || '';
+        const sourceId = Number(button.dataset.sourceFirewallId || 0);
+        const sourceName = button.dataset.sourceFirewallName || 'source firewall';
+        const targetIds = String(button.dataset.targetFirewallIds || '')
+            .split(',')
+            .map(value => Number(value))
+            .filter(id => id > 0);
 
-        list.querySelectorAll('tr.alias-matrix-row').forEach(function(row){
-            const hasManaged = row.dataset.hasManaged === '1';
-            const hasUnmanaged = row.dataset.hasUnmanaged === '1';
-            const show = mode === 'all'
-                || (mode === 'managed' && hasManaged)
-                || (mode === 'unmanaged' && hasUnmanaged);
-            row.hidden = !show;
-            if(show) visible += 1;
-        });
+        if(!name || !sourceId || !targetIds.length) return;
 
-        const empty = document.getElementById('alias-matrix-filter-empty');
-        if(empty){
-            empty.hidden = visible !== 0;
+        if(!window.confirm(
+            'Apply alias "' + name + '" from ' + sourceName + ' to the ' + targetIds.length +
+            ' remaining reachable OPNsense' + (targetIds.length === 1 ? '' : 's') + '?\n\n' +
+            'Only firewalls where the alias is missing will be changed. Existing aliases are left untouched.'
+        )) return;
+
+        button.disabled = true;
+        const originalText = button.textContent;
+        button.textContent = 'Applying…';
+
+        try{
+            const payload = new FormData();
+            payload.set('csrf', csrf());
+            payload.set('name', name);
+            payload.set('source_firewall_id', String(sourceId));
+            targetIds.forEach(id => payload.append('target_firewall_ids[]', String(id)));
+
+            const response = await fetch('/alias_deploy_missing.php', {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: payload
+            });
+            const raw = await response.text();
+            let data;
+            try{ data = JSON.parse(raw); }
+            catch(error){ throw new Error(raw.replace(/\s+/g, ' ').slice(0, 700)); }
+
+            if(!response.ok || data.ok !== true){
+                throw new Error(data.error || 'Alias deployment failed.');
+            }
+
+            const failures = (data.results || []).filter(item => !item.ok);
+            if(failures.length){
+                window.alert(
+                    'Some firewalls failed:\n' +
+                    failures.map(item => item.name + ': ' + item.message).join('\n')
+                );
+            }
+
+            await load();
+        }catch(error){
+            window.alert(error.message);
+        }finally{
+            button.disabled = false;
+            button.textContent = originalText;
         }
     }
 
@@ -203,6 +240,27 @@ window.opnSentralAliasOverviewMatrix = function(options){
         }).join('');
 
         const rows = aliases.map(function(alias){
+            const existingSources = firewalls
+                .filter(result => result.aliases_ok && alias.byFirewall.has(Number(result.firewall.id)))
+                .map(result => ({
+                    result: result,
+                    item: alias.byFirewall.get(Number(result.firewall.id))
+                }));
+            const source = existingSources.find(entry => entry.item && entry.item.managed) || existingSources[0] || null;
+            const missingTargets = firewalls
+                .filter(result => result.aliases_ok && !alias.byFirewall.has(Number(result.firewall.id)))
+                .map(result => Number(result.firewall.id));
+
+            const deployButton = source && missingTargets.length
+                ? '<button type="button" class="button alias-deploy-missing"' +
+                    ' data-name="' + escapeHtml(alias.name) + '"' +
+                    ' data-source-firewall-id="' + Number(source.result.firewall.id) + '"' +
+                    ' data-source-firewall-name="' + escapeHtml(source.result.firewall.name) + '"' +
+                    ' data-target-firewall-ids="' + missingTargets.join(',') + '">' +
+                    'Apply to missing (' + missingTargets.length + ')' +
+                  '</button>'
+                : '';
+
             const cells = firewalls.map(function(result){
                 if(!result.aliases_ok){
                     return '<td class="alias-matrix-cell"><span class="badge bad">Unavailable</span></td>';
@@ -227,11 +285,12 @@ window.opnSentralAliasOverviewMatrix = function(options){
                 '</td>';
             }).join('');
 
-            return '<tr class="alias-matrix-row" data-has-managed="' + (alias.hasManaged ? '1' : '0') + '" data-has-unmanaged="' + (alias.hasUnmanaged ? '1' : '0') + '">' +
+            return '<tr class="alias-matrix-row">' +
                 '<th scope="row" class="alias-matrix-name">' +
                     '<strong>' + escapeHtml(alias.name) + '</strong>' +
                     (alias.type ? '<span class="alias-matrix-type">' + escapeHtml(alias.type) + '</span>' : '') +
                     (alias.description ? '<small>' + escapeHtml(alias.description) + '</small>' : '') +
+                    (deployButton ? '<div class="alias-matrix-row-action">' + deployButton + '</div>' : '') +
                 '</th>' + cells +
             '</tr>';
         }).join('');
@@ -241,15 +300,16 @@ window.opnSentralAliasOverviewMatrix = function(options){
                 '<div class="table-scroll alias-matrix-scroll">' +
                     '<table class="management-table alias-matrix-table">' +
                         '<thead><tr><th class="alias-matrix-corner">Alias</th>' + head + '</tr></thead>' +
-                        '<tbody>' + rows +
-                            '<tr id="alias-matrix-filter-empty" hidden><td colspan="' + (firewalls.length + 1) + '" class="alias-filter-empty">No aliases match this filter.</td></tr>' +
-                        '</tbody>' +
+                        '<tbody>' + rows + '</tbody>' +
                     '</table>' +
                 '</div>' +
             '</div>';
 
         list.querySelectorAll('.inventory-rename').forEach(function(button){
             button.addEventListener('click', function(){ renameEntry(button); });
+        });
+        list.querySelectorAll('.alias-deploy-missing').forEach(function(button){
+            button.addEventListener('click', function(){ deployMissing(button); });
         });
 
         const failures = firewalls.filter(result => !result.aliases_ok);
@@ -260,8 +320,6 @@ window.opnSentralAliasOverviewMatrix = function(options){
             errorBox.textContent = '';
             errorBox.classList.add('hidden');
         }
-
-        applyFilter();
     }
 
     async function load(){
@@ -291,7 +349,6 @@ window.opnSentralAliasOverviewMatrix = function(options){
         }
     }
 
-    if(filter) filter.addEventListener('change', applyFilter);
     refresh.addEventListener('click', load);
     load();
 };
