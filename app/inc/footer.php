@@ -19,7 +19,7 @@
 <script src="/assets/presentation-settings.js?v=062020"></script>
 <script src="/assets/alias-geoip-type.js?v=06215"></script>
 <script src="/assets/deployment-results.js?v=062106"></script>
-<script src="/assets/system-status-indicator.js?v=062163"></script>
+<script src="/assets/system-status-indicator.js?v=062175"></script>
 <script>
 (function(){
     document.title = 'opnSentral';
