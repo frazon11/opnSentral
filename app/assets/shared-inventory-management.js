@@ -30,6 +30,7 @@ window.opnSentralSharedInventory = function(options){
         });
         return Array.from(map.values()).map(function(entry){
             entry.everywhere = firewalls.length > 0 && entry.firewalls.length === firewalls.length;
+            entry.managed = entry.items.some(function(item){ return item && item.managed === true; });
             return entry;
         }).sort(function(a,b){
             if(a.everywhere !== b.everywhere) return a.everywhere ? -1 : 1;
@@ -41,6 +42,9 @@ window.opnSentralSharedInventory = function(options){
         const entries = aggregate(data);
         const firewallCount = Array.isArray(data.firewalls) ? data.firewalls.length : 0;
         const everywhereCount = entries.filter(item=>item.everywhere).length;
+        const managedFilterOption = options.type === 'aliases'
+            ? '<option value="managed">Managed by opnSentral</option>'
+            : '';
 
         mount.innerHTML = `
             <section class="card management-card">
@@ -53,6 +57,7 @@ window.opnSentralSharedInventory = function(options){
                         <select id="shared-inventory-filter">
                             <option value="everywhere">Present on all</option>
                             <option value="all">All unique entries</option>
+                            ${managedFilterOption}
                         </select>
                     </label>
                 </div>
@@ -70,7 +75,11 @@ window.opnSentralSharedInventory = function(options){
         const result = mount.querySelector('#shared-inventory-result');
 
         function draw(){
-            const visible = entries.filter(item=>filter.value==='all'||item.everywhere);
+            const visible = entries.filter(function(item){
+                if(filter.value === 'all') return true;
+                if(filter.value === 'managed') return item.managed === true;
+                return item.everywhere;
+            });
             body.innerHTML = visible.length ? visible.map(function(entry,index){
                 const names = entry.firewalls.map(fw=>fw.name).join(', ');
                 return `
