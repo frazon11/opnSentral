@@ -33,24 +33,40 @@ function alias_edit_enabled(mixed $value): int
     return in_array($value, ['1','true','yes','on','enabled'], true) ? 1 : 0;
 }
 
-function alias_edit_verify(array $firewall, string $name, string $type, array $lines, string $description, int $enabled): void
+function alias_edit_uuid(array $firewall, string $name): ?string
 {
-    $remote = central_alias_find($firewall, $name);
-    if ($remote === null) {
-        throw new RuntimeException('Alias "' . $name . '" was not found after saving.');
+    try {
+        $response = opn_raw_request(
+            $firewall,
+            'firewall/alias/get_alias_u_u_i_d/' . rawurlencode($name),
+            'GET',
+            null,
+            15
+        );
+        $uuid = trim((string)($response['uuid'] ?? $response['result'] ?? ''));
+        if ($uuid !== '') return $uuid;
+    } catch (Throwable $exception) {
+        // exact search fallback below
     }
-    if (strcasecmp((string)($remote['type'] ?? ''), $type) !== 0) {
-        throw new RuntimeException('Verification failed: type is "' . (string)($remote['type'] ?? '') . '", expected "' . $type . '".');
+
+    $search = opn_raw_request(
+        $firewall,
+        'firewall/alias/search_item',
+        'POST',
+        [
+            'current' => 1,
+            'rowCount' => 500,
+            'searchPhrase' => $name,
+        ],
+        20
+    );
+    foreach (($search['rows'] ?? []) as $row) {
+        if (is_array($row) && strcasecmp(trim((string)($row['name'] ?? '')), $name) === 0) {
+            $uuid = trim((string)($row['uuid'] ?? ''));
+            return $uuid !== '' ? $uuid : null;
+        }
     }
-    if (central_alias_lines((string)($remote['content'] ?? '')) !== central_alias_lines(implode("\n", $lines))) {
-        throw new RuntimeException('Verification failed: content does not match.');
-    }
-    if (trim((string)($remote['description'] ?? '')) !== $description) {
-        throw new RuntimeException('Verification failed: description does not match.');
-    }
-    if (alias_edit_enabled($remote['enabled'] ?? 0) !== $enabled) {
-        throw new RuntimeException('Verification failed: enabled state does not match.');
-    }
+    return null;
 }
 
 function alias_edit_raw_model(array $firewall, string $uuid): array
@@ -64,9 +80,73 @@ function alias_edit_raw_model(array $firewall, string $uuid): array
     );
     $model = isset($current['alias']) && is_array($current['alias']) ? $current['alias'] : $current;
     if (!is_array($model) || $model === []) {
-        throw new RuntimeException('OPNsense did not return the alias definition before editing.');
+        throw new RuntimeException('OPNsense did not return the alias definition.');
     }
     return $model;
+}
+
+function alias_edit_content(mixed $value): string
+{
+    if (is_string($value) || is_int($value) || is_float($value)) {
+        return trim((string)$value);
+    }
+    if (!is_array($value)) return '';
+
+    $lines = [];
+    foreach ($value as $key => $item) {
+        if (is_array($item)) {
+            $selected = $item['selected'] ?? null;
+            if (!in_array($selected, [1, '1', true, 'true', 'selected'], true)) {
+                continue;
+            }
+            $candidate = trim((string)($item['value'] ?? (is_string($key) ? $key : '')));
+        } elseif (is_int($key)) {
+            $candidate = trim((string)$item);
+        } else {
+            continue;
+        }
+
+        if ($candidate !== '' && !in_array($candidate, $lines, true)) {
+            $lines[] = $candidate;
+        }
+    }
+    return implode("\n", $lines);
+}
+
+function alias_edit_read(array $firewall, string $name): ?array
+{
+    $uuid = alias_edit_uuid($firewall, $name);
+    if ($uuid === null) return null;
+
+    $model = alias_edit_raw_model($firewall, $uuid);
+    return [
+        'uuid' => $uuid,
+        'name' => central_alias_scalar($model['name'] ?? $name),
+        'type' => central_alias_scalar($model['type'] ?? 'host'),
+        'content' => alias_edit_content($model['content'] ?? ''),
+        'description' => central_alias_scalar($model['description'] ?? ''),
+        'enabled' => alias_edit_enabled($model['enabled'] ?? 1),
+    ];
+}
+
+function alias_edit_verify(array $firewall, string $name, string $type, array $lines, string $description, int $enabled): void
+{
+    $remote = alias_edit_read($firewall, $name);
+    if ($remote === null) {
+        throw new RuntimeException('Alias "' . $name . '" was not found after saving.');
+    }
+    if (strcasecmp((string)$remote['type'], $type) !== 0) {
+        throw new RuntimeException('Verification failed: type is "' . (string)$remote['type'] . '", expected "' . $type . '".');
+    }
+    if (central_alias_lines((string)$remote['content']) !== central_alias_lines(implode("\n", $lines))) {
+        throw new RuntimeException('Verification failed: content does not match.');
+    }
+    if (trim((string)$remote['description']) !== $description) {
+        throw new RuntimeException('Verification failed: description does not match.');
+    }
+    if ((int)$remote['enabled'] !== $enabled) {
+        throw new RuntimeException('Verification failed: enabled state does not match.');
+    }
 }
 
 $firewalls = db()->query('SELECT * FROM firewalls ORDER BY name')->fetchAll();
@@ -81,7 +161,7 @@ if ($name === '' || $sourceFirewallId <= 0 || !isset($firewallById[$sourceFirewa
 }
 
 $sourceFirewall = $firewallById[$sourceFirewallId];
-$sourceAlias = central_alias_find($sourceFirewall, $name);
+$sourceAlias = alias_edit_read($sourceFirewall, $name);
 if ($sourceAlias === null) {
     http_response_code(404);
     exit('Alias not found on the selected source firewall.');
@@ -94,7 +174,7 @@ $types = ['host'=>'Host(s)','network'=>'Network(s)','port'=>'Port(s)','url'=>'UR
 $typeValue = (string)($sourceAlias['type'] ?? 'host');
 $contentValue = (string)($sourceAlias['content'] ?? '');
 $descriptionValue = (string)($sourceAlias['description'] ?? '');
-$enabledValue = alias_edit_enabled($sourceAlias['enabled'] ?? 1);
+$enabledValue = (int)($sourceAlias['enabled'] ?? 1);
 $scopeValue = 'one';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -118,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $targets = $scopeValue === 'one' ? [$firewallById[$targetFirewallId]] : $firewalls;
         foreach ($targets as $firewall) {
             try {
-                $existing = central_alias_find($firewall, $name);
+                $existing = alias_edit_read($firewall, $name);
                 if ($existing === null) {
                     if ($scopeValue === 'all-existing') {
                         $results[] = ['ok'=>true,'skipped'=>true,'name'=>$firewall['name'],'message'=>'Skipped: alias does not exist on this firewall.'];
@@ -127,20 +207,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new RuntimeException('Alias does not exist on this firewall.');
                 }
 
-                $uuid = trim((string)($existing['uuid'] ?? ''));
-                if ($uuid === '') throw new RuntimeException('OPNsense did not return the alias UUID.');
-
+                $uuid = trim((string)$existing['uuid']);
                 backup_before_change($firewall, 'alias-edit');
 
-                // Preserve the exact raw MVC model returned by OPNsense. Normalized
-                // inventory values are safe for display/comparison, but posting them
-                // back can corrupt OptionField/RelationField shapes and cause HTTP 500.
-                $payload = alias_edit_raw_model($firewall, $uuid);
-                $payload['name'] = $name;
-                $payload['type'] = $typeValue;
-                $payload['content'] = implode("\n", $lines);
-                $payload['description'] = $descriptionValue;
-                $payload['enabled'] = (string)$enabledValue;
+                // set_item uses partial updates. Only send the fields the editor owns.
+                // This preserves categories and all other OPNsense-specific fields untouched.
+                $payload = [
+                    'type' => $typeValue,
+                    'content' => implode("\n", $lines),
+                    'description' => $descriptionValue,
+                    'enabled' => (string)$enabledValue,
+                ];
 
                 $write = opn_raw_request(
                     $firewall,
@@ -167,7 +244,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 require __DIR__ . '/inc/header.php';
 ?>
 <style>
-.alias-edit-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr);gap:20px}.alias-edit-form label{display:block;font-weight:700;margin:14px 0 6px}.alias-edit-form input[type=text],.alias-edit-form select,.alias-edit-form textarea{width:100%;box-sizing:border-box}.alias-edit-form textarea{min-height:220px;font-family:monospace}.alias-edit-enabled{display:flex!important;align-items:center;gap:9px}.alias-edit-enabled input{width:auto}.alias-edit-source{padding:10px;border-radius:6px;background:rgba(127,127,127,.08)}.alias-edit-results{display:grid;gap:8px}.alias-edit-result{padding:10px;border-radius:6px;background:rgba(127,127,127,.08)}.alias-edit-result.good{border-left:4px solid #2aa84a}.alias-edit-result.bad{border-left:4px solid #d74747}@media(max-width:850px){.alias-edit-grid{grid-template-columns:1fr}}
+.alias-edit-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr);gap:20px}.alias-edit-form label{display:block;font-weight:700;margin:14px 0 6px}.alias-edit-form input[type=text],.alias-edit-form select,.alias-edit-form textarea{width:100%;box-sizing:border-box}.alias-edit-form textarea{min-height:220px;font-family:monospace;white-space:pre}.alias-edit-enabled{display:flex!important;align-items:center;gap:9px}.alias-edit-enabled input{width:auto}.alias-edit-source{padding:10px;border-radius:6px;background:rgba(127,127,127,.08)}.alias-edit-results{display:grid;gap:8px}.alias-edit-result{padding:10px;border-radius:6px;background:rgba(127,127,127,.08)}.alias-edit-result.good{border-left:4px solid #2aa84a}.alias-edit-result.bad{border-left:4px solid #d74747}@media(max-width:850px){.alias-edit-grid{grid-template-columns:1fr}}
 </style>
 <div class="page-title"><div><h1>Edit alias definition</h1><p>Edit type, content, description and enabled state. Renaming is a separate action.</p></div><a class="button secondary" href="/alias_overview.php">Back to aliases</a></div>
 <?php if ($error): ?><div class="alert error"><?= h($error) ?></div><?php endif; ?>
@@ -180,7 +257,7 @@ require __DIR__ . '/inc/header.php';
         <input type="hidden" name="name" value="<?= h($name) ?>">
         <input type="hidden" name="source_firewall_id" value="<?= (int)$sourceFirewallId ?>">
         <label>Type</label><select name="type"><?php foreach ($types as $value=>$label): ?><option value="<?= h($value) ?>" <?= $typeValue===$value?'selected':'' ?>><?= h($label) ?></option><?php endforeach; ?></select>
-        <label>Content</label><textarea name="content" required><?= h($contentValue) ?></textarea>
+        <label>Content</label><textarea name="content" required spellcheck="false"><?= h($contentValue) ?></textarea><small class="muted">One value per line.</small>
         <label>Description</label><input type="text" name="description" maxlength="255" value="<?= h($descriptionValue) ?>"><small class="muted">Optional. Maximum 255 characters.</small>
         <label class="alias-edit-enabled"><input type="checkbox" name="enabled" value="1" <?= $enabledValue ? 'checked' : '' ?>><span>Enabled</span></label>
         <fieldset><legend>Apply changes to</legend>
