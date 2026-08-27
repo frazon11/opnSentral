@@ -80,10 +80,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 require __DIR__ . '/inc/header.php';
 ?>
 <style>
-.alias-overview-filter{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.alias-overview-filter label{font-weight:700}
-.alias-overview-filter select{min-width:220px;width:auto}
-.alias-filter-empty{padding:14px 12px;color:var(--muted);font-style:italic;text-align:center}
 .alias-matrix-card{padding:0;overflow:hidden}
 .alias-matrix-scroll{overflow:auto;max-width:100%}
 .alias-matrix-table{min-width:max-content;margin:0}
@@ -140,14 +136,6 @@ require __DIR__ . '/inc/header.php';
         <strong>Alias overview</strong>
         <div id="alias-inventory-summary" class="management-summary">Loading all aliases…</div>
     </div>
-    <div class="alias-overview-filter">
-        <label for="alias-management-filter">Show</label>
-        <select id="alias-management-filter">
-            <option value="all">All aliases</option>
-            <option value="managed">opnSentral managed aliases</option>
-            <option value="unmanaged">Unmanaged aliases</option>
-        </select>
-    </div>
 </div>
 
 <div id="alias-inventory-error" class="alert error hidden"></div>
@@ -162,8 +150,7 @@ window.opnSentralAliasOverviewMatrix({
     listId: 'alias-inventory-list',
     summaryId: 'alias-inventory-summary',
     errorId: 'alias-inventory-error',
-    refreshId: 'alias-inventory-refresh',
-    filterId: 'alias-management-filter'
+    refreshId: 'alias-inventory-refresh'
 });
 </script>
 
