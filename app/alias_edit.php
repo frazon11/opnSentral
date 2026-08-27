@@ -87,33 +87,20 @@ function alias_edit_raw_model(array $firewall, string $uuid): array
 
 function alias_edit_content(mixed $value): string
 {
-    if (is_string($value) || is_int($value) || is_float($value)) {
-        return trim((string)$value);
-    }
-    if (!is_array($value)) return '';
-
-    $lines = [];
-    foreach ($value as $key => $item) {
-        if (is_array($item)) {
-            $selected = $item['selected'] ?? null;
-            if (!in_array($selected, [1, '1', true, 'true', 'selected'], true)) {
-                continue;
-            }
-            $candidate = trim((string)($item['value'] ?? (is_string($key) ? $key : '')));
-        } elseif (is_int($key)) {
-            $candidate = trim((string)$item);
-        } else {
-            continue;
-        }
-
-        if ($candidate !== '' && !in_array($candidate, $lines, true)) {
-            $lines[] = $candidate;
-        }
-    }
-    return implode("\n", $lines);
+    return central_alias_content_value($value);
 }
 
-function alias_edit_read(array $firewall, string $name): ?array
+function alias_edit_type_key(mixed $value, array $types): string
+{
+    $candidate = central_alias_scalar($value);
+    if (isset($types[$candidate])) return $candidate;
+    foreach ($types as $key => $label) {
+        if (strcasecmp($candidate, $label) === 0) return $key;
+    }
+    return $candidate;
+}
+
+function alias_edit_read(array $firewall, string $name, array $types): ?array
 {
     $uuid = alias_edit_uuid($firewall, $name);
     if ($uuid === null) return null;
@@ -122,18 +109,21 @@ function alias_edit_read(array $firewall, string $name): ?array
     return [
         'uuid' => $uuid,
         'name' => central_alias_scalar($model['name'] ?? $name),
-        'type' => central_alias_scalar($model['type'] ?? 'host'),
+        'type' => alias_edit_type_key($model['type'] ?? 'host', $types),
         'content' => alias_edit_content($model['content'] ?? ''),
         'description' => central_alias_scalar($model['description'] ?? ''),
         'enabled' => alias_edit_enabled($model['enabled'] ?? 1),
     ];
 }
 
-function alias_edit_verify(array $firewall, string $name, string $type, array $lines, string $description, int $enabled): void
+function alias_edit_verify(array $firewall, string $name, string $type, array $lines, string $description, int $enabled, array $types): void
 {
-    $remote = alias_edit_read($firewall, $name);
+    $remote = alias_edit_read($firewall, $name, $types);
     if ($remote === null) {
         throw new RuntimeException('Alias "' . $name . '" was not found after saving.');
+    }
+    if (strcasecmp((string)$remote['name'], $name) !== 0) {
+        throw new RuntimeException('Verification failed: name is "' . (string)$remote['name'] . '", expected "' . $name . '".');
     }
     if (strcasecmp((string)$remote['type'], $type) !== 0) {
         throw new RuntimeException('Verification failed: type is "' . (string)$remote['type'] . '", expected "' . $type . '".');
@@ -153,15 +143,17 @@ $firewalls = db()->query('SELECT * FROM firewalls ORDER BY name')->fetchAll();
 $firewallById = [];
 foreach ($firewalls as $fw) $firewallById[(int)$fw['id']] = $fw;
 
-$name = trim((string)($_POST['name'] ?? $_GET['name'] ?? ''));
+$types = ['host'=>'Host(s)','network'=>'Network(s)','port'=>'Port(s)','url'=>'URL','urltable'=>'URL table','geoip'=>'GeoIP','networkgroup'=>'Network group','mac'=>'MAC','asn'=>'ASN'];
+
+$originalName = trim((string)($_POST['original_name'] ?? $_GET['name'] ?? ''));
 $sourceFirewallId = (int)($_POST['source_firewall_id'] ?? $_GET['source_firewall_id'] ?? 0);
-if ($name === '' || $sourceFirewallId <= 0 || !isset($firewallById[$sourceFirewallId])) {
+if ($originalName === '' || $sourceFirewallId <= 0 || !isset($firewallById[$sourceFirewallId])) {
     http_response_code(400);
     exit('Alias name and source firewall are required.');
 }
 
 $sourceFirewall = $firewallById[$sourceFirewallId];
-$sourceAlias = alias_edit_read($sourceFirewall, $name);
+$sourceAlias = alias_edit_read($sourceFirewall, $originalName, $types);
 if ($sourceAlias === null) {
     http_response_code(404);
     exit('Alias not found on the selected source firewall.');
@@ -169,18 +161,20 @@ if ($sourceAlias === null) {
 
 $error = '';
 $results = [];
-$types = ['host'=>'Host(s)','network'=>'Network(s)','port'=>'Port(s)','url'=>'URL','urltable'=>'URL table','geoip'=>'GeoIP','networkgroup'=>'Network group','mac'=>'MAC','asn'=>'ASN'];
 
+$nameValue = (string)($sourceAlias['name'] ?? $originalName);
 $typeValue = (string)($sourceAlias['type'] ?? 'host');
 $contentValue = (string)($sourceAlias['content'] ?? '');
 $descriptionValue = (string)($sourceAlias['description'] ?? '');
 $enabledValue = (int)($sourceAlias['enabled'] ?? 1);
 $scopeValue = 'one';
+$targetFirewallId = $sourceFirewallId;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
     try {
         require_configuration_unlocked(false);
+        $nameValue = trim((string)($_POST['name'] ?? $originalName));
         $typeValue = trim((string)($_POST['type'] ?? 'host'));
         $contentValue = (string)($_POST['content'] ?? '');
         $descriptionValue = trim((string)($_POST['description'] ?? ''));
@@ -189,6 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $targetFirewallId = (int)($_POST['target_firewall_id'] ?? $sourceFirewallId);
         $lines = central_alias_lines($contentValue);
 
+        if ($nameValue === '') throw new RuntimeException('Alias name must not be empty.');
         if (!isset($types[$typeValue])) throw new RuntimeException('Invalid alias type.');
         if ($lines === []) throw new RuntimeException('Enter at least one alias value.');
         if (mb_strlen($descriptionValue) > 255) throw new RuntimeException('Description may contain at most 255 characters.');
@@ -196,9 +191,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($scopeValue === 'one' && !isset($firewallById[$targetFirewallId])) throw new RuntimeException('Select a valid firewall.');
 
         $targets = $scopeValue === 'one' ? [$firewallById[$targetFirewallId]] : $firewalls;
+        $sourceWasRenamed = false;
+
         foreach ($targets as $firewall) {
             try {
-                $existing = alias_edit_read($firewall, $name);
+                $existing = alias_edit_read($firewall, $originalName, $types);
                 if ($existing === null) {
                     if ($scopeValue === 'all-existing') {
                         $results[] = ['ok'=>true,'skipped'=>true,'name'=>$firewall['name'],'message'=>'Skipped: alias does not exist on this firewall.'];
@@ -210,9 +207,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $uuid = trim((string)$existing['uuid']);
                 backup_before_change($firewall, 'alias-edit');
 
-                // set_item uses partial updates. Only send the fields the editor owns.
-                // This preserves categories and all other OPNsense-specific fields untouched.
+                // OPNsense set_item supports partial updates. Include name so a rename
+                // is handled by AliasController::setItemAction(), which also refactors references.
                 $payload = [
+                    'name' => $nameValue,
                     'type' => $typeValue,
                     'content' => implode("\n", $lines),
                     'description' => $descriptionValue,
@@ -230,11 +228,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $reconfigure = opn_raw_request($firewall, 'firewall/alias/reconfigure', 'POST', [], 45);
                 alias_edit_assert_success($reconfigure, 'reconfigure');
-                alias_edit_verify($firewall, $name, $typeValue, $lines, $descriptionValue, $enabledValue);
+                alias_edit_verify($firewall, $nameValue, $typeValue, $lines, $descriptionValue, $enabledValue, $types);
                 $results[] = ['ok'=>true,'skipped'=>false,'name'=>$firewall['name'],'message'=>'Updated and verified.'];
+
+                if ((int)$firewall['id'] === $sourceFirewallId && strcasecmp($originalName, $nameValue) !== 0) {
+                    $sourceWasRenamed = true;
+                }
             } catch (Throwable $exception) {
                 $results[] = ['ok'=>false,'skipped'=>false,'name'=>$firewall['name'],'message'=>$exception->getMessage()];
             }
+        }
+
+        if ($sourceWasRenamed) {
+            $originalName = $nameValue;
         }
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
@@ -246,27 +252,28 @@ require __DIR__ . '/inc/header.php';
 <style>
 .alias-edit-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr);gap:20px}.alias-edit-form label{display:block;font-weight:700;margin:14px 0 6px}.alias-edit-form input[type=text],.alias-edit-form select,.alias-edit-form textarea{width:100%;box-sizing:border-box}.alias-edit-form textarea{min-height:220px;font-family:monospace;white-space:pre}.alias-edit-enabled{display:flex!important;align-items:center;gap:9px}.alias-edit-enabled input{width:auto}.alias-edit-source{padding:10px;border-radius:6px;background:rgba(127,127,127,.08)}.alias-edit-results{display:grid;gap:8px}.alias-edit-result{padding:10px;border-radius:6px;background:rgba(127,127,127,.08)}.alias-edit-result.good{border-left:4px solid #2aa84a}.alias-edit-result.bad{border-left:4px solid #d74747}@media(max-width:850px){.alias-edit-grid{grid-template-columns:1fr}}
 </style>
-<div class="page-title"><div><h1>Edit alias definition</h1><p>Edit type, content, description and enabled state. Renaming is a separate action.</p></div><a class="button secondary" href="/alias_overview.php">Back to aliases</a></div>
+<div class="page-title"><div><h1>Edit alias</h1><p>Edit name, type, content, description and enabled state.</p></div><a class="button secondary" href="/alias_overview.php">Back to aliases</a></div>
 <?php if ($error): ?><div class="alert error"><?= h($error) ?></div><?php endif; ?>
 <div class="alias-edit-grid">
 <section class="card">
-    <h2><?= h($name) ?></h2>
-    <div class="alias-edit-source"><strong>Source:</strong> <?= h((string)$sourceFirewall['name']) ?><br><span class="muted">The name is intentionally fixed here. Use Rename in the overview if you want to change it.</span></div>
+    <h2><?= h($nameValue) ?></h2>
+    <div class="alias-edit-source"><strong>Source:</strong> <?= h((string)$sourceFirewall['name']) ?></div>
     <form method="post" class="alias-edit-form" id="alias-edit-form">
         <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
-        <input type="hidden" name="name" value="<?= h($name) ?>">
+        <input type="hidden" name="original_name" value="<?= h($originalName) ?>">
         <input type="hidden" name="source_firewall_id" value="<?= (int)$sourceFirewallId ?>">
+        <label>Name</label><input type="text" name="name" required value="<?= h($nameValue) ?>">
         <label>Type</label><select name="type"><?php foreach ($types as $value=>$label): ?><option value="<?= h($value) ?>" <?= $typeValue===$value?'selected':'' ?>><?= h($label) ?></option><?php endforeach; ?></select>
         <label>Content</label><textarea name="content" required spellcheck="false"><?= h($contentValue) ?></textarea><small class="muted">One value per line.</small>
         <label>Description</label><input type="text" name="description" maxlength="255" value="<?= h($descriptionValue) ?>"><small class="muted">Optional. Maximum 255 characters.</small>
         <label class="alias-edit-enabled"><input type="checkbox" name="enabled" value="1" <?= $enabledValue ? 'checked' : '' ?>><span>Enabled</span></label>
         <fieldset><legend>Apply changes to</legend>
             <label><input type="radio" name="target_scope" value="one" <?= $scopeValue==='one'?'checked':'' ?>> One OPNsense</label>
-            <select name="target_firewall_id" id="alias-edit-target"><?php foreach ($firewalls as $fw): ?><option value="<?= (int)$fw['id'] ?>" <?= (int)$fw['id']===$sourceFirewallId?'selected':'' ?>><?= h((string)$fw['name']) ?></option><?php endforeach; ?></select>
+            <select name="target_firewall_id" id="alias-edit-target"><?php foreach ($firewalls as $fw): ?><option value="<?= (int)$fw['id'] ?>" <?= (int)$fw['id']===$targetFirewallId?'selected':'' ?>><?= h((string)$fw['name']) ?></option><?php endforeach; ?></select>
             <label><input type="radio" name="target_scope" value="all-existing" <?= $scopeValue==='all-existing'?'checked':'' ?>> All OPNsense where this alias already exists</label>
             <small class="muted">All-existing never creates a missing alias. Existing categories are preserved.</small>
         </fieldset>
-        <div class="actions"><button type="submit">Save definition</button></div>
+        <div class="actions"><button type="submit">Save changes</button></div>
     </form>
 </section>
 <section class="card"><h2>Results</h2><?php if (!$results): ?><div class="empty">No changes saved yet.</div><?php else: ?><div class="alias-edit-results"><?php foreach ($results as $result): ?><div class="alias-edit-result <?= $result['ok']?'good':'bad' ?>"><strong><?= h((string)$result['name']) ?></strong><br><?= h((string)$result['message']) ?></div><?php endforeach; ?></div><?php endif; ?></section>
@@ -277,7 +284,7 @@ require __DIR__ . '/inc/header.php';
     const target=document.getElementById('alias-edit-target');
     function sync(){const all=document.querySelector('input[name="target_scope"]:checked')?.value==='all-existing';if(target)target.disabled=all;}
     document.querySelectorAll('input[name="target_scope"]').forEach(r=>r.addEventListener('change',sync));sync();
-    form?.addEventListener('submit',function(event){if(!form.checkValidity())return;const scope=document.querySelector('input[name="target_scope"]:checked')?.value;const message=scope==='all-existing'?'Save this definition to every OPNsense where the alias already exists?':'Save this definition to the selected OPNsense?';if(!confirm(message))event.preventDefault();});
+    form?.addEventListener('submit',function(event){if(!form.checkValidity())return;const scope=document.querySelector('input[name="target_scope"]:checked')?.value;const message=scope==='all-existing'?'Save these alias changes to every OPNsense where the alias already exists?':'Save these alias changes to the selected OPNsense?';if(!confirm(message))event.preventDefault();});
 })();
 </script>
 <?php require __DIR__ . '/inc/footer.php'; ?>
