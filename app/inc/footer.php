@@ -11,7 +11,7 @@
 <script src="/assets/ids-bulk-actions.js?v=06215"></script>
 <script src="/assets/ids-ruleset-filter.js?v=06215"></script>
 <script src="/assets/ids-policy-editor.js?v=06215"></script>
-<script src="/assets/shared-inventory-management.js?v=06215"></script>
+<script src="/assets/shared-inventory-management.js?v=062170"></script>
 <script src="/assets/category-edit-links.js?v=06215"></script>
 <script src="/assets/network-settings.js?v=06215"></script>
 <script src="/assets/presentation-mode.js?v=062234"></script>
