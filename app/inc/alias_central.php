@@ -89,10 +89,9 @@ function central_alias_selected_values(mixed $value): array
         if (is_array($item)) {
             $selected = $item['selected'] ?? null;
             if ($selected === null || in_array($selected, [1, '1', true, 'true', 'selected'], true)) {
-                $candidate = trim((string) ($item['value'] ?? $keyValue));
-                if ($candidate !== '') {
-                    $result[] = $candidate;
-                }
+                // For OPNsense OptionField/RelationField structures, the array key
+                // is the stored model value; item['value'] is the human label.
+                $result[] = $keyValue;
             }
             continue;
         }
