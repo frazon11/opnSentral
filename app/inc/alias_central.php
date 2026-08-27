@@ -44,6 +44,120 @@ function central_alias_lines(string $content): array
     return $result;
 }
 
+/**
+ * Normalize OPNsense MVC option / relation values.
+ *
+ * Depending on the field and OPNsense version, get_item can return a scalar,
+ * a numeric list, an associative map such as ["geoip" => "GeoIP"], or the
+ * older nested selected/value representation.  The keys of associative maps
+ * are the actual stored values (for example alias type or category UUID).
+ */
+function central_alias_selected_values(mixed $value): array
+{
+    if ($value === null || $value === '') {
+        return [];
+    }
+    if (is_string($value) || is_int($value) || is_float($value)) {
+        $parts = preg_split('/[\s,;]+/', trim((string) $value)) ?: [];
+        return array_values(array_unique(array_filter($parts, static fn(string $item): bool => $item !== '')));
+    }
+    if (!is_array($value)) {
+        return [];
+    }
+
+    $result = [];
+    foreach ($value as $key => $item) {
+        if (is_int($key)) {
+            if (is_array($item)) {
+                foreach (central_alias_selected_values($item) as $nested) {
+                    $result[] = $nested;
+                }
+            } else {
+                $candidate = trim((string) $item);
+                if ($candidate !== '') {
+                    $result[] = $candidate;
+                }
+            }
+            continue;
+        }
+
+        $keyValue = trim((string) $key);
+        if ($keyValue === '') {
+            continue;
+        }
+
+        if (is_array($item)) {
+            $selected = $item['selected'] ?? null;
+            if ($selected === null || in_array($selected, [1, '1', true, 'true', 'selected'], true)) {
+                $candidate = trim((string) ($item['value'] ?? $keyValue));
+                if ($candidate !== '') {
+                    $result[] = $candidate;
+                }
+            }
+            continue;
+        }
+
+        // Current OPNsense MVC get_item responses use value => label maps,
+        // e.g. ["geoip" => "GeoIP"] or ["<uuid>" => "Category name"].
+        $result[] = $keyValue;
+    }
+
+    return array_values(array_unique($result));
+}
+
+function central_alias_scalar(mixed $value): string
+{
+    if (is_string($value) || is_int($value) || is_float($value)) {
+        return trim((string) $value);
+    }
+    $values = central_alias_selected_values($value);
+    return $values[0] ?? '';
+}
+
+function central_alias_content_value(mixed $value): string
+{
+    if (is_string($value) || is_int($value) || is_float($value)) {
+        return trim((string) $value);
+    }
+    if (!is_array($value)) {
+        return '';
+    }
+
+    $result = [];
+    $walk = static function (mixed $item) use (&$walk, &$result): void {
+        if (is_array($item)) {
+            foreach ($item as $nested) {
+                $walk($nested);
+            }
+            return;
+        }
+        if (is_string($item) || is_int($item) || is_float($item)) {
+            $candidate = trim((string) $item);
+            if ($candidate !== '' && !in_array($candidate, $result, true)) {
+                $result[] = $candidate;
+            }
+        }
+    };
+    $walk($value);
+    return implode("\n", $result);
+}
+
+function central_alias_normalize_remote(array $alias): array
+{
+    foreach (['name', 'type', 'enabled', 'description'] as $field) {
+        if (array_key_exists($field, $alias) && is_array($alias[$field])) {
+            $alias[$field] = central_alias_scalar($alias[$field]);
+        }
+    }
+    if (array_key_exists('content', $alias) && is_array($alias['content'])) {
+        $alias['content'] = central_alias_content_value($alias['content']);
+    }
+    if (array_key_exists('categories', $alias) && is_array($alias['categories'])) {
+        $alias['categories'] = implode(',', central_alias_selected_values($alias['categories']));
+    }
+    return $alias;
+}
+
 function central_alias_category_uuid(array $firewall): ?string
 {
     $response = opn_request(
@@ -102,6 +216,7 @@ function central_alias_find(array $firewall, string $name): ?array
                 15
             );
             $alias = is_array($item['alias'] ?? null) ? $item['alias'] : $item;
+            $alias = central_alias_normalize_remote($alias);
             $alias['uuid'] = $uuid;
             return $alias;
         }
@@ -125,7 +240,7 @@ function central_alias_find(array $firewall, string $name): ?array
         if (strcasecmp((string) ($row['name'] ?? ''), $name) === 0) {
             $uuid = (string) ($row['uuid'] ?? '');
             if ($uuid === '') {
-                return $row;
+                return central_alias_normalize_remote($row);
             }
 
             $item = opn_request(
@@ -136,6 +251,7 @@ function central_alias_find(array $firewall, string $name): ?array
                 15
             );
             $alias = is_array($item['alias'] ?? null) ? $item['alias'] : $item;
+            $alias = central_alias_normalize_remote($alias);
             $alias['uuid'] = $uuid;
             return $alias;
         }
@@ -147,43 +263,19 @@ function central_alias_find(array $firewall, string $name): ?array
 function central_alias_has_category(array $alias, string $categoryUuid): bool
 {
     $categories = $alias['categories'] ?? '';
-
-    if (is_array($categories)) {
-        return in_array($categoryUuid, array_map('strval', $categories), true);
-    }
-
-    $parts = preg_split('/[\s,;]+/', (string) $categories) ?: [];
-    return in_array($categoryUuid, $parts, true);
+    $values = central_alias_selected_values($categories);
+    return in_array($categoryUuid, $values, true);
 }
 
 function central_alias_merge_category(
     mixed $categories,
     string $categoryUuid
 ): array|string {
-    if (is_array($categories)) {
-        $result = array_values(array_unique(array_filter(
-            array_map('strval', $categories),
-            static fn (string $value): bool => trim($value) !== ''
-        )));
-
-        if (!in_array($categoryUuid, $result, true)) {
-            $result[] = $categoryUuid;
-        }
-
-        return $result;
+    $result = central_alias_selected_values($categories);
+    if (!in_array($categoryUuid, $result, true)) {
+        $result[] = $categoryUuid;
     }
-
-    $parts = preg_split('/[\s,;]+/', trim((string) $categories)) ?: [];
-    $parts = array_values(array_unique(array_filter(
-        array_map('trim', $parts),
-        static fn (string $value): bool => $value !== ''
-    )));
-
-    if (!in_array($categoryUuid, $parts, true)) {
-        $parts[] = $categoryUuid;
-    }
-
-    return implode(',', $parts);
+    return implode(',', $result);
 }
 
 function central_alias_save_definition(
