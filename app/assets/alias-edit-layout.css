@@ -1,0 +1,11 @@
+.alias-edit-form fieldset{margin:20px 0 0;padding:14px 16px 16px;border:1px solid #46505a;border-radius:6px;background:rgba(127,127,127,.035)}
+.alias-edit-form fieldset legend{padding:0 7px;font-weight:750}
+.alias-edit-form fieldset>label{display:flex!important;align-items:flex-start;gap:10px;margin:0!important;padding:10px 12px;border:1px solid transparent;border-radius:5px;cursor:pointer;line-height:1.35}
+.alias-edit-form fieldset>label:hover{background:rgba(127,127,127,.07)}
+.alias-edit-form fieldset>label:has(input[type=radio]:checked){background:rgba(68,156,220,.08);border-color:rgba(68,156,220,.35)}
+.alias-edit-form fieldset input[type=radio]{width:auto!important;flex:0 0 auto;margin:2px 0 0!important}
+.alias-edit-form #alias-edit-target{display:block;width:calc(100% - 34px)!important;margin:2px 0 10px 34px}
+.alias-edit-form #alias-edit-target:disabled{opacity:.55}
+.alias-edit-form fieldset>small{display:block;margin:2px 12px 0 34px;line-height:1.4}
+.alias-edit-form .actions{margin-top:16px}
+@media(max-width:700px){.alias-edit-form fieldset{padding:12px}.alias-edit-form #alias-edit-target{width:100%!important;margin:6px 0 10px}.alias-edit-form fieldset>small{margin:4px 12px 0}}
