@@ -83,7 +83,29 @@ require __DIR__ . '/inc/header.php';
 .alias-overview-filter{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .alias-overview-filter label{font-weight:700}
 .alias-overview-filter select{min-width:220px;width:auto}
-.alias-filter-empty{padding:10px 12px;color:var(--muted);font-style:italic}
+.alias-filter-empty{padding:14px 12px;color:var(--muted);font-style:italic;text-align:center}
+.alias-matrix-card{padding:0;overflow:hidden}
+.alias-matrix-scroll{overflow:auto;max-width:100%}
+.alias-matrix-table{min-width:max-content;margin:0}
+.alias-matrix-table th,.alias-matrix-table td{vertical-align:top}
+.alias-matrix-corner,.alias-matrix-name{position:sticky;left:0;z-index:3;background:var(--card-bg,#fff);min-width:220px;max-width:320px}
+.alias-matrix-corner{z-index:5}
+.alias-matrix-table thead th{position:sticky;top:0;z-index:4;background:var(--card-bg,#fff)}
+.alias-matrix-table thead .alias-matrix-corner{left:0;z-index:6}
+.alias-matrix-name strong{display:block}
+.alias-matrix-name small{display:block;margin-top:4px;color:var(--muted);font-weight:400;white-space:normal}
+.alias-matrix-type{display:inline-block;margin-top:4px;color:var(--muted);font-weight:400;font-size:.9em}
+.alias-matrix-firewall{min-width:170px;max-width:230px}
+.alias-matrix-firewall strong{display:block}
+.alias-matrix-firewall-url{display:block;margin-top:3px;font-size:.86em;white-space:normal;word-break:break-all;font-weight:400}
+.alias-matrix-cell{min-width:150px;text-align:center}
+.alias-matrix-cell-status,.alias-matrix-cell-meta{margin-bottom:6px}
+.alias-matrix-missing{vertical-align:middle!important}
+.alias-matrix-rename{padding:3px 7px;font-size:.82em}
+@media (max-width:900px){
+    .alias-matrix-corner,.alias-matrix-name{min-width:180px;max-width:220px}
+    .alias-matrix-firewall{min-width:150px}
+}
 </style>
 
 <div class="page-title management-page-title">
@@ -128,64 +150,19 @@ require __DIR__ . '/inc/header.php';
 
 <div id="alias-inventory-error" class="alert error hidden"></div>
 
-<div id="alias-inventory-list" class="vpn-summary-list">
-    <section class="card vpn-summary-card"><p class="muted">Loading…</p></section>
+<div id="alias-inventory-list">
+    <section class="card"><p class="muted">Loading…</p></section>
 </div>
 
-<script src="/assets/inventory-overview.js?v=062115"></script>
+<script src="/assets/alias-overview-matrix.js?v=062116"></script>
 <script>
-window.opnCentralInventoryOverview({
-    type: 'aliases',
-    label: 'Aliases',
-    addUrl: '/aliases.php',
+window.opnSentralAliasOverviewMatrix({
     listId: 'alias-inventory-list',
     summaryId: 'alias-inventory-summary',
     errorId: 'alias-inventory-error',
-    refreshId: 'alias-inventory-refresh'
+    refreshId: 'alias-inventory-refresh',
+    filterId: 'alias-management-filter'
 });
-
-(function(){
-    const filter = document.getElementById('alias-management-filter');
-    const list = document.getElementById('alias-inventory-list');
-    if(!filter || !list) return;
-
-    function applyFilter(){
-        const mode = filter.value;
-        list.querySelectorAll('.vpn-summary-card').forEach(function(card){
-            const panel = card.querySelector('.vpn-details-panel');
-            if(!panel) return;
-            const tbody = panel.querySelector('tbody');
-            if(!tbody) return;
-
-            let visible = 0;
-            Array.from(tbody.querySelectorAll('tr')).forEach(function(row){
-                const unmanaged = row.querySelector('.badge.unmanaged') !== null;
-                const show = mode === 'all' || (mode === 'managed' && !unmanaged) || (mode === 'unmanaged' && unmanaged);
-                row.hidden = !show;
-                if(show) visible += 1;
-            });
-
-            let empty = panel.querySelector('.alias-filter-empty');
-            if(visible === 0 && mode !== 'all'){
-                if(!empty){
-                    empty = document.createElement('div');
-                    empty.className = 'alias-filter-empty';
-                    panel.appendChild(empty);
-                }
-                empty.textContent = mode === 'managed'
-                    ? 'No opnSentral managed aliases on this firewall.'
-                    : 'No unmanaged aliases on this firewall.';
-            }else if(empty){
-                empty.remove();
-            }
-        });
-    }
-
-    filter.addEventListener('change', applyFilter);
-
-    const observer = new MutationObserver(function(){ applyFilter(); });
-    observer.observe(list, {childList:true, subtree:true});
-})();
 </script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>
