@@ -135,6 +135,13 @@
         document.querySelectorAll('.firewall-card[data-firewall-id]').forEach(loadDashboardLed);
     }
 
+    function isCrashReporter(item){
+        const title=String(item?.title??'').toLowerCase();
+        const message=String(item?.message??'').toLowerCase();
+        const location=String(item?.location??'').toLowerCase();
+        return title.includes('crash reporter')||message.includes('crash reporter')||location.includes('reporter');
+    }
+
     function renderDetails(data){
         const systemPanel=document.getElementById('system-state')?.closest('.firewall-opn-panel');
         if(!systemPanel) return;
@@ -153,6 +160,7 @@
 
         const subsystems=data?.subsystems&&typeof data.subsystems==='object'?Object.values(data.subsystems):[];
         const items=subsystems.filter(item=>item&&typeof item==='object');
+        const firewallId=new URLSearchParams(location.search).get('id');
 
         if(items.length===0){
             const empty=document.createElement('div');
@@ -181,6 +189,16 @@
                     age.className='opnsentral-system-notification-age';
                     age.textContent=String(item.age);
                     row.appendChild(age);
+                }
+                if(firewallId&&isCrashReporter(item)){
+                    const actions=document.createElement('div');
+                    actions.className='firewall-opn-actions';
+                    const link=document.createElement('a');
+                    link.className='button secondary';
+                    link.href='/crash_reporter.php?firewall_id='+encodeURIComponent(firewallId);
+                    link.textContent='Open Crash Reporter';
+                    actions.appendChild(link);
+                    row.appendChild(actions);
                 }
                 body.appendChild(row);
             });
