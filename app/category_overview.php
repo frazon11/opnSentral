@@ -61,10 +61,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 require __DIR__ . '/inc/header.php';
 ?>
 <style>
-.category-overview-filter{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.category-overview-filter label{font-weight:700}
-.category-overview-filter select{min-width:220px;width:auto}
-.category-filter-empty{padding:14px 12px;color:var(--muted);font-style:italic;text-align:center}
 .category-matrix-card{padding:0;overflow:hidden}
 .category-matrix-scroll{overflow:auto;max-width:100%}
 .category-matrix-table{min-width:max-content;margin:0}
@@ -83,7 +79,6 @@ require __DIR__ . '/inc/header.php';
 .category-matrix-cell{min-width:150px;text-align:center}
 .category-matrix-cell-status,.category-matrix-cell-meta{margin-bottom:6px}
 .category-matrix-missing{vertical-align:middle!important}
-.category-matrix-rename{padding:3px 7px;font-size:.82em}
 @media (max-width:900px){
     .category-matrix-corner,.category-matrix-name{min-width:190px;max-width:230px}
     .category-matrix-firewall{min-width:150px}
@@ -114,27 +109,18 @@ require __DIR__ . '/inc/header.php';
         <strong>Category overview</strong>
         <div id="category-inventory-summary" class="management-summary">Loading all categories…</div>
     </div>
-    <div class="category-overview-filter">
-        <label for="category-management-filter">Show</label>
-        <select id="category-management-filter">
-            <option value="all">All categories</option>
-            <option value="managed">opnSentral managed categories</option>
-            <option value="unmanaged">Unmanaged categories</option>
-        </select>
-    </div>
 </div>
 
 <div id="category-inventory-error" class="alert error hidden"></div>
 <div id="category-inventory-list"><section class="card"><p class="muted">Loading…</p></section></div>
 
-<script src="/assets/category-overview-matrix.js?v=062118"></script>
+<script src="/assets/category-overview-matrix.js?v=062178"></script>
 <script>
 window.opnSentralCategoryOverviewMatrix({
     listId: 'category-inventory-list',
     summaryId: 'category-inventory-summary',
     errorId: 'category-inventory-error',
-    refreshId: 'category-inventory-refresh',
-    filterId: 'category-management-filter'
+    refreshId: 'category-inventory-refresh'
 });
 </script>
 
