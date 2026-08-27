@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/inc/config.php';
+require_once __DIR__ . '/inc/opnsense.php';
 require_once __DIR__ . '/inc/agent_deployment.php';
 
 require_login();
