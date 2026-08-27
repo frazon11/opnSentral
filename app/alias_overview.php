@@ -80,21 +80,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 require __DIR__ . '/inc/header.php';
 ?>
 <style>
-.alias-overview-filter{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.alias-overview-filter label{font-weight:700}
-.alias-overview-filter select{min-width:220px;width:auto}
-.alias-filter-empty{padding:14px 12px;color:var(--muted);font-style:italic;text-align:center}
 .alias-matrix-card{padding:0;overflow:hidden}
 .alias-matrix-scroll{overflow:auto;max-width:100%}
 .alias-matrix-table{min-width:max-content;margin:0}
 .alias-matrix-table th,.alias-matrix-table td{vertical-align:top}
-.alias-matrix-corner,.alias-matrix-name{position:sticky;left:0;z-index:3;background:var(--card-bg,#fff);min-width:220px;max-width:320px}
+.alias-matrix-corner,.alias-matrix-name{position:sticky;left:0;z-index:3;background:var(--card-bg,#fff);min-width:240px;max-width:340px}
 .alias-matrix-corner{z-index:5}
 .alias-matrix-table thead th{position:sticky;top:0;z-index:4;background:var(--card-bg,#fff)}
 .alias-matrix-table thead .alias-matrix-corner{left:0;z-index:6}
 .alias-matrix-name strong{display:block}
 .alias-matrix-name small{display:block;margin-top:4px;color:var(--muted);font-weight:400;white-space:normal}
 .alias-matrix-type{display:inline-block;margin-top:4px;color:var(--muted);font-weight:400;font-size:.9em}
+.alias-matrix-row-action{margin-top:8px}
+.alias-matrix-row-action .button{padding:4px 8px;font-size:.84em}
 .alias-matrix-firewall{min-width:170px;max-width:230px}
 .alias-matrix-firewall strong{display:block}
 .alias-matrix-firewall-url{display:block;margin-top:3px;font-size:.86em;white-space:normal;word-break:break-all;font-weight:400}
@@ -103,7 +101,7 @@ require __DIR__ . '/inc/header.php';
 .alias-matrix-missing{vertical-align:middle!important}
 .alias-matrix-rename{padding:3px 7px;font-size:.82em}
 @media (max-width:900px){
-    .alias-matrix-corner,.alias-matrix-name{min-width:180px;max-width:220px}
+    .alias-matrix-corner,.alias-matrix-name{min-width:190px;max-width:230px}
     .alias-matrix-firewall{min-width:150px}
 }
 </style>
@@ -138,14 +136,6 @@ require __DIR__ . '/inc/header.php';
         <strong>Alias overview</strong>
         <div id="alias-inventory-summary" class="management-summary">Loading all aliases…</div>
     </div>
-    <div class="alias-overview-filter">
-        <label for="alias-management-filter">Show</label>
-        <select id="alias-management-filter">
-            <option value="all">All aliases</option>
-            <option value="managed">opnSentral managed aliases</option>
-            <option value="unmanaged">Unmanaged aliases</option>
-        </select>
-    </div>
 </div>
 
 <div id="alias-inventory-error" class="alert error hidden"></div>
@@ -154,14 +144,13 @@ require __DIR__ . '/inc/header.php';
     <section class="card"><p class="muted">Loading…</p></section>
 </div>
 
-<script src="/assets/alias-overview-matrix.js?v=062116"></script>
+<script src="/assets/alias-overview-matrix.js?v=062117"></script>
 <script>
 window.opnSentralAliasOverviewMatrix({
     listId: 'alias-inventory-list',
     summaryId: 'alias-inventory-summary',
     errorId: 'alias-inventory-error',
-    refreshId: 'alias-inventory-refresh',
-    filterId: 'alias-management-filter'
+    refreshId: 'alias-inventory-refresh'
 });
 </script>
 
