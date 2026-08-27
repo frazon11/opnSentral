@@ -85,9 +85,22 @@ window.opnSentralSharedInventory = function(options){
                 const managedIndex = entry.items.findIndex(item=>item && item.managed === true);
                 const sourceIndex = managedIndex >= 0 ? managedIndex : 0;
                 const sourceFirewall = entry.firewalls[sourceIndex];
-                const definitionEdit = options.type === 'aliases' && sourceFirewall
-                    ? '<a class="button secondary" href="/alias_edit.php?name=' + encodeURIComponent(entry.name) + '&source_firewall_id=' + Number(sourceFirewall.id) + '">Edit definition</a>'
-                    : '';
+
+                if(options.type === 'aliases'){
+                    const editLink = sourceFirewall
+                        ? '<a class="button secondary" href="/alias_edit.php?name=' + encodeURIComponent(entry.name) + '&source_firewall_id=' + Number(sourceFirewall.id) + '">Edit</a>'
+                        : '';
+                    return `
+                        <tr data-index="${index}" data-name="${esc(entry.name)}">
+                            <td><strong>${esc(entry.name)}</strong></td>
+                            <td>${entry.everywhere
+                                ? '<span class="badge good">All firewalls</span>'
+                                : '<span class="badge warning-status">' + entry.firewalls.length + ' / ' + firewallCount + '</span>'}</td>
+                            <td>${esc(names)}</td>
+                            <td><div class="management-row-actions">${editLink}</div></td>
+                        </tr>`;
+                }
+
                 return `
                     <tr data-index="${index}" data-name="${esc(entry.name)}">
                         <td><strong>${esc(entry.name)}</strong></td>
@@ -97,7 +110,6 @@ window.opnSentralSharedInventory = function(options){
                         <td>${esc(names)}</td>
                         <td>
                             <div class="management-row-actions">
-                                ${definitionEdit}
                                 <button type="button" class="button secondary shared-rename">Rename</button>
                             </div>
                             <div class="management-row-actions shared-editor" hidden style="margin-top:8px">
