@@ -172,9 +172,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!preg_match('/^[A-Za-z0-9_]+$/', $name)) {
             throw new RuntimeException('Alias name may contain only letters, numbers and underscores.');
         }
-        if ($description === '') {
-            throw new RuntimeException('Description is required by OPNsense.');
-        }
         if (mb_strlen($description) > 255) {
             throw new RuntimeException('Description may contain at most 255 characters.');
         }
@@ -288,7 +285,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 require __DIR__ . '/inc/header.php';
 ?>
 <style>
-.alias-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);gap:20px}.alias-form label{display:block;font-weight:700;margin:14px 0 6px}.alias-form input[type=text],.alias-form select,.alias-form textarea{width:100%;box-sizing:border-box}.alias-form textarea{min-height:180px;font-family:monospace}.targets,.results{display:grid;gap:8px}.target,.result{padding:10px;border-radius:8px;background:rgba(127,127,127,.08)}.result.good{border-left:4px solid #2aa84a}.result.bad{border-left:4px solid #d74747}.takeover-option{display:flex!important;align-items:flex-start;gap:9px;padding:10px;border:1px solid #d6b56a;background:#fff8e7;border-radius:3px}.takeover-option input{width:auto;margin:3px 0 0}.field-help{display:flex;justify-content:space-between;gap:12px;margin-top:5px}.deploy-status{display:none;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;border-radius:6px;background:rgba(127,127,127,.08);font-weight:700}.deploy-status.active{display:flex}.deploy-spinner{width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:alias-spin .7s linear infinite}.port-alias-picker{display:none;margin-top:12px;padding:12px;border:1px solid rgba(127,127,127,.25);border-radius:7px;background:rgba(127,127,127,.04)}.port-alias-picker.active{display:block}.port-alias-picker select{min-height:150px}.port-alias-picker .picker-actions{display:flex;gap:8px;align-items:center;margin-top:8px}.port-alias-picker .picker-actions button{width:auto}.resolved-preview{margin-top:8px;padding:8px 10px;border-radius:5px;background:rgba(127,127,127,.08);font-family:monospace;white-space:pre-wrap}.resolved-preview:empty{display:none}@keyframes alias-spin{to{transform:rotate(360deg)}}@media(max-width:850px){.alias-grid{grid-template-columns:1fr}}
+.alias-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr);gap:20px}.alias-form label{display:block;font-weight:700;margin:14px 0 6px}.alias-form input[type=text],.alias-form select,.alias-form textarea{width:100%;box-sizing:border-box}.alias-form textarea{min-height:180px;font-family:monospace}.targets,.results{display:grid;gap:8px}.target,.result{padding:10px;border-radius:8px;background:rgba(127,127,127,.08)}.result.good{border-left:4px solid #2aa84a}.result.bad{border-left:4px solid #d74747}.takeover-option{display:flex!important;align-items:flex-start;gap:9px;padding:10px;border:1px solid #d6b56a;background:#fff8e7;border-radius:3px}.takeover-option input{width:auto;margin:3px 0 0}.enabled-option{display:flex!important;align-items:center;gap:9px;margin:14px 0 6px!important}.enabled-option input{width:auto;margin:0}.mode-help{margin-top:6px;padding:8px 10px;border-radius:5px;background:rgba(127,127,127,.08)}.field-help{display:flex;justify-content:space-between;gap:12px;margin-top:5px}.deploy-status{display:none;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;border-radius:6px;background:rgba(127,127,127,.08);font-weight:700}.deploy-status.active{display:flex}.deploy-spinner{width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:alias-spin .7s linear infinite}.port-alias-picker{display:none;margin-top:12px;padding:12px;border:1px solid rgba(127,127,127,.25);border-radius:7px;background:rgba(127,127,127,.04)}.port-alias-picker.active{display:block}.port-alias-picker select{min-height:150px}.port-alias-picker .picker-actions{display:flex;gap:8px;align-items:center;margin-top:8px}.port-alias-picker .picker-actions button{width:auto}.resolved-preview{margin-top:8px;padding:8px 10px;border-radius:5px;background:rgba(127,127,127,.08);font-family:monospace;white-space:pre-wrap}.resolved-preview:empty{display:none}@keyframes alias-spin{to{transform:rotate(360deg)}}@media(max-width:850px){.alias-grid{grid-template-columns:1fr}}
 </style>
 <div class="page-title"><div><h1><?= h(t('aliases.distribute')) ?></h1><p>Category <?= h($managedCategoryName) ?> protects centrally managed aliases.</p></div><a class="button secondary" href="/alias_overview.php">Overview</a></div>
 <?php if ($error): ?><div class="alert error" id="alias-top-error"><?= h($error) ?></div><?php endif; ?>
@@ -311,11 +308,12 @@ require __DIR__ . '/inc/header.php';
     <div class="picker-actions"><button type="button" class="secondary" id="add-port-alias-values">Add selected values to Content</button><small class="muted"><?= count($portSources) ?> compatible Port alias(es)</small></div>
     <div class="resolved-preview" id="port-resolved-preview"></div>
 </div>
-<label><?= h(t('aliases.description')) ?></label><input type="text" name="description" id="alias-description" required maxlength="255" value="<?= h((string)($_POST['description'] ?? '')) ?>"><div class="field-help"><small class="muted">Required by OPNsense, maximum 255 characters.</small><small class="muted"><span id="alias-description-count">0</span>/255</small></div>
+<label><?= h(t('aliases.description')) ?></label><input type="text" name="description" id="alias-description" maxlength="255" value="<?= h((string)($_POST['description'] ?? '')) ?>"><div class="field-help"><small class="muted">Optional. Maximum 255 characters.</small><small class="muted"><span id="alias-description-count">0</span>/255</small></div>
 <label>Existing alias</label>
-<select name="mode"><option value="create" <?= (($_POST['mode'] ?? 'create') === 'create') ? 'selected' : '' ?>><?= h(t('aliases.create_only')) ?></option><option value="replace" <?= (($_POST['mode'] ?? '') === 'replace') ? 'selected' : '' ?>>Replace</option><option value="merge" <?= (($_POST['mode'] ?? '') === 'merge') ? 'selected' : '' ?>>Merge</option></select>
-<label class="takeover-option"><input type="checkbox" name="take_over_existing" value="1" <?= isset($_POST['take_over_existing']) ? 'checked' : '' ?>><span><strong>Take over existing alias</strong><br><span class="muted">Keep all current categories, add <?= h($managedCategoryName) ?>, then apply the selected replace or merge mode.</span></span></label>
-<label><input type="checkbox" name="enabled" value="1" <?= !isset($_POST['enabled']) && $_SERVER['REQUEST_METHOD'] !== 'POST' || isset($_POST['enabled']) ? 'checked' : '' ?>> Enabled</label>
+<select name="mode" id="alias-existing-mode"><option value="create" <?= (($_POST['mode'] ?? 'create') === 'create') ? 'selected' : '' ?>><?= h(t('aliases.create_only')) ?></option><option value="replace" <?= (($_POST['mode'] ?? '') === 'replace') ? 'selected' : '' ?>>Replace</option><option value="merge" <?= (($_POST['mode'] ?? '') === 'merge') ? 'selected' : '' ?>>Merge</option></select>
+<div class="mode-help muted" id="alias-mode-help"></div>
+<label class="takeover-option"><input type="checkbox" name="take_over_existing" value="1" <?= isset($_POST['take_over_existing']) ? 'checked' : '' ?>><span><strong>Take over existing alias</strong><br><span class="muted">Only applies when an alias with this name already exists but is not yet managed by opnSentral. Existing categories are preserved and <?= h($managedCategoryName) ?> is added before replace/merge is applied.</span></span></label>
+<label class="enabled-option"><input type="checkbox" name="enabled" value="1" <?= !isset($_POST['enabled']) && $_SERVER['REQUEST_METHOD'] !== 'POST' || isset($_POST['enabled']) ? 'checked' : '' ?>><span>Enabled</span></label>
 <fieldset class="distribution-targets"><legend><?= h(t('categories.targets')) ?></legend>
 <?php $targetScope = (string)($_POST['target_scope'] ?? ($_GET['scope'] ?? 'one')); $requestedFirewallId = (int)($_POST['target_firewall_id'] ?? $_GET['firewall_id'] ?? 0); ?>
 <label class="distribution-scope-option"><input type="radio" name="target_scope" value="one" <?= $targetScope === 'one' ? 'checked' : '' ?>><span><strong>One OPNsense</strong><small>Distribute only to the selected firewall.</small></span></label>
@@ -335,6 +333,17 @@ const descriptionInput=document.getElementById('alias-description');
 const descriptionCount=document.getElementById('alias-description-count');
 function updateDescriptionCount(){if(descriptionInput&&descriptionCount){descriptionCount.textContent=String(descriptionInput.value.length);}}
 descriptionInput?.addEventListener('input',updateDescriptionCount);updateDescriptionCount();
+
+const modeSelect=document.getElementById('alias-existing-mode');
+const modeHelp=document.getElementById('alias-mode-help');
+function updateModeHelp(){
+    if(!modeSelect||!modeHelp)return;
+    const mode=modeSelect.value;
+    if(mode==='create') modeHelp.textContent='Create only: if the alias does not exist, it is created. If it already exists, no change is made.';
+    else if(mode==='replace') modeHelp.textContent='Replace: if the alias exists, its content/type/description/enabled state are replaced with these values. If it does not exist, a new alias is created.';
+    else modeHelp.textContent='Merge: if the alias exists, the submitted content is added to its existing content without duplicates. If it does not exist, a new alias is created from the submitted content.';
+}
+modeSelect?.addEventListener('change',updateModeHelp);updateModeHelp();
 
 const aliasType=document.getElementById('alias-type');
 const aliasContent=document.getElementById('alias-content');
