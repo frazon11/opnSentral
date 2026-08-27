@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.15';
+const AGENT_VERSION = '0.1.16';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
@@ -343,6 +343,135 @@ function add_access_user_authorized_key(array $payload): array
     return ['message'=>'SSH key added to user '.$name.' and verified in OPNsense config and '.$authorizedKeysPath.'. Existing keys and all other user settings were preserved.','user'=>$name,'changed'=>true,'safety_copy'=>$safety,'authorized_keys_path'=>$authorizedKeysPath,'applied_at'=>gmdate('c')];
 }
 
+function crash_reporter_read_tail(string $path, int $limit): array
+{
+    if (!is_file($path) || is_link($path) || !is_readable($path)) return ['content'=>'','truncated'=>false];
+    $size=(int)@filesize($path); if ($size<=0) return ['content'=>'','truncated'=>false];
+    $limit=max(1024,$limit); $offset=max(0,$size-$limit);
+    $content=@file_get_contents($path,false,null,$offset,$limit);
+    return ['content'=>is_string($content)?trim($content):'','truncated'=>$offset>0];
+}
+
+function crash_reporter_has_report(): bool
+{
+    $php=crash_reporter_read_tail('/var/lib/php/tmp/PHP_errors.log',1024);
+    if ($php['content']!=='') return true;
+    foreach (glob('/var/crash/*')?:[] as $path) {
+        $base=basename($path);
+        if (in_array($base,['minfree','bounds','minfree.gz','bounds.gz'],true)) continue;
+        if (is_file($path) || is_link($path)) return true;
+    }
+    return false;
+}
+
+function crash_reporter_snapshot(string $message=''): array
+{
+    $has=crash_reporter_has_report();
+    $sections=[]; $budget=150000;
+    if ($has) {
+        $system="Host: ".hostname_value()."\nOPNsense: ".opnsense_version()."\nKernel: ".php_uname('a')."\nPHP: ".PHP_VERSION."\nCollected: ".gmdate('c');
+        $sections[]=['title'=>'System Information','content'=>$system,'truncated'=>false]; $budget-=strlen($system);
+
+        $php=crash_reporter_read_tail('/var/lib/php/tmp/PHP_errors.log',min(80000,$budget));
+        if ($php['content']!=='') { $sections[]=['title'=>'PHP Errors','content'=>$php['content'],'truncated'=>$php['truncated']]; $budget-=strlen($php['content']); }
+
+        if ($budget>2048 && is_file('/var/run/dmesg.boot')) {
+            $dmesg=crash_reporter_read_tail('/var/run/dmesg.boot',min(50000,$budget));
+            if ($dmesg['content']!=='') { $sections[]=['title'=>'dmesg.boot','content'=>$dmesg['content'],'truncated'=>$dmesg['truncated']]; $budget-=strlen($dmesg['content']); }
+        }
+
+        foreach (glob('/var/crash/*')?:[] as $path) {
+            if ($budget<=2048) break;
+            $base=basename($path);
+            if (in_array($base,['minfree','bounds','minfree.gz','bounds.gz'],true) || is_link($path) || !is_file($path)) continue;
+            $size=(int)@filesize($path);
+            if ($size>450000) {
+                $text='File too big to process. It will not be submitted automatically.';
+                $sections[]=['title'=>$path,'content'=>$text,'truncated'=>true]; $budget-=strlen($text); continue;
+            }
+            $read=crash_reporter_read_tail($path,min(40000,$budget));
+            if ($read['content']!=='') { $sections[]=['title'=>$path,'content'=>$read['content'],'truncated'=>$read['truncated']]; $budget-=strlen($read['content']); }
+        }
+    }
+    return ['action'=>'inspect','has_report'=>$has,'message'=>$message,'sections'=>$sections,'checked_at'=>gmdate('c')];
+}
+
+function crash_reporter_dismiss(): array
+{
+    foreach (glob('/var/crash/*')?:[] as $path) {
+        if (is_file($path) || is_link($path)) @unlink($path);
+    }
+    @unlink('/var/lib/php/tmp/PHP_errors.log');
+    $result=crash_reporter_snapshot('Pending crash report dismissed and deleted from this OPNsense.');
+    $result['action']='dismiss';
+    if (($result['has_report']??true)===true) throw new RuntimeException('Crash report files remain after dismiss.');
+    return $result;
+}
+
+function crash_reporter_gzip_file(string $target, string $content): void
+{
+    $encoded=gzencode($content,9);
+    if (!is_string($encoded) || file_put_contents($target,$encoded,LOCK_EX)===false) throw new RuntimeException('Could not stage compressed crash report file.');
+    chmod($target,0600);
+}
+
+function crash_reporter_submit(array $payload): array
+{
+    if (!crash_reporter_has_report()) return crash_reporter_snapshot('No pending crash report to submit.');
+    $email=trim((string)($payload['email']??'')); $description=trim((string)($payload['description']??''));
+    if ($email!=='' && filter_var($email,FILTER_VALIDATE_EMAIL)===false) throw new RuntimeException('Invalid crash report email address.');
+    if (strlen($email)>254 || strlen($description)>4000) throw new RuntimeException('Crash report contact data is too long.');
+
+    $tmp='/tmp/opnsentral-crash-'.bin2hex(random_bytes(6));
+    if (!mkdir($tmp,0700,true) && !is_dir($tmp)) throw new RuntimeException('Could not create crash report staging directory.');
+    $staged=[];
+    try {
+        $header="Host: ".hostname_value()."\nOPNsense: ".opnsense_version()."\nKernel: ".php_uname('a')."\nPHP: ".PHP_VERSION."\nTime: ".gmdate('c')."\n";
+        if ($email!=='') $header.="Email: {$email}\n";
+        if ($description!=='') $header.="Description\n\n{$description}\n";
+        $path=$tmp.'/crashreport_header.txt.gz'; crash_reporter_gzip_file($path,$header); $staged[]=$path;
+
+        $php=crash_reporter_read_tail('/var/lib/php/tmp/PHP_errors.log',1048576);
+        if ($php['content']!=='') { $path=$tmp.'/PHP_errors.log.gz'; crash_reporter_gzip_file($path,$php['content']); $staged[]=$path; }
+        if (is_file('/var/run/dmesg.boot') && !is_link('/var/run/dmesg.boot')) {
+            $dmesg=(string)@file_get_contents('/var/run/dmesg.boot'); if ($dmesg!=='') { $path=$tmp.'/dmesg.boot.gz'; crash_reporter_gzip_file($path,$dmesg); $staged[]=$path; }
+        }
+        foreach (glob('/var/crash/*')?:[] as $source) {
+            $base=basename($source);
+            if (in_array($base,['minfree','bounds','minfree.gz','bounds.gz'],true) || is_link($source) || !is_file($source) || (int)@filesize($source)>450000) continue;
+            $content=@file_get_contents($source); if (!is_string($content)) continue;
+            $safe=preg_replace('/[^A-Za-z0-9._-]+/','_', $base) ?: 'crash';
+            $path=$tmp.'/'.$safe.'.gz'; crash_reporter_gzip_file($path,$content); $staged[]=$path;
+        }
+        if ($staged===[]) throw new RuntimeException('No crash report data could be staged.');
+
+        $command=[curl_binary(),'--silent','--show-error','--fail','--connect-timeout','10','--max-time','120','--proto','=https','--user-agent','OPNsense/'.opnsense_version(),'--request','POST'];
+        foreach ($staged as $index=>$file) { $command[]='--form'; $command[]='file'.$index.'=@'.$file.';type=application/x-gzip'; }
+        $command[]='https://crash.opnsense.org/';
+        $upload=run_process($command);
+        if ((int)$upload['status']!==0) {
+            $detail=trim((string)$upload['stderr']);
+            throw new RuntimeException('Crash report upload failed'.($detail!==''?': '.substr($detail,0,500):'.'));
+        }
+        $result=crash_reporter_dismiss();
+        $result['action']='submit';
+        $result['message']='Crash report submitted to the OPNsense developers and cleared locally.';
+        return $result;
+    } finally {
+        foreach ($staged as $file) @unlink($file);
+        @rmdir($tmp);
+    }
+}
+
+function crash_reporter_job(array $payload): array
+{
+    $action=trim((string)($payload['action']??'inspect'));
+    if ($action==='inspect') return crash_reporter_snapshot();
+    if ($action==='dismiss') return crash_reporter_dismiss();
+    if ($action==='submit') return crash_reporter_submit($payload);
+    throw new RuntimeException('Unsupported Crash Reporter action: '.$action);
+}
+
 function execute_job(array $job, array $config): array
 {
     $type=(string)($job['type']??'');
@@ -351,6 +480,7 @@ function execute_job(array $job, array $config): array
     if ($type==='self_update') return self_update($config,is_array($job['payload']??null)?$job['payload']:[]);
     if ($type==='restore_backup') return restore_backup(is_array($job['payload']??null)?$job['payload']:[]);
     if ($type==='add_access_user_authorized_key') return add_access_user_authorized_key(is_array($job['payload']??null)?$job['payload']:[]);
+    if ($type==='crash_reporter') return crash_reporter_job(is_array($job['payload']??null)?$job['payload']:[]);
     if ($type==='set_access_user') throw new RuntimeException('Broad System Access user writes are disabled. Use single-target Add SSH Key.');
     if (in_array($type,['set_administration_settings','set_general_settings','set_firewall_advanced_settings'],true)) throw new RuntimeException('Remote configuration writes are temporarily disabled for safety.');
     throw new RuntimeException('Unsupported job type: '.$type);
