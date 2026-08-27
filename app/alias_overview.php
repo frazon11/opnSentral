@@ -79,6 +79,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 require __DIR__ . '/inc/header.php';
 ?>
+<style>
+.alias-overview-filter{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.alias-overview-filter label{font-weight:700}
+.alias-overview-filter select{min-width:220px;width:auto}
+.alias-filter-empty{padding:10px 12px;color:var(--muted);font-style:italic}
+</style>
 
 <div class="page-title management-page-title">
     <div>
@@ -110,6 +116,14 @@ require __DIR__ . '/inc/header.php';
         <strong>Alias overview</strong>
         <div id="alias-inventory-summary" class="management-summary">Loading all aliases…</div>
     </div>
+    <div class="alias-overview-filter">
+        <label for="alias-management-filter">Show</label>
+        <select id="alias-management-filter">
+            <option value="all">All aliases</option>
+            <option value="managed">opnSentral managed aliases</option>
+            <option value="unmanaged">Unmanaged aliases</option>
+        </select>
+    </div>
 </div>
 
 <div id="alias-inventory-error" class="alert error hidden"></div>
@@ -129,6 +143,49 @@ window.opnCentralInventoryOverview({
     errorId: 'alias-inventory-error',
     refreshId: 'alias-inventory-refresh'
 });
+
+(function(){
+    const filter = document.getElementById('alias-management-filter');
+    const list = document.getElementById('alias-inventory-list');
+    if(!filter || !list) return;
+
+    function applyFilter(){
+        const mode = filter.value;
+        list.querySelectorAll('.vpn-summary-card').forEach(function(card){
+            const panel = card.querySelector('.vpn-details-panel');
+            if(!panel) return;
+            const tbody = panel.querySelector('tbody');
+            if(!tbody) return;
+
+            let visible = 0;
+            Array.from(tbody.querySelectorAll('tr')).forEach(function(row){
+                const unmanaged = row.querySelector('.badge.unmanaged') !== null;
+                const show = mode === 'all' || (mode === 'managed' && !unmanaged) || (mode === 'unmanaged' && unmanaged);
+                row.hidden = !show;
+                if(show) visible += 1;
+            });
+
+            let empty = panel.querySelector('.alias-filter-empty');
+            if(visible === 0 && mode !== 'all'){
+                if(!empty){
+                    empty = document.createElement('div');
+                    empty.className = 'alias-filter-empty';
+                    panel.appendChild(empty);
+                }
+                empty.textContent = mode === 'managed'
+                    ? 'No opnSentral managed aliases on this firewall.'
+                    : 'No unmanaged aliases on this firewall.';
+            }else if(empty){
+                empty.remove();
+            }
+        });
+    }
+
+    filter.addEventListener('change', applyFilter);
+
+    const observer = new MutationObserver(function(){ applyFilter(); });
+    observer.observe(list, {childList:true, subtree:true});
+})();
 </script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>
