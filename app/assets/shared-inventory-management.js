@@ -82,6 +82,12 @@ window.opnSentralSharedInventory = function(options){
             });
             body.innerHTML = visible.length ? visible.map(function(entry,index){
                 const names = entry.firewalls.map(fw=>fw.name).join(', ');
+                const managedIndex = entry.items.findIndex(item=>item && item.managed === true);
+                const sourceIndex = managedIndex >= 0 ? managedIndex : 0;
+                const sourceFirewall = entry.firewalls[sourceIndex];
+                const definitionEdit = options.type === 'aliases' && sourceFirewall
+                    ? '<a class="button secondary" href="/alias_edit.php?name=' + encodeURIComponent(entry.name) + '&source_firewall_id=' + Number(sourceFirewall.id) + '">Edit definition</a>'
+                    : '';
                 return `
                     <tr data-index="${index}" data-name="${esc(entry.name)}">
                         <td><strong>${esc(entry.name)}</strong></td>
@@ -90,7 +96,10 @@ window.opnSentralSharedInventory = function(options){
                             : '<span class="badge warning-status">' + entry.firewalls.length + ' / ' + firewallCount + '</span>'}</td>
                         <td>${esc(names)}</td>
                         <td>
-                            <button type="button" class="button secondary shared-edit">Edit</button>
+                            <div class="management-row-actions">
+                                ${definitionEdit}
+                                <button type="button" class="button secondary shared-rename">Rename</button>
+                            </div>
                             <div class="management-row-actions shared-editor" hidden style="margin-top:8px">
                                 <input class="shared-new-name" type="text" value="${esc(entry.name)}" style="min-width:180px" aria-label="New name">
                                 <select class="shared-scope" aria-label="Apply to">
@@ -104,7 +113,7 @@ window.opnSentralSharedInventory = function(options){
                     </tr>`;
             }).join('') : '<tr><td colspan="4">No matching entries.</td></tr>';
 
-            body.querySelectorAll('.shared-edit').forEach(function(button){
+            body.querySelectorAll('.shared-rename').forEach(function(button){
                 button.addEventListener('click', function(){
                     const row = button.closest('tr');
                     row.querySelector('.shared-editor').hidden = false;
@@ -118,7 +127,8 @@ window.opnSentralSharedInventory = function(options){
                     const row = button.closest('tr');
                     row.querySelector('.shared-new-name').value = row.dataset.name;
                     row.querySelector('.shared-editor').hidden = true;
-                    row.querySelector('.shared-edit').hidden = false;
+                    const renameButton = row.querySelector('.shared-rename');
+                    if(renameButton) renameButton.hidden = false;
                 });
             });
 
