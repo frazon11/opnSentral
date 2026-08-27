@@ -49,7 +49,7 @@ function crash_reporter_queue(array $agent, string $action, array $extra = []): 
     $pending->execute([(int)$agent['id'], 'crash_reporter', 'queued', 'running']);
     $existing = $pending->fetchColumn();
     if ($existing !== false) {
-        return (int)$existing;
+        throw new RuntimeException('Crash Reporter job #' . (int)$existing . ' is already queued or running. Wait for it to finish before starting another action.');
     }
 
     $payload = array_merge(['action' => $action], $extra);
