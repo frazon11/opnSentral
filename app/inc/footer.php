@@ -5,6 +5,7 @@
 <link rel="stylesheet" href="/assets/ids-bulk-actions.css?v=06215">
 <link rel="stylesheet" href="/assets/sidebar-collapse.css?v=062119">
 <link rel="stylesheet" href="/assets/system-status-indicator.css?v=062163">
+<link rel="stylesheet" href="/assets/alias-edit-layout.css?v=062177">
 <script src="/assets/sidebar-collapse.js?v=062119"></script>
 <script src="/assets/sidebar-scroll.js?v=062116"></script>
 <script src="/assets/ids-write-label.js?v=06215"></script>
