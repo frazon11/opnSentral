@@ -8,10 +8,7 @@
 <link rel="stylesheet" href="/assets/alias-edit-layout.css?v=062177">
 <script src="/assets/sidebar-collapse.js?v=062119"></script>
 <script src="/assets/sidebar-scroll.js?v=062116"></script>
-<script src="/assets/ids-write-label.js?v=06215"></script>
-<script src="/assets/ids-bulk-actions.js?v=06215"></script>
 <script src="/assets/ids-ruleset-filter.js?v=06215"></script>
-<script src="/assets/ids-policy-editor.js?v=06215"></script>
 <script src="/assets/shared-inventory-management.js?v=062178"></script>
 <script src="/assets/category-edit-links.js?v=062178"></script>
 <script src="/assets/network-settings.js?v=06215"></script>
@@ -37,6 +34,24 @@
             mount.id = 'shared-inventory-management';
             anchor.parentNode.insertBefore(mount, anchor);
             window.opnSentralSharedInventory({type:settings.type,label:settings.label,mountId:mount.id});
+        }
+    }
+
+    // General/Advanced fleet writes are intentionally fail-closed until the
+    // agent has a safe, tested implementation. Enforce the read-only state in
+    // the rendered HTML as well as at the server endpoint so cached JS cannot
+    // re-enable write controls.
+    const fleetRoot = document.querySelector('[data-fleet-settings-scope]');
+    if(fleetRoot){
+        document.querySelectorAll('.fleet-setting-control,.fleet-row-all').forEach(control=>{control.disabled=true;});
+        const apply=document.getElementById('fleet-settings-apply');
+        const reset=document.getElementById('fleet-settings-reset');
+        if(apply){apply.disabled=true;apply.title='Read-only safety mode';}
+        if(reset)reset.disabled=true;
+        const result=document.getElementById('fleet-settings-result');
+        if(result){
+            result.className='alert warningbox';
+            result.innerHTML='<strong>Read-only safety mode.</strong> Fleet configuration writes are disabled until the agent-side write implementation is safely restored and regression-tested.';
         }
     }
 })();
