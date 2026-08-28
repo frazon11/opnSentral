@@ -54,6 +54,23 @@
             result.innerHTML='<strong>Read-only safety mode.</strong> Fleet configuration writes are disabled until the agent-side write implementation is safely restored and regression-tested.';
         }
     }
+
+    // Agent 0.1.16 has no ensure_ssh_access implementation. Keep live TCP/22
+    // status available, but do not expose a button that can only fail or leave
+    // a partially changed management rule behind.
+    if(path === '/ssh_access.php'){
+        document.querySelectorAll('.ssh-enable-one,.ssh-fleet-check,#ssh-select-all,#ssh-enable-selected').forEach(control=>{
+            control.disabled=true;
+            control.title='Managed SSH Enable / Repair is temporarily disabled; live status remains available.';
+        });
+        const pageTitle=document.querySelector('.page-title');
+        if(pageTitle){
+            const warning=document.createElement('div');
+            warning.className='alert warningbox';
+            warning.innerHTML='<strong>Enable / Repair is temporarily disabled.</strong> Agent 0.1.16 does not implement the required local SSH repair job. Live TCP/22 status and managed-rule inspection remain available.';
+            pageTitle.insertAdjacentElement('afterend',warning);
+        }
+    }
 })();
 </script>
 </body></html>
