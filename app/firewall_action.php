@@ -100,7 +100,8 @@ try {
     if (!in_array($action, ['firmware_update', 'firmware_upgrade'], true)) throw new RuntimeException('Unsupported action.');
     require_configuration_unlocked();
 
-    $statusValue = opn_request($firewall, 'core/firmware/status', 'GET', [], 20);
+    // POST is deliberate: OPNsense only runs a fresh firmware probe on POST.
+    $statusValue = opn_request($firewall, 'core/firmware/status', 'POST', [], 120);
     $summary = normalize_firmware_status($statusValue);
     if ($summary['action'] !== $action || !$summary['update_available']) {
         throw new RuntimeException('OPNsense does not currently offer this firmware action. Run Check for updates first.');
