@@ -90,12 +90,20 @@ try {
 
     if ($type === 'firmware' || $type === 'all') {
         try {
+            /*
+             * OPNsense Core/Firmware/status has intentionally different GET and
+             * POST behaviour. GET only returns the last cached product_check.
+             * POST first runs a synchronous "firmware probe" and then returns
+             * the newly calculated status. A dashboard refresh must therefore
+             * use POST or it can incorrectly keep showing "no update available"
+             * after newer packages have appeared on the configured mirror.
+             */
             $value = opn_request(
                 $firewall,
                 'core/firmware/status',
-                'GET',
+                'POST',
                 [],
-                20
+                45
             );
 
             $result['data']['firmware'] = [
