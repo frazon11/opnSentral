@@ -52,11 +52,15 @@ require_not_contains($ids, 'opn_raw_request(', 'disabled IDS action endpoint mus
 $firmware = read_required($root . '/app/firewall_action.php');
 require_contains(
     $firmware,
-    "$statusValue = opn_request($firewall, 'core/firmware/status', 'POST', [], 120);",
+    '$statusValue = opn_request($firewall, \'core/firmware/status\', \'POST\', [], 120);',
     'firmware update/upgrade must run a fresh OPNsense probe immediately before the write'
 );
 
 $agent = read_required($root . '/app/agent/opnsentral-agent');
-require_contains($agent, "in_array($type,['set_administration_settings','set_general_settings','set_firewall_advanced_settings'],true)", 'agent safety block for risky fleet writes must remain present');
+require_contains(
+    $agent,
+    "in_array(\$type,['set_administration_settings','set_general_settings','set_firewall_advanced_settings'],true)",
+    'agent safety block for risky fleet writes must remain present'
+);
 
 fwrite(STDOUT, "Feature contract checks passed.\n");
