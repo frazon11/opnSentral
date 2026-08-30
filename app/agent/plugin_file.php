@@ -7,6 +7,7 @@ header('Cache-Control: no-store');
 
 $files = [
     'rc' => '/opt/opnsentral-agent-plugin/etc/rc.d/opnsentral_agent',
+    'syshook' => '/opt/opnsentral-agent-plugin/etc/rc.syshook.d/start/50-opnsentral-agent',
     'bootstrap' => '/opt/opnsentral-agent-plugin/opnsense/scripts/OPNsense/OpnSentralAgent/bootstrap.php',
     'controller' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/IndexController.php',
     'acl' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/models/OPNsense/OpnSentralAgent/ACL/ACL.xml',
