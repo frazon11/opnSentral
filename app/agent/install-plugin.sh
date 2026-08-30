@@ -57,6 +57,8 @@ fetch_plugin_file()
 
 fetch_plugin_file rc \
     /usr/local/etc/rc.d/opnsentral_agent 0755
+fetch_plugin_file syshook \
+    /usr/local/etc/rc.syshook.d/start/50-opnsentral-agent 0755
 fetch_plugin_file bootstrap \
     /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/bootstrap.php 0755
 fetch_plugin_file controller \
@@ -87,7 +89,13 @@ fi
 
 service opnsentral_agent onestatus >/dev/null
 
+[ -x /usr/local/etc/rc.syshook.d/start/50-opnsentral-agent ] || {
+    echo "Agent startup recovery hook was not installed correctly." >&2
+    exit 1
+}
+
 echo ""
 echo "os-opnsentral-agent installed and online."
 echo "Service: service opnsentral_agent status"
+echo "Boot recovery: /usr/local/etc/rc.syshook.d/start/50-opnsentral-agent"
 echo "GUI:     Services -> opnSentral Agent"
