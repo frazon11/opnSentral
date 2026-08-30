@@ -80,4 +80,11 @@ require_contains($cardActions, "edit.textContent='Connection settings'", 'Dashbo
 require_contains($cardActions, "remove.textContent='Remove from opnSentral'", 'ambiguous Delete entry label must be removed');
 require_contains($cardActions, "Notifications: ", 'Dashboard must expose per-firewall notification state');
 
+$installer = read_required($root . '/app/agent/install-plugin.sh');
+require_contains($installer, 'fetch_plugin_file syshook', 'agent installer must deploy the OPNsense startup recovery hook');
+require_contains($installer, '/usr/local/etc/rc.syshook.d/start/50-opnsentral-agent', 'agent installer must verify the startup recovery hook');
+$syshook = read_required($root . '/opnsense-plugin/opnsentral-agent/src/etc/rc.syshook.d/start/50-opnsentral-agent');
+require_contains($syshook, 'service opnsentral_agent', 'startup recovery hook must manage the opnSentral agent service');
+require_contains($syshook, 'onestatus', 'startup recovery hook must avoid duplicate agent processes');
+
 fwrite(STDOUT, "Feature contract checks passed.\n");
