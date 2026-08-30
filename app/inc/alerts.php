@@ -5,6 +5,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/opnsense.php';
 require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/notification_settings.php';
+require_once __DIR__ . '/firewall_notifications.php';
 
 function alerts_prepare_database(): void
 {
@@ -198,8 +199,13 @@ function run_alert_checks(): void
         return;
     }
 
+    firewall_notifications_prepare_database();
     $firewalls = db()->query('SELECT * FROM firewalls ORDER BY id')->fetchAll();
     foreach ($firewalls as $firewall) {
+        if ((int)($firewall['notifications_enabled'] ?? 1) !== 1) {
+            continue;
+        }
+
         $online = false;
         $details = '';
         try {
