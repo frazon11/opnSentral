@@ -63,4 +63,21 @@ require_contains(
     'agent safety block for risky fleet writes must remain present'
 );
 
+$notificationHelper = read_required($root . '/app/inc/firewall_notifications.php');
+require_contains($notificationHelper, 'notifications_enabled INTEGER NOT NULL DEFAULT 1', 'per-firewall notifications must default to enabled for existing and new managed firewalls');
+require_contains($notificationHelper, "DELETE FROM alert_states WHERE state_key = ? OR state_key LIKE ?", 'toggling firewall notifications must reset stale alert runtime state');
+
+$alerts = read_required($root . '/app/inc/alerts.php');
+require_contains($alerts, "if ((int)(\$firewall['notifications_enabled'] ?? 1) !== 1)", 'alert worker must skip firewalls with notifications disabled');
+
+$notificationAction = read_required($root . '/app/firewall_notifications_action.php');
+require_contains($notificationAction, 'require_csrf();', 'per-firewall notification changes must require CSRF protection');
+require_contains($notificationAction, 'firewall_notifications_set_enabled($id, $enabled);', 'per-firewall notification API must use the centralized state helper');
+
+$cardActions = read_required($root . '/app/assets/firewall-card-actions.js');
+require_contains($cardActions, "details.textContent='Manage'", 'Dashboard Details action must be relabeled Manage');
+require_contains($cardActions, "edit.textContent='Connection settings'", 'Dashboard Edit action must be relabeled Connection settings');
+require_contains($cardActions, "remove.textContent='Remove from opnSentral'", 'ambiguous Delete entry label must be removed');
+require_contains($cardActions, "Notifications: ", 'Dashboard must expose per-firewall notification state');
+
 fwrite(STDOUT, "Feature contract checks passed.\n");
