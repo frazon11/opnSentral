@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="/assets/sidebar-collapse.css?v=062119">
 <link rel="stylesheet" href="/assets/system-status-indicator.css?v=062163">
 <link rel="stylesheet" href="/assets/alias-edit-layout.css?v=062177">
+<link rel="stylesheet" href="/assets/firewall-hardware-card.css?v=062184">
 <script src="/assets/sidebar-collapse.js?v=062119"></script>
 <script src="/assets/sidebar-scroll.js?v=062116"></script>
 <script src="/assets/ids-ruleset-filter.js?v=06215"></script>
@@ -20,6 +21,7 @@
 <script src="/assets/system-status-indicator.js?v=062175"></script>
 <script>window.opnSentralCsrf=<?= json_encode(csrf_token(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;</script>
 <script src="/assets/firewall-card-actions.js?v=062182"></script>
+<script src="/assets/firewall-hardware-card.js?v=062184"></script>
 <script>
 (function(){
     document.title = 'opnSentral';
@@ -39,10 +41,6 @@
         }
     }
 
-    // General/Advanced fleet writes are intentionally fail-closed until the
-    // agent has a safe, tested implementation. Enforce the read-only state in
-    // the rendered HTML as well as at the server endpoint so cached JS cannot
-    // re-enable write controls.
     const fleetRoot = document.querySelector('[data-fleet-settings-scope]');
     if(fleetRoot){
         document.querySelectorAll('.fleet-setting-control,.fleet-row-all').forEach(control=>{control.disabled=true;});
@@ -57,9 +55,6 @@
         }
     }
 
-    // Agent 0.1.16 has no ensure_ssh_access implementation. Keep live TCP/22
-    // status available, but do not expose a button that can only fail or leave
-    // a partially changed management rule behind.
     if(path === '/ssh_access.php'){
         document.querySelectorAll('.ssh-enable-one,.ssh-fleet-check,#ssh-select-all,#ssh-enable-selected').forEach(control=>{
             control.disabled=true;
