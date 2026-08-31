@@ -10,6 +10,7 @@ $files = [
     'syshook' => '/opt/opnsentral-agent-plugin/etc/rc.syshook.d/start/50-opnsentral-agent',
     'bootstrap' => '/opt/opnsentral-agent-plugin/opnsense/scripts/OPNsense/OpnSentralAgent/bootstrap.php',
     'controller' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/IndexController.php',
+    'hardware_controller' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/HardwareController.php',
     'acl' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/models/OPNsense/OpnSentralAgent/ACL/ACL.xml',
     'menu' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/models/OPNsense/OpnSentralAgent/Menu/Menu.xml',
     'view' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/views/OPNsense/OpnSentralAgent/index.volt',
