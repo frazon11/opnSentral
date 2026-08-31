@@ -63,6 +63,8 @@ fetch_plugin_file bootstrap \
     /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/bootstrap.php 0755
 fetch_plugin_file controller \
     /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/IndexController.php 0644
+fetch_plugin_file hardware_controller \
+    /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/HardwareController.php 0644
 fetch_plugin_file acl \
     /usr/local/opnsense/mvc/app/models/OPNsense/OpnSentralAgent/ACL/ACL.xml 0644
 fetch_plugin_file menu \
@@ -72,6 +74,7 @@ fetch_plugin_file view \
 
 /usr/local/bin/php -l /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/bootstrap.php >/dev/null
 /usr/local/bin/php -l /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/IndexController.php >/dev/null
+/usr/local/bin/php -l /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/HardwareController.php >/dev/null
 
 BOOTSTRAP=/usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/bootstrap.php
 CONFIG=/usr/local/etc/opnsentral-agent.json
@@ -93,9 +96,14 @@ service opnsentral_agent onestatus >/dev/null
     echo "Agent startup recovery hook was not installed correctly." >&2
     exit 1
 }
+[ -r /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/HardwareController.php ] || {
+    echo "Hardware inventory API was not installed correctly." >&2
+    exit 1
+}
 
 echo ""
 echo "os-opnsentral-agent installed and online."
 echo "Service: service opnsentral_agent status"
 echo "Boot recovery: /usr/local/etc/rc.syshook.d/start/50-opnsentral-agent"
+echo "Hardware API: /api/opnsentralagent/hardware/get"
 echo "GUI:     Services -> opnSentral Agent"
