@@ -83,8 +83,24 @@ require_contains($cardActions, "Notifications: ", 'Dashboard must expose per-fir
 $installer = read_required($root . '/app/agent/install-plugin.sh');
 require_contains($installer, 'fetch_plugin_file syshook', 'agent installer must deploy the OPNsense startup recovery hook');
 require_contains($installer, '/usr/local/etc/rc.syshook.d/start/50-opnsentral-agent', 'agent installer must verify the startup recovery hook');
+require_contains($installer, 'fetch_plugin_file hardware_controller', 'agent installer must deploy the hardware inventory API controller');
+require_contains($installer, '/api/opnsentralagent/hardware/get', 'agent installer must advertise the hardware inventory API endpoint');
 $syshook = read_required($root . '/opnsense-plugin/opnsentral-agent/src/etc/rc.syshook.d/start/50-opnsentral-agent');
 require_contains($syshook, '$SERVICE opnsentral_agent', 'startup recovery hook must manage the opnSentral agent service');
 require_contains($syshook, 'onestatus', 'startup recovery hook must avoid duplicate agent processes');
+
+$hardwareController = read_required($root . '/opnsense-plugin/opnsentral-agent/src/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/HardwareController.php');
+require_contains($hardwareController, "smbios.system.maker", 'hardware API must collect SMBIOS system manufacturer');
+require_contains($hardwareController, "smbios.system.version", 'hardware API must collect SMBIOS system revision');
+require_contains($hardwareController, "hw.model", 'hardware API must collect CPU model');
+require_contains($hardwareController, "hw.physmem", 'hardware API must collect installed RAM');
+require_contains($hardwareController, "/sbin/geom disk list", 'hardware API must collect physical disk inventory');
+
+$hardwareEndpoint = read_required($root . '/app/firewall_hardware.php');
+require_contains($hardwareEndpoint, "opnsentralagent/hardware/get", 'opnSentral hardware endpoint must query the native plugin API');
+$hardwareCard = read_required($root . '/app/assets/firewall-hardware-card.js');
+foreach (['Hardware','CPU','RAM','Storage'] as $label) {
+    require_contains($hardwareCard, $label, 'Dashboard hardware card must show ' . $label);
+}
 
 fwrite(STDOUT, "Feature contract checks passed.\n");
