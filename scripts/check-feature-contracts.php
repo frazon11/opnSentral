@@ -83,24 +83,28 @@ require_contains($cardActions, "Notifications: ", 'Dashboard must expose per-fir
 $installer = read_required($root . '/app/agent/install-plugin.sh');
 require_contains($installer, 'fetch_plugin_file syshook', 'agent installer must deploy the OPNsense startup recovery hook');
 require_contains($installer, '/usr/local/etc/rc.syshook.d/start/50-opnsentral-agent', 'agent installer must verify the startup recovery hook');
-require_contains($installer, 'fetch_plugin_file hardware_controller', 'agent installer must deploy the hardware inventory API controller');
-require_contains($installer, '/api/opnsentralagent/hardware/get', 'agent installer must advertise the hardware inventory API endpoint');
+require_not_contains($installer, 'fetch_plugin_file hardware_controller', 'agent installer must not deploy a custom hardware API controller');
+require_not_contains($installer, '/api/opnsentralagent/hardware/get', 'agent installer must not advertise a custom hardware API endpoint');
+$pluginFiles = read_required($root . '/app/agent/plugin_file.php');
+require_not_contains($pluginFiles, "'hardware_controller'", 'plugin file server must not ship a custom hardware API controller');
+
 $syshook = read_required($root . '/opnsense-plugin/opnsentral-agent/src/etc/rc.syshook.d/start/50-opnsentral-agent');
 require_contains($syshook, '$SERVICE opnsentral_agent', 'startup recovery hook must manage the opnSentral agent service');
 require_contains($syshook, 'onestatus', 'startup recovery hook must avoid duplicate agent processes');
 
-$hardwareController = read_required($root . '/opnsense-plugin/opnsentral-agent/src/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/HardwareController.php');
-require_contains($hardwareController, "smbios.system.maker", 'hardware API must collect SMBIOS system manufacturer');
-require_contains($hardwareController, "smbios.system.version", 'hardware API must collect SMBIOS system revision');
-require_contains($hardwareController, "hw.model", 'hardware API must collect CPU model');
-require_contains($hardwareController, "hw.physmem", 'hardware API must collect installed RAM');
-require_contains($hardwareController, "/sbin/geom disk list", 'hardware API must collect physical disk inventory');
-
 $hardwareEndpoint = read_required($root . '/app/firewall_hardware.php');
-require_contains($hardwareEndpoint, "opnsentralagent/hardware/get", 'opnSentral hardware endpoint must query the native plugin API');
+require_contains($hardwareEndpoint, "dmidecode/service/get", 'DMI inventory must use the official os-dmidecode API');
+require_contains($hardwareEndpoint, "diagnostics/cpu_usage/getcputype", 'CPU inventory must use the OPNsense core CPU API');
+require_contains($hardwareEndpoint, "diagnostics/system/system_resources", 'RAM inventory must use the OPNsense core resources API');
+require_contains($hardwareEndpoint, "smart/service/list/details", 'physical disk inventory must use the official os-smart API');
+require_not_contains($hardwareEndpoint, "opnsentralagent/hardware/get", 'hardware endpoint must not call a custom opnSentral DMI API');
+require_not_contains($hardwareEndpoint, "diagnostics/system/system_disk", 'filesystem inventory must never be presented as physical disk hardware');
+
 $hardwareCard = read_required($root . '/app/assets/firewall-hardware-card.js');
 foreach (['Hardware','CPU','RAM','Storage'] as $label) {
     require_contains($hardwareCard, $label, 'Dashboard hardware card must show ' . $label);
 }
+require_contains($hardwareCard, 'Install os-dmidecode', 'Dashboard must clearly identify a missing os-dmidecode dependency');
+require_contains($hardwareCard, 'Install os-smart', 'Dashboard must clearly identify a missing os-smart dependency for physical disks');
 
 fwrite(STDOUT, "Feature contract checks passed.\n");
