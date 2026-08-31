@@ -50,12 +50,18 @@
         const cards=[...document.querySelectorAll('.firewall-card[data-firewall-id]')];
         for(const card of cards){
             const id=Number(card.dataset.firewallId||0);if(!id)continue;
-            const details=card.querySelector('a[href^="/firewall_view.php?id="]');
-            if(details){details.textContent='Manage';details.title='Open live status and operational controls';}
-            const edit=card.querySelector('a[href^="/firewall_edit.php?id="]');
-            if(edit){edit.textContent='Connection settings';edit.title='Edit the opnSentral connection and credentials for this firewall';}
-
             const actions=card.querySelector('.actions');
+            if(actions){
+                actions.querySelectorAll('a[href^="/firewall_view.php?id="]').forEach(details=>{
+                    details.textContent='Manage';
+                    details.title='Open live status and operational controls';
+                });
+                actions.querySelectorAll('a[href^="/firewall_edit.php?id="]').forEach(edit=>{
+                    edit.textContent='Connection settings';
+                    edit.title='Edit the opnSentral connection and credentials for this firewall';
+                });
+            }
+
             if(!actions||actions.querySelector('[data-notification-firewall-id]'))continue;
             const toggle=document.createElement('button');
             toggle.type='button';toggle.className='button secondary notification-toggle';
