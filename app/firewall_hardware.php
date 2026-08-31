@@ -31,6 +31,8 @@ function hardware_fallback(array $firewall): array
         'bios' => ['vendor'=>'','version'=>'','date'=>''],
         'cpu' => ['model'=>'','packages'=>null,'cores'=>null,'logical_cpus'=>null],
         'memory' => ['total_bytes'=>null],
+        // diagnostics/system/system_disk describes mounted filesystems, not
+        // physical disks. Never mislabel zfs/msdosfs/etc. as HDD/SSD models.
         'disks' => [],
         'collected_at' => gmdate('c'),
     ];
@@ -38,23 +40,6 @@ function hardware_fallback(array $firewall): array
     try {
         $resources = opn_request($firewall, 'diagnostics/system/system_resources', 'GET', [], 15);
         $result['memory']['total_bytes'] = hardware_bytes($resources['memory']['total'] ?? null);
-    } catch (Throwable) {
-    }
-
-    try {
-        $disk = opn_request($firewall, 'diagnostics/system/system_disk', 'GET', [], 15);
-        foreach (($disk['devices'] ?? []) as $device) {
-            if (!is_array($device)) continue;
-            $blocks = hardware_bytes($device['blocks'] ?? null);
-            $result['disks'][] = [
-                'name' => trim((string)($device['device'] ?? '')),
-                'model' => trim((string)($device['type'] ?? '')),
-                'serial' => '',
-                'size_bytes' => $blocks !== null ? $blocks * 1024 : 0,
-                'mountpoint' => trim((string)($device['mountpoint'] ?? '')),
-                'used_pct' => $device['used_pct'] ?? null,
-            ];
-        }
     } catch (Throwable) {
     }
 
