@@ -6,7 +6,7 @@
 <link rel="stylesheet" href="/assets/sidebar-collapse.css?v=062119">
 <link rel="stylesheet" href="/assets/system-status-indicator.css?v=062163">
 <link rel="stylesheet" href="/assets/alias-edit-layout.css?v=062177">
-<link rel="stylesheet" href="/assets/firewall-hardware-card.css?v=062184">
+<link rel="stylesheet" href="/assets/firewall-hardware-card.css?v=062185">
 <script src="/assets/sidebar-collapse.js?v=062119"></script>
 <script src="/assets/sidebar-scroll.js?v=062116"></script>
 <script src="/assets/ids-ruleset-filter.js?v=06215"></script>
@@ -20,8 +20,8 @@
 <script src="/assets/deployment-results.js?v=062106"></script>
 <script src="/assets/system-status-indicator.js?v=062175"></script>
 <script>window.opnSentralCsrf=<?= json_encode(csrf_token(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;</script>
-<script src="/assets/firewall-card-actions.js?v=062182"></script>
-<script src="/assets/firewall-hardware-card.js?v=062184"></script>
+<script src="/assets/firewall-card-actions.js?v=062185"></script>
+<script src="/assets/firewall-hardware-card.js?v=062185"></script>
 <script>
 (function(){
     document.title = 'opnSentral';
