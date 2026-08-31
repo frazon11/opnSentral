@@ -20,11 +20,6 @@
         let label=clean([system.manufacturer,system.model]);
         const rev=String(system.revision||'').trim();
         if(rev)label+=(label?' · ':'')+'Rev. '+rev;
-        if(label)return label;
-        const board=hw.baseboard||{};
-        label=clean([board.manufacturer,board.model]);
-        const boardRev=String(board.revision||'').trim();
-        if(boardRev)label+=(label?' · ':'')+'Rev. '+boardRev;
         return label||'—';
     }
 
@@ -34,16 +29,15 @@
         const cores=Number(cpu.cores||0);
         const logical=Number(cpu.logical_cpus||0);
         let suffix='';
-        if(cores>0&&logical>0&&cores!==logical)suffix=cores+'C / '+logical+'T';
-        else if(logical>0)suffix=logical+' CPU'+(logical===1?'':'s');
+        if(cores>0&&logical>0)suffix=cores+'C / '+logical+'T';
+        else if(logical>0)suffix=logical+' thread'+(logical===1?'':'s');
         return clean([model,suffix])||'—';
     }
 
     function storageLabel(hw){
         const disks=Array.isArray(hw.disks)?hw.disks:[];
         if(!disks.length)return '—';
-        const physical=disks.filter(d=>Number(d.size_bytes||0)>0);
-        const list=(physical.length?physical:disks).slice(0,4).map(d=>{
+        const list=disks.slice(0,4).map(d=>{
             const size=bytes(d.size_bytes);
             const model=String(d.model||'').trim();
             const name=String(d.name||'').trim();
@@ -72,16 +66,28 @@
             const data=await response.json();
             if(!response.ok||data.ok!==true)throw new Error(data.error||'Hardware inventory unavailable.');
             const hw=data.hardware||{};
-            const plugin=hw.plugin_available===true;
+            const availability=hw.availability||{};
 
-            panel.querySelector('[data-hardware]').textContent=plugin?hardwareLabel(hw):'Plugin update required';
-            panel.querySelector('[data-cpu]').textContent=plugin?cpuLabel(hw):'Plugin update required';
-            panel.querySelector('[data-ram]').textContent=bytes(hw.memory?.total_bytes);
-            panel.querySelector('[data-storage]').textContent=plugin?storageLabel(hw):'Plugin update required';
-            panel.classList.toggle('hardware-fallback',!plugin);
-            panel.title=plugin
-                ? 'Hardware data from the opnSentral OPNsense plugin.'
-                : 'The installed OPNsense plugin does not yet provide the hardware inventory API. Re-run the opnSentral plugin repair installer on this firewall.';
+            panel.querySelector('[data-hardware]').textContent=availability.dmidecode===true
+                ? hardwareLabel(hw)
+                : 'Install os-dmidecode';
+            panel.querySelector('[data-cpu]').textContent=availability.cpu===true
+                ? cpuLabel(hw)
+                : 'Unavailable';
+            panel.querySelector('[data-ram]').textContent=availability.memory===true
+                ? bytes(hw.memory?.total_bytes)
+                : 'Unavailable';
+            panel.querySelector('[data-storage]').textContent=availability.smart===true
+                ? storageLabel(hw)
+                : 'Install os-smart';
+
+            const notes=[];
+            if(availability.dmidecode!==true)notes.push('Hardware manufacturer/model/revision requires the official OPNsense os-dmidecode plugin.');
+            if(availability.cpu!==true)notes.push('CPU information could not be read from the OPNsense core CPU API.');
+            if(availability.memory!==true)notes.push('RAM information could not be read from the OPNsense core system-resources API.');
+            if(availability.smart!==true)notes.push('Physical disk model/capacity requires the official OPNsense os-smart plugin.');
+            panel.classList.toggle('hardware-fallback',notes.length>0);
+            panel.title=notes.length?notes.join(' '):'Hardware data from official OPNsense APIs: os-dmidecode, core CPU/resources and os-smart.';
         }catch(error){
             panel.querySelectorAll('dd').forEach(dd=>dd.textContent='Unavailable');
             panel.title=error instanceof Error?error.message:String(error);
