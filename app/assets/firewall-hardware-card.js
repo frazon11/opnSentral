@@ -72,14 +72,16 @@
             const data=await response.json();
             if(!response.ok||data.ok!==true)throw new Error(data.error||'Hardware inventory unavailable.');
             const hw=data.hardware||{};
-            panel.querySelector('[data-hardware]').textContent=hardwareLabel(hw);
-            panel.querySelector('[data-cpu]').textContent=cpuLabel(hw);
+            const plugin=hw.plugin_available===true;
+
+            panel.querySelector('[data-hardware]').textContent=plugin?hardwareLabel(hw):'Plugin update required';
+            panel.querySelector('[data-cpu]').textContent=plugin?cpuLabel(hw):'Plugin update required';
             panel.querySelector('[data-ram]').textContent=bytes(hw.memory?.total_bytes);
-            panel.querySelector('[data-storage]').textContent=storageLabel(hw);
-            panel.classList.toggle('hardware-fallback',hw.plugin_available!==true);
-            panel.title=hw.plugin_available===true
+            panel.querySelector('[data-storage]').textContent=plugin?storageLabel(hw):'Plugin update required';
+            panel.classList.toggle('hardware-fallback',!plugin);
+            panel.title=plugin
                 ? 'Hardware data from the opnSentral OPNsense plugin.'
-                : 'Partial data from OPNsense core APIs. Re-run the opnSentral agent plugin installer to enable DMI and CPU inventory.';
+                : 'The installed OPNsense plugin does not yet provide the hardware inventory API. Re-run the opnSentral plugin repair installer on this firewall.';
         }catch(error){
             panel.querySelectorAll('dd').forEach(dd=>dd.textContent='Unavailable');
             panel.title=error instanceof Error?error.message:String(error);
