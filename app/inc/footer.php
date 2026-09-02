@@ -20,7 +20,7 @@
 <script src="/assets/deployment-results.js?v=062106"></script>
 <script src="/assets/system-status-indicator.js?v=062175"></script>
 <script>window.opnSentralCsrf=<?= json_encode(csrf_token(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;</script>
-<script src="/assets/firewall-card-actions.js?v=062185"></script>
+<script src="/assets/firewall-card-actions.js?v=062187"></script>
 <script src="/assets/firewall-hardware-card.js?v=062186"></script>
 <script>
 (function(){
