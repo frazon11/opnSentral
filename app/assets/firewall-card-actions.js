@@ -74,6 +74,18 @@
     }
 
     function enhanceManagePage(){
+        const params=new URLSearchParams(location.search);
+        const id=Number(params.get('id')||0);
+        const actions=document.querySelector('.page-title-actions');
+        if(id>0&&actions&&!actions.querySelector('a[href^="/ssh_lockout.php?"]')){
+            const link=document.createElement('a');
+            link.className='button secondary';
+            link.href='/ssh_lockout.php?firewall_id='+encodeURIComponent(id);
+            link.textContent='SSH / WebGUI Lockout';
+            link.title='View blocked IPs, remove lockouts, and manage always-trusted hosts';
+            actions.insertBefore(link,actions.firstChild);
+        }
+
         const remove=document.querySelector('form.danger-zone button[name="action"][value="delete"]');
         if(!remove)return;
         remove.textContent='Remove from opnSentral';
