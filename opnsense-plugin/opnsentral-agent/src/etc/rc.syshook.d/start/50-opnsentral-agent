@@ -1,8 +1,14 @@
 #!/bin/sh
 # Ensure the opnSentral worker is running after OPNsense boot/firmware upgrades.
-# OPNsense executes executable scripts in rc.syshook.d/start near the end of startup.
+# Also re-apply persistent trusted sshlockout hosts locally before the agent
+# service check, so this protection does not depend on opnSentral connectivity.
 
 SERVICE=/usr/sbin/service
+LOCKOUT_HELPER=/usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout.php
+
+if [ -x "$LOCKOUT_HELPER" ]; then
+    "$LOCKOUT_HELPER" sync >/dev/null 2>&1 || true
+fi
 
 if [ ! -x /usr/local/sbin/opnsentral-agent ] || [ ! -s /usr/local/etc/opnsentral-agent.json ]; then
     exit 0
