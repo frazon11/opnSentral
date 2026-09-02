@@ -37,7 +37,7 @@ function ssh_lockout_collect_ips(mixed $value, array &$result): void
 
 function ssh_lockout_official_list(array $firewall): array
 {
-    $response = opn_request($firewall, 'firewall/alias_util/list/sshlockout', 'GET', [], 15);
+    $response = opn_raw_request($firewall, 'firewall/alias_util/list/sshlockout', 'GET', [], 15);
     $result = [];
     ssh_lockout_collect_ips($response['rows'] ?? $response, $result);
     $result = array_values(array_unique($result));
@@ -48,7 +48,7 @@ function ssh_lockout_official_list(array $firewall): array
 function ssh_lockout_status(array $firewall): array
 {
     try {
-        $response = opn_request($firewall, 'opnsentralagent/lockout/status', 'GET', [], 15);
+        $response = opn_raw_request($firewall, 'opnsentralagent/lockout/status', 'GET', [], 15);
         if (($response['ok'] ?? false) !== true || !isset($response['blocked'], $response['trusted'])) {
             throw new RuntimeException('Trusted-host API returned an invalid response.');
         }
@@ -69,7 +69,10 @@ function ssh_lockout_status(array $firewall): array
 
 function ssh_lockout_remove(array $firewall, string $ip): void
 {
-    $response = opn_request($firewall, 'firewall/alias_util/delete/sshlockout', 'POST', ['address' => $ip], 15);
+    // Use OPNsense's standard runtime table API directly. opn_raw_request()
+    // deliberately avoids opnSentral's managed-category preparation because
+    // removing a lockout must not create or modify unrelated firewall config.
+    $response = opn_raw_request($firewall, 'firewall/alias_util/delete/sshlockout', 'POST', ['address' => $ip], 15);
     if (strtolower(trim((string)($response['status'] ?? ''))) !== 'done') {
         throw new RuntimeException('OPNsense did not confirm removal from sshlockout.');
     }
@@ -89,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ssh_lockout_remove($firewall, $ip);
             $message = $ip . ' removed from the sshlockout table and verified.';
         } elseif ($action === 'trust') {
-            $response = opn_request($firewall, 'opnsentralagent/lockout/trust', 'POST', ['address' => $ip], 20);
+            $response = opn_raw_request($firewall, 'opnsentralagent/lockout/trust', 'POST', ['address' => $ip], 20);
             if (($response['ok'] ?? false) !== true
                 || !in_array($ip, (array)($response['trusted'] ?? []), true)
                 || !in_array($ip, (array)($response['trusted_active'] ?? []), true)
@@ -98,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $message = $ip . ' is now always trusted for OPNsense SSH/WebGUI lockout protection.';
         } elseif ($action === 'untrust') {
-            $response = opn_request($firewall, 'opnsentralagent/lockout/untrust', 'POST', ['address' => $ip], 20);
+            $response = opn_raw_request($firewall, 'opnsentralagent/lockout/untrust', 'POST', ['address' => $ip], 20);
             if (($response['ok'] ?? false) !== true
                 || in_array($ip, (array)($response['trusted'] ?? []), true)
                 || in_array($ip, (array)($response['trusted_active'] ?? []), true)) {
