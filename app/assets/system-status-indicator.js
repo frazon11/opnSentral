@@ -3,16 +3,17 @@
 
     function classifyStatus(status){
         const value=String(status??'').trim().toUpperCase();
-        if(value===''||value==='OK'||value==='SUCCESS'||value==='NORMAL'||value==='NONE'||value==='GREEN'||value==='2') return 'ok';
-        if(value==='WARNING'||value==='WARN'||value==='YELLOW'||value==='ORANGE'||value==='0') return 'warning';
-        if(value==='NOTICE'||value==='1') return 'warning';
+        if(value==='OK'||value==='SUCCESS'||value==='NORMAL'||value==='NONE'||value==='GREEN'||value==='2') return 'ok';
+        if(value==='WARNING'||value==='WARN'||value==='ORANGE'||value==='0') return 'warning';
+        if(value==='NOTICE'||value==='YELLOW'||value==='1') return 'notice';
         if(value==='ERROR'||value==='ERR'||value==='RED'||value==='CRITICAL'||value==='-1') return 'bad';
-        return 'bad';
+        return 'unavailable';
     }
 
     function ledPalette(cls){
         if(cls==='ok') return {background:'#35b46a',shadow:'0 0 0 2px rgba(53,180,106,.18)'};
-        if(cls==='warning') return {background:'#e4a72a',shadow:'0 0 0 2px rgba(228,167,42,.18)'};
+        if(cls==='warning') return {background:'#e58a21',shadow:'0 0 0 2px rgba(229,138,33,.18)'};
+        if(cls==='notice') return {background:'#e2c23a',shadow:'0 0 0 2px rgba(226,194,58,.18)'};
         if(cls==='bad') return {background:'#f04d58',shadow:'0 0 0 2px rgba(240,77,88,.20)'};
         return {background:'#7b8087',shadow:'0 0 0 2px rgba(127,127,127,.14)'};
     }
@@ -29,11 +30,15 @@
         const cls=classifyStatus(status);
         if(cls==='ok') return 'No pending system messages';
         if(cls==='warning') return 'OPNsense system warning';
-        return 'OPNsense system problem detected';
+        if(cls==='notice') return 'OPNsense system notice';
+        if(cls==='bad') return 'OPNsense system problem detected';
+        return 'OPNsense system status unavailable';
     }
 
     async function fetchSystemStatus(id){
-        const response=await fetch('/firewall_status.php?id='+encodeURIComponent(id)+'&type=system',{credentials:'same-origin',cache:'no-store'});
+        // The health LED does not need another system-information/version lookup.
+        // The card itself performs that once; this request is health only.
+        const response=await fetch('/firewall_status.php?id='+encodeURIComponent(id)+'&type=system&include_version=0',{credentials:'same-origin',cache:'no-store'});
         const text=await response.text();
         let result;
         try{result=JSON.parse(text);}catch(error){throw new Error('Invalid system status response');}
@@ -50,14 +55,46 @@
         let message=String(system.message??'').trim();
         let title=String(system.title??'System').trim()||'System';
 
+        // metadata.system.status is OPNsense's authoritative aggregate state.
+        // Subsystems may enrich the description, but must not override the
+        // aggregate severity (for example NOTICE must not become WARNING).
         const entries=Object.values(subsystems).filter(item=>item&&typeof item==='object');
-        const nonOk=entries.find(item=>classifyStatus(item.status)!=='ok');
-        if(nonOk){
-            status=nonOk.status??status;
-            title=String(nonOk.title??title).trim()||title;
-            message=String(nonOk.message??message).trim()||message;
+        if(classifyStatus(status)!=='ok'){
+            const detail=entries.find(item=>classifyStatus(item.status)!=='ok');
+            if(detail){
+                title=String(detail.title??title).trim()||title;
+                message=String(detail.message??message).trim()||message;
+            }
+        }
+
+        // Older/partial API responses may omit metadata.system. In that case
+        // use a subsystem only as a fallback; an empty response is unavailable,
+        // never green.
+        if(classifyStatus(status)==='unavailable'&&entries.length){
+            const detail=entries.find(item=>classifyStatus(item.status)!=='ok')||entries[0];
+            status=detail.status??status;
+            title=String(detail.title??title).trim()||title;
+            message=String(detail.message??message).trim()||message;
         }
         return {status,title,message};
+    }
+
+    function dashboardCardIsOffline(card){
+        const badge=card?.querySelector('.status-badge');
+        return !!badge&&(badge.classList.contains('bad')||String(badge.textContent||'').trim().toLowerCase()==='offline');
+    }
+
+    function forceOfflineLed(card){
+        const led=card?.querySelector('.opnsentral-system-led');
+        if(!led)return;
+        applyLedState(led,'unavailable');
+        led.title='System health unavailable because the firewall is offline.';
+        led.setAttribute('aria-label',led.title);
+        const link=led.closest('.opnsentral-system-led-link');
+        if(link){
+            link.title=led.title;
+            link.setAttribute('aria-label',led.title);
+        }
     }
 
     function addDashboardLed(card){
@@ -88,6 +125,16 @@
         if(existingBadge){
             existingBadge.parentNode.insertBefore(wrap,existingBadge);
             wrap.append(existingBadge,link);
+
+            // The connectivity badge is authoritative for reachability. If the
+            // Dashboard marks a firewall offline after an asynchronous request,
+            // the health LED must immediately become unavailable rather than
+            // remaining green from an earlier/racing health response.
+            const observer=new MutationObserver(function(){
+                if(dashboardCardIsOffline(card)) forceOfflineLed(card);
+                else if(existingBadge.classList.contains('good')) window.setTimeout(()=>loadDashboardLed(card),25);
+            });
+            observer.observe(existingBadge,{attributes:true,attributeFilter:['class'],childList:true,characterData:true,subtree:true});
         }else{
             head.appendChild(wrap);
             wrap.appendChild(link);
@@ -100,6 +147,11 @@
         const led=addDashboardLed(card)||card.querySelector('.opnsentral-system-led');
         if(!id||!led) return;
 
+        if(dashboardCardIsOffline(card)){
+            forceOfflineLed(card);
+            return;
+        }
+
         led.className='opnsentral-system-led loading';
         led.style.removeProperty('background-color');
         led.style.removeProperty('box-shadow');
@@ -107,6 +159,10 @@
 
         try{
             const data=await fetchSystemStatus(id);
+            if(dashboardCardIsOffline(card)){
+                forceOfflineLed(card);
+                return;
+            }
             const top=highestStatus(data);
             const cls=classifyStatus(top.status);
             applyLedState(led,cls);
