@@ -143,4 +143,15 @@ foreach (['Hardware','CPU','RAM','Storage'] as $label) {
 require_contains($hardwareCard, 'Install os-dmidecode', 'Dashboard must clearly identify a missing os-dmidecode dependency');
 require_contains($hardwareCard, 'Install os-smart', 'Dashboard must clearly identify a missing os-smart dependency for physical disks');
 
+$dashboardStatus = read_required($root . '/app/firewall_status.php');
+require_contains($dashboardStatus, 'diagnostics/system/system_information', 'Dashboard must retrieve the running OPNsense version independently of firmware probe success');
+require_contains($dashboardStatus, "array_key_exists('raw', \$value)", 'Dashboard status must reject non-JSON/HTML API responses instead of treating them as online');
+require_contains($dashboardStatus, "\$value['version'] = \$version", 'Dashboard system payload must carry the independently detected OPNsense version');
+
+$statusIndicator = read_required($root . '/app/assets/system-status-indicator.js');
+require_contains($statusIndicator, "return 'unavailable'", 'empty or unknown OPNsense health status must never be displayed green');
+require_contains($statusIndicator, 'dashboardCardIsOffline', 'system-health LED must respect the Dashboard connectivity state');
+require_contains($statusIndicator, "if(value==='NOTICE'||value==='YELLOW'||value==='1') return 'notice'", 'NOTICE must remain visually distinct from WARNING');
+require_contains($statusIndicator, 'metadata.system.status is OPNsense\'s authoritative aggregate state', 'system-health severity must use OPNsense aggregate status instead of a first-subsystem override');
+
 fwrite(STDOUT, "Feature contract checks passed.\n");
