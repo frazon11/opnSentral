@@ -30,10 +30,6 @@ register_shutdown_function(static function (): void {
         header('Cache-Control: no-store, no-cache, must-revalidate');
     }
 
-    while (ob_get_level() > 0) {
-        ob_end_clean();
-    }
-
     echo json_encode(
         [
             'ok' => false,
@@ -58,6 +54,72 @@ header('Cache-Control: no-store, no-cache, must-revalidate');
 
 $id = (int) ($_GET['id'] ?? 0);
 $type = (string) ($_GET['type'] ?? 'all');
+$includeVersion = !isset($_GET['include_version']) || (string)$_GET['include_version'] !== '0';
+
+function status_reject_raw_api_response(array $value, string $label): array
+{
+    if (array_key_exists('raw', $value)) {
+        $raw = trim((string)$value['raw']);
+        $looksHtml = str_starts_with(strtolower($raw), '<!doctype html') || str_starts_with(strtolower($raw), '<html');
+        throw new RuntimeException(
+            $looksHtml
+                ? $label . ' returned HTML instead of JSON.'
+                : $label . ' returned a non-JSON response.'
+        );
+    }
+    return $value;
+}
+
+function status_extract_opnsense_version(array $systemInformation): string
+{
+    $versions = $systemInformation['versions'] ?? [];
+    if (!is_array($versions)) {
+        return '';
+    }
+
+    foreach ($versions as $candidate) {
+        if (!is_scalar($candidate)) continue;
+        $candidate = trim((string)$candidate);
+        if ($candidate === '' || stripos($candidate, 'OPNsense ') !== 0) continue;
+
+        $candidate = trim(substr($candidate, strlen('OPNsense ')));
+        $candidate = preg_replace('/-(?:amd64|aarch64|arm64|i386)$/i', '', $candidate) ?? $candidate;
+        return substr(trim($candidate), 0, 80);
+    }
+
+    return '';
+}
+
+function status_system_payload(array $firewall, bool $includeVersion): array
+{
+    $value = status_reject_raw_api_response(
+        opn_request($firewall, 'core/system/status', 'GET', [], 10),
+        'OPNsense system status API'
+    );
+
+    // core/system/status is a health/reporter endpoint; it does not reliably
+    // contain the running OPNsense version. Add the version from the official
+    // diagnostics system-information endpoint so the Dashboard never depends
+    // on a firmware probe just to identify the running release.
+    if ($includeVersion) {
+        try {
+            $info = status_reject_raw_api_response(
+                opn_request($firewall, 'diagnostics/system/system_information', 'GET', [], 10),
+                'OPNsense system information API'
+            );
+            $version = status_extract_opnsense_version($info);
+            if ($version !== '') {
+                $value['version'] = $version;
+            }
+        } catch (Throwable $exception) {
+            // System health is still valid if this optional identity lookup is
+            // unavailable. The firmware response may provide the version too.
+            $value['_version_error'] = $exception->getMessage();
+        }
+    }
+
+    return $value;
+}
 
 try {
     $firewall = firewall_by_id($id);
@@ -72,13 +134,7 @@ try {
         try {
             $result['data']['system'] = [
                 'ok' => true,
-                'value' => opn_request(
-                    $firewall,
-                    'core/system/status',
-                    'GET',
-                    [],
-                    10
-                ),
+                'value' => status_system_payload($firewall, $includeVersion),
             ];
         } catch (Throwable $exception) {
             $result['data']['system'] = [
@@ -98,12 +154,15 @@ try {
              * use POST or it can incorrectly keep showing "no update available"
              * after newer packages have appeared on the configured mirror.
              */
-            $value = opn_request(
-                $firewall,
-                'core/firmware/status',
-                'POST',
-                [],
-                45
+            $value = status_reject_raw_api_response(
+                opn_request(
+                    $firewall,
+                    'core/firmware/status',
+                    'POST',
+                    [],
+                    45
+                ),
+                'OPNsense firmware status API'
             );
 
             $result['data']['firmware'] = [
