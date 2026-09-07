@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/inc/agent_auth.php';
+require_once dirname(__DIR__) . '/inc/agent_state.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -32,8 +33,16 @@ $update->execute([
     (int) $agent['id'],
 ]);
 
+$sync = agent_state_merge_report($agent, $payload);
+
 echo json_encode([
     'ok' => true,
     'server_time' => $now,
     'poll_interval' => 60,
+    'inventory_interval' => 300,
+    'full_sync_interval' => 86400,
+    'revision' => $sync['revision'],
+    'changed_sections' => $sync['changed_sections'],
+    'resync_required' => $sync['resync_required'],
+    'hashes' => $sync['hashes'],
 ], JSON_UNESCAPED_SLASHES);
