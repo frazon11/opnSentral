@@ -7,9 +7,11 @@ header('Cache-Control: no-store');
 
 $files = [
     'rc' => '/opt/opnsentral-agent-plugin/etc/rc.d/opnsentral_agent',
+    'lockout_guard_rc' => '/opt/opnsentral-agent-plugin/etc/rc.d/opnsentral_lockout_guard',
     'syshook' => '/opt/opnsentral-agent-plugin/etc/rc.syshook.d/start/50-opnsentral-agent',
     'bootstrap' => '/opt/opnsentral-agent-plugin/opnsense/scripts/OPNsense/OpnSentralAgent/bootstrap.php',
     'lockout_script' => '/opt/opnsentral-agent-plugin/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout.php',
+    'lockout_guard' => '/opt/opnsentral-agent-plugin/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout_guard.sh',
     'controller' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/IndexController.php',
     'lockout_controller' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/LockoutController.php',
     'actions' => '/opt/opnsentral-agent-plugin/opnsense/service/conf/actions.d/actions_opnsentralagent.conf',
