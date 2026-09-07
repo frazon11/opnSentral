@@ -46,6 +46,19 @@
         });
     }
 
+    function enhanceNavigation(){
+        const nav=document.querySelector('#sidebar .side-nav');
+        if(!nav||nav.querySelector('a[href="/blocked_ips.php"]'))return;
+        const categories=nav.querySelector('a[href="/category_overview.php"]');
+        if(!categories)return;
+        const link=document.createElement('a');
+        link.className='menu-link menu-direct'+((path==='/blocked_ips.php'||path==='/ssh_lockout.php')?' active':'');
+        link.href='/blocked_ips.php';
+        link.innerHTML='<span>Blocked IPs</span>';
+        link.title='View SSH/WebGUI lockouts across managed OPNsense firewalls';
+        categories.insertAdjacentElement('afterend',link);
+    }
+
     async function enhanceDashboard(){
         const cards=[...document.querySelectorAll('.firewall-card[data-firewall-id]')];
         for(const card of cards){
@@ -118,6 +131,7 @@
         }catch(error){list.innerHTML='<div class="alert error"></div>';list.firstElementChild.textContent=error instanceof Error?error.message:String(error);}
     }
 
+    enhanceNavigation();
     if(path==='/'||path==='/index.php')enhanceDashboard();
     if(path==='/firewall_view.php')enhanceManagePage();
     if(path==='/notifications.php')enhanceNotificationsPage();
