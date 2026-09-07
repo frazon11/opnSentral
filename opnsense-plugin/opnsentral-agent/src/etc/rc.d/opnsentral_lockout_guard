@@ -1,0 +1,25 @@
+#!/bin/sh
+#
+# PROVIDE: opnsentral_lockout_guard
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="opnsentral_lockout_guard"
+rcvar="${name}_enable"
+pidfile="/var/run/${name}.pid"
+command="/usr/sbin/daemon"
+command_args="-P ${pidfile} -f /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout_guard.sh"
+start_precmd="opnsentral_lockout_guard_precmd"
+
+opnsentral_lockout_guard_precmd()
+{
+    [ -x /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout_guard.sh ] || return 1
+    [ -x /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout.php ] || return 1
+}
+
+load_rc_config "${name}"
+: ${opnsentral_lockout_guard_enable:="YES"}
+
+run_rc_command "$1"
