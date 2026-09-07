@@ -80,6 +80,7 @@ require_contains($cardActions, "edit.textContent='Connection settings'", 'Dashbo
 require_contains($cardActions, "remove.textContent='Remove from opnSentral'", 'ambiguous Delete entry label must be removed');
 require_contains($cardActions, "Notifications: ", 'Dashboard must expose per-firewall notification state');
 require_contains($cardActions, '/ssh_lockout.php?firewall_id=', 'per-firewall Manage page must expose SSH/WebGUI lockout management');
+require_contains($cardActions, "link.href='/blocked_ips.php'", 'Firewall navigation must expose fleet blocked-IP management');
 
 $installer = read_required($root . '/app/agent/install-plugin.sh');
 require_contains($installer, 'fetch_plugin_file syshook', 'agent installer must deploy the OPNsense startup recovery hook');
@@ -89,6 +90,9 @@ require_not_contains($installer, '/api/opnsentralagent/hardware/get', 'agent ins
 require_contains($installer, 'fetch_plugin_file lockout_script', 'agent installer must deploy the narrow sshlockout helper');
 require_contains($installer, 'fetch_plugin_file lockout_controller', 'agent installer must deploy the narrow sshlockout API');
 require_contains($installer, 'fetch_plugin_file actions', 'agent installer must deploy sshlockout configd actions');
+require_contains($installer, 'fetch_plugin_file lockout_guard_rc', 'agent installer must deploy the trusted-host guard service');
+require_contains($installer, 'fetch_plugin_file lockout_guard', 'agent installer must deploy the trusted-host guard worker');
+require_contains($installer, 'service opnsentral_lockout_guard onestatus', 'agent installer must verify the trusted-host guard is running');
 require_contains($installer, 'service configd restart', 'installer must reload configd after installing new action definitions');
 require_contains($installer, 'opnsentralagent sshlockout.status', 'installer must verify sshlockout configd registration');
 
@@ -97,12 +101,23 @@ require_not_contains($pluginFiles, "'hardware_controller'", 'plugin file server 
 require_contains($pluginFiles, "'lockout_script'", 'plugin file server must ship the sshlockout helper');
 require_contains($pluginFiles, "'lockout_controller'", 'plugin file server must ship the sshlockout controller');
 require_contains($pluginFiles, "'actions'", 'plugin file server must ship sshlockout configd actions');
+require_contains($pluginFiles, "'lockout_guard_rc'", 'plugin file server must ship the trusted-host guard service');
+require_contains($pluginFiles, "'lockout_guard'", 'plugin file server must ship the trusted-host guard worker');
 
 $syshook = read_required($root . '/opnsense-plugin/opnsentral-agent/src/etc/rc.syshook.d/start/50-opnsentral-agent');
 require_contains($syshook, '$SERVICE opnsentral_agent', 'startup recovery hook must manage the opnSentral agent service');
 require_contains($syshook, 'onestatus', 'startup recovery hook must avoid duplicate agent processes');
 require_contains($syshook, 'sshlockout.php', 'startup recovery hook must reapply trusted lockout hosts');
+require_contains($syshook, 'opnsentral_lockout_guard', 'startup recovery hook must recover the trusted-host guard service');
 require_contains($syshook, 'sync', 'startup recovery hook must synchronize trusted lockout hosts');
+
+$lockoutGuard = read_required($root . '/opnsense-plugin/opnsentral-agent/src/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout_guard.sh');
+require_contains($lockoutGuard, 'INTERVAL=300', 'trusted-host guard must refresh protection before normal sshlockout expiration can remove it');
+require_contains($lockoutGuard, '"$HELPER" sync', 'trusted-host guard must continuously re-synchronize the persistent trusted list');
+
+$lockoutGuardService = read_required($root . '/opnsense-plugin/opnsentral-agent/src/etc/rc.d/opnsentral_lockout_guard');
+require_contains($lockoutGuardService, 'sshlockout_guard.sh', 'trusted-host guard service must execute the guard worker');
+require_contains($lockoutGuardService, 'pidfile=', 'trusted-host guard must be a managed service rather than an unmanaged background loop');
 
 $lockoutHelper = read_required($root . '/opnsense-plugin/opnsentral-agent/src/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout.php');
 require_contains($lockoutHelper, "const TABLE_NAME = 'sshlockout'", 'trusted-host helper must only operate on the OPNsense sshlockout table');
@@ -127,6 +142,12 @@ require_contains($lockoutPage, 'opnsentralagent/lockout/trust', 'persistent whit
 require_contains($lockoutPage, 'opnsentralagent/lockout/untrust', 'persistent whitelist removal must use the narrow opnSentral trusted-host API');
 require_contains($lockoutPage, 'Read-back verification', 'runtime lockout changes must be verified');
 require_contains($lockoutPage, 'require_csrf();', 'lockout writes must require CSRF protection');
+
+$blockedIps = read_required($root . '/app/blocked_ips.php');
+require_contains($blockedIps, 'firewall/alias_util/list/sshlockout', 'fleet blocked-IP page must query each firewall via the standard OPNsense table API');
+require_contains($blockedIps, 'firewall/alias_util/delete/sshlockout', 'fleet unblock must use the standard OPNsense runtime table API');
+require_contains($blockedIps, 'Read-back verification failed', 'fleet unblock must verify the IP is gone');
+require_contains($blockedIps, '/ssh_lockout.php?firewall_id=', 'fleet blocked-IP page must link to per-firewall trusted-host management');
 
 $hardwareEndpoint = read_required($root . '/app/firewall_hardware.php');
 require_contains($hardwareEndpoint, "dmidecode/service/get", 'DMI inventory must use the official os-dmidecode API');
