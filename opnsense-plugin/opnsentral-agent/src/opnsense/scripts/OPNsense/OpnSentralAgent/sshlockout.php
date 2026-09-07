@@ -111,6 +111,7 @@ function table_snapshot(): array
         if ($line === '') continue;
         if (preg_match('/^!\s*(.+)$/', $line, $match) === 1) {
             $candidate = trim((string)$match[1]);
+            $candidate = preg_replace('/\/(32|128)$/', '', $candidate) ?? $candidate;
             if (filter_var($candidate, FILTER_VALIDATE_IP) !== false) $trustedActive[] = $candidate;
             continue;
         }
@@ -136,8 +137,7 @@ function snapshot(string $message = ''): array
         'blocked' => $table['blocked'],
         'trusted' => $configured,
         'trusted_active' => $table['trusted_active'],
-        'trusted_in_sync' => array_values(array_diff($configured, $table['trusted_active'])) === []
-            && array_values(array_diff($table['trusted_active'], $configured)) === [],
+        'trusted_in_sync' => array_values(array_diff($configured, $table['trusted_active'])) === [],
         'message' => $message,
         'checked_at' => gmdate('c'),
     ];
@@ -166,12 +166,10 @@ function table_delete_negative(string $ip): void
 function sync_trusted_hosts(): array
 {
     $configured = trusted_file_read();
-    $before = table_snapshot();
 
-    foreach ($before['trusted_active'] as $active) {
-        if (!in_array($active, $configured, true)) table_delete_negative($active);
-    }
-
+    // Only enforce entries explicitly managed by opnSentral. Never delete an
+    // existing negated sshlockout entry merely because it is absent from our
+    // file: an administrator or another local mechanism may own that entry.
     foreach ($configured as $ip) {
         $current = table_snapshot();
         if (!in_array($ip, $current['trusted_active'], true)) {
@@ -196,6 +194,9 @@ function trust_host(string $ip): array
 {
     $ip = valid_host($ip);
     $before = trusted_file_read();
+    $stateBefore = table_snapshot();
+    $negativeExistedBefore = in_array($ip, $stateBefore['trusted_active'], true);
+
     if (!in_array($ip, $before, true)) {
         $updated = $before;
         $updated[] = $ip;
@@ -203,9 +204,8 @@ function trust_host(string $ip): array
     }
 
     try {
-        $state = table_snapshot();
-        if (in_array($ip, $state['blocked'], true)) table_delete_positive($ip);
-        if (!in_array($ip, $state['trusted_active'], true)) table_add_negative($ip);
+        if (in_array($ip, $stateBefore['blocked'], true)) table_delete_positive($ip);
+        if (!$negativeExistedBefore) table_add_negative($ip);
         $verify = snapshot('Trusted host added and verified.');
         if (!in_array($ip, $verify['trusted'], true)
             || !in_array($ip, $verify['trusted_active'], true)
@@ -215,7 +215,7 @@ function trust_host(string $ip): array
         return $verify;
     } catch (Throwable $exception) {
         trusted_file_write($before);
-        table_delete_negative($ip);
+        if (!$negativeExistedBefore) table_delete_negative($ip);
         throw $exception;
     }
 }
@@ -224,19 +224,23 @@ function untrust_host(string $ip): array
 {
     $ip = valid_host($ip);
     $before = trusted_file_read();
+    $wasManaged = in_array($ip, $before, true);
     $updated = array_values(array_filter($before, static fn(string $value): bool => $value !== $ip));
     trusted_file_write($updated);
 
     try {
-        table_delete_negative($ip);
+        // Only remove the live negated entry when this address was actually
+        // managed by opnSentral. An arbitrary untrust request must not delete
+        // an exclusion owned by somebody else.
+        if ($wasManaged) table_delete_negative($ip);
         $verify = snapshot('Trusted host removed and verified.');
-        if (in_array($ip, $verify['trusted'], true) || in_array($ip, $verify['trusted_active'], true)) {
+        if (in_array($ip, $verify['trusted'], true)) {
             throw new RuntimeException('Trusted-host removal read-back verification failed.');
         }
         return $verify;
     } catch (Throwable $exception) {
         trusted_file_write($before);
-        if (in_array($ip, $before, true)) {
+        if ($wasManaged) {
             try { table_add_negative($ip); } catch (Throwable) {}
         }
         throw $exception;
