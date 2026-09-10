@@ -153,16 +153,17 @@ $hardwareEndpoint = read_required($root . '/app/firewall_hardware.php');
 require_contains($hardwareEndpoint, "dmidecode/service/get", 'DMI inventory must use the official os-dmidecode API');
 require_contains($hardwareEndpoint, "diagnostics/cpu_usage/getcputype", 'CPU inventory must use the OPNsense core CPU API');
 require_contains($hardwareEndpoint, "diagnostics/system/system_resources", 'RAM inventory must use the OPNsense core resources API');
-require_contains($hardwareEndpoint, "smart/service/list/details", 'physical disk inventory must use the official os-smart API');
+require_contains($hardwareEndpoint, "diagnostics/system/system_disk", 'Dashboard storage percentage must use the OPNsense core filesystem usage API');
+require_not_contains($hardwareEndpoint, "smart/service/list/details", 'Dashboard storage percentage must not require os-smart');
 require_not_contains($hardwareEndpoint, "opnsentralagent/hardware/get", 'hardware endpoint must not call a custom opnSentral DMI API');
-require_not_contains($hardwareEndpoint, "diagnostics/system/system_disk", 'filesystem inventory must never be presented as physical disk hardware');
 
 $hardwareCard = read_required($root . '/app/assets/firewall-hardware-card.js');
 foreach (['Hardware','CPU','RAM','Storage'] as $label) {
     require_contains($hardwareCard, $label, 'Dashboard hardware card must show ' . $label);
 }
 require_contains($hardwareCard, 'Install os-dmidecode', 'Dashboard must clearly identify a missing os-dmidecode dependency');
-require_contains($hardwareCard, 'Install os-smart', 'Dashboard must clearly identify a missing os-smart dependency for physical disks');
+require_contains($hardwareCard, "% used", 'Dashboard Storage row must show root filesystem usage percentage');
+require_not_contains($hardwareCard, 'Install os-smart', 'Dashboard Storage row must not require os-smart');
 
 $dashboardStatus = read_required($root . '/app/firewall_status.php');
 require_contains($dashboardStatus, 'diagnostics/system/system_information', 'Dashboard must retrieve the running OPNsense version independently of firmware probe success');
