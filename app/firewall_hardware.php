@@ -48,7 +48,6 @@ function hardware_cpu(array $firewall): array
 {
     $result = ['available'=>false,'model'=>'','cores'=>null,'logical_cpus'=>null,'error'=>''];
     try {
-        // This is the same read-only endpoint used by OPNsense's own CPU dashboard widget.
         $payload = opn_request($firewall, 'diagnostics/cpu_usage/getcputype', 'GET', [], 15);
         $text = '';
         if (array_is_list($payload)) $text = hardware_string($payload[0] ?? '');
@@ -97,8 +96,6 @@ function hardware_dmidecode(array $firewall): array
     ];
 
     try {
-        // Official os-dmidecode plugin API. Do not duplicate dmidecode in the
-        // opnSentral plugin: OPNsense already owns and maintains this endpoint.
         $payload = opn_request($firewall, 'dmidecode/service/get', 'GET', [], 15);
         if (strtolower((string)($payload['status'] ?? '')) !== 'ok') {
             throw new RuntimeException('os-dmidecode returned an invalid status.');
@@ -124,31 +121,42 @@ function hardware_dmidecode(array $firewall): array
     return $result;
 }
 
-function hardware_smart(array $firewall): array
+function hardware_storage(array $firewall): array
 {
-    $result = ['available'=>false,'disks'=>[],'error'=>''];
+    $result = ['available'=>false,'used_pct'=>null,'device'=>'','mountpoint'=>'','error'=>''];
     try {
-        // Optional official os-smart plugin. It is the correct OPNsense source
-        // for physical disk identity/SMART metadata; system_disk is only df/filesystems.
-        $payload = opn_request($firewall, 'smart/service/list/details', 'POST', [], 20);
-        $rows = is_array($payload['devices'] ?? null) ? $payload['devices'] : [];
-        foreach ($rows as $row) {
-            if (!is_array($row)) continue;
-            $state = is_array($row['state'] ?? null) ? $row['state'] : [];
-            $capacity = $state['user_capacity']['bytes'] ?? $state['nvme_total_capacity'] ?? null;
-            $size = hardware_bytes($capacity) ?? 0;
-            $model = hardware_string($state['model_name'] ?? $state['product'] ?? $state['model_number'] ?? '');
-            $serial = hardware_string($state['serial_number'] ?? $row['ident'] ?? '');
-            $name = hardware_string($row['device'] ?? $state['device']['name'] ?? '');
-            if ($name === '' && $model === '' && $size <= 0) continue;
-            $result['disks'][] = [
-                'name'=>$name,
-                'model'=>$model,
-                'serial'=>$serial,
-                'size_bytes'=>$size,
-            ];
+        // OPNsense core endpoint: this is filesystem usage (df), which is exactly
+        // what the Dashboard "Storage" percentage represents. It is not used as
+        // physical HDD/SSD identity information.
+        $payload = opn_request($firewall, 'diagnostics/system/system_disk', 'GET', [], 15);
+        $devices = is_array($payload['devices'] ?? null) ? $payload['devices'] : [];
+        $selected = null;
+        foreach ($devices as $device) {
+            if (!is_array($device)) continue;
+            if (trim((string)($device['mountpoint'] ?? '')) === '/') {
+                $selected = $device;
+                break;
+            }
         }
-        $result['available'] = true;
+        if ($selected === null) {
+            foreach ($devices as $device) {
+                if (is_array($device)) {
+                    $selected = $device;
+                    break;
+                }
+            }
+        }
+        if ($selected !== null) {
+            $rawPct = trim((string)($selected['used_pct'] ?? ''));
+            $rawPct = rtrim($rawPct, "% \t\r\n");
+            if (is_numeric($rawPct)) {
+                $pct = max(0.0, min(100.0, (float)$rawPct));
+                $result['available'] = true;
+                $result['used_pct'] = $pct;
+                $result['device'] = hardware_string($selected['device'] ?? '');
+                $result['mountpoint'] = hardware_string($selected['mountpoint'] ?? '');
+            }
+        }
     } catch (Throwable $exception) {
         $result['error'] = $exception->getMessage();
     }
@@ -163,7 +171,7 @@ try {
     $dmi = hardware_dmidecode($firewall);
     $cpu = hardware_cpu($firewall);
     $memory = hardware_memory($firewall);
-    $smart = hardware_smart($firewall);
+    $storage = hardware_storage($firewall);
 
     echo json_encode([
         'ok'=>true,
@@ -177,18 +185,22 @@ try {
                 'logical_cpus'=>$cpu['logical_cpus'],
             ],
             'memory'=>['total_bytes'=>$memory['total_bytes']],
-            'disks'=>$smart['disks'],
+            'storage'=>[
+                'used_pct'=>$storage['used_pct'],
+                'device'=>$storage['device'],
+                'mountpoint'=>$storage['mountpoint'],
+            ],
             'availability'=>[
                 'dmidecode'=>$dmi['available'],
                 'cpu'=>$cpu['available'],
                 'memory'=>$memory['available'],
-                'smart'=>$smart['available'],
+                'storage'=>$storage['available'],
             ],
             'errors'=>[
                 'dmidecode'=>$dmi['error'],
                 'cpu'=>$cpu['error'],
                 'memory'=>$memory['error'],
-                'smart'=>$smart['error'],
+                'storage'=>$storage['error'],
             ],
             'collected_at'=>gmdate('c'),
         ],
