@@ -35,15 +35,10 @@
     }
 
     function storageLabel(hw){
-        const disks=Array.isArray(hw.disks)?hw.disks:[];
-        if(!disks.length)return '—';
-        const list=disks.slice(0,4).map(d=>{
-            const size=bytes(d.size_bytes);
-            const model=String(d.model||'').trim();
-            const name=String(d.name||'').trim();
-            return clean([size,model||name]);
-        }).filter(Boolean);
-        return list.join(' + ')||'—';
+        const pct=Number(hw.storage?.used_pct);
+        if(!Number.isFinite(pct)||pct<0)return 'Unavailable';
+        const rounded=Math.round(pct*10)/10;
+        return (Number.isInteger(rounded)?rounded.toFixed(0):rounded.toFixed(1))+'% used';
     }
 
     function ensurePanel(card){
@@ -77,17 +72,17 @@
             panel.querySelector('[data-ram]').textContent=availability.memory===true
                 ? bytes(hw.memory?.total_bytes)
                 : 'Unavailable';
-            panel.querySelector('[data-storage]').textContent=availability.smart===true
+            panel.querySelector('[data-storage]').textContent=availability.storage===true
                 ? storageLabel(hw)
-                : 'Install os-smart';
+                : 'Unavailable';
 
             const notes=[];
             if(availability.dmidecode!==true)notes.push('Hardware manufacturer/model/revision requires the official OPNsense os-dmidecode plugin.');
             if(availability.cpu!==true)notes.push('CPU information could not be read from the OPNsense core CPU API.');
             if(availability.memory!==true)notes.push('RAM information could not be read from the OPNsense core system-resources API.');
-            if(availability.smart!==true)notes.push('Physical disk model/capacity requires the official OPNsense os-smart plugin.');
+            if(availability.storage!==true)notes.push('Storage usage could not be read from the OPNsense core system-disk API.');
             panel.classList.toggle('hardware-fallback',notes.length>0);
-            panel.title=notes.length?notes.join(' '):'Hardware data from official OPNsense APIs: os-dmidecode, core CPU/resources and os-smart.';
+            panel.title=notes.length?notes.join(' '):'Hardware data from official OPNsense APIs. Storage is the root filesystem usage percentage.';
         }catch(error){
             panel.querySelectorAll('dd').forEach(dd=>dd.textContent='Unavailable');
             panel.title=error instanceof Error?error.message:String(error);
