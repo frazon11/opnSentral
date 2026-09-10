@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-const OPNSENTRAL_VERSION = '0.6.21.91';
+const OPNSENTRAL_VERSION = '0.6.21.92';
 const OPNSENTRAL_GITHUB_REPOSITORY = 'frazon11/opnSentral';
 const OPNSENTRAL_UPDATE_INTERVAL = 86400;
 
@@ -119,32 +119,27 @@ function update_check_run(bool $force = false): array
     if ($body === false || $curlError !== '') {
         $state['error'] = 'GitHub request failed: ' . ($curlError ?: 'unknown error');
         update_check_save($state);
-        return $state;
+        return update_check_compare($state);
     }
-    if ($status !== 200) {
-        $state['error'] = 'GitHub returned HTTP ' . $status . '.';
+    if ($status < 200 || $status >= 300) {
+        $state['error'] = 'GitHub returned HTTP ' . $status;
         update_check_save($state);
-        return $state;
+        return update_check_compare($state);
     }
-    $release = json_decode($body, true);
-    if (!is_array($release)) {
-        $state['error'] = 'GitHub returned invalid JSON.';
+
+    $release = json_decode((string) $body, true);
+    if (!is_array($release) || empty($release['tag_name'])) {
+        $state['error'] = 'GitHub returned an invalid latest-release response.';
         update_check_save($state);
-        return $state;
+        return update_check_compare($state);
     }
-    $tag = trim((string) ($release['tag_name'] ?? ''));
-    $latest = update_check_normalize_version($tag);
-    if ($latest === '' || !preg_match('/^\d+(?:\.\d+){1,3}(?:[-+][0-9A-Za-z.-]+)?$/', $latest)) {
-        $state['error'] = 'The latest GitHub release has an unsupported version tag.';
-        update_check_save($state);
-        return $state;
-    }
+
     $state['last_checked'] = gmdate('c');
-    $state['latest_version'] = $latest;
-    $state['latest_tag'] = $tag;
-    $state['release_name'] = trim((string) ($release['name'] ?? $tag));
-    $state['release_url'] = filter_var((string) ($release['html_url'] ?? ''), FILTER_VALIDATE_URL) ?: null;
-    $state['published_at'] = trim((string) ($release['published_at'] ?? '')) ?: null;
+    $state['latest_tag'] = (string) $release['tag_name'];
+    $state['latest_version'] = update_check_normalize_version((string) $release['tag_name']);
+    $state['release_name'] = (string) ($release['name'] ?? '');
+    $state['release_url'] = (string) ($release['html_url'] ?? '');
+    $state['published_at'] = (string) ($release['published_at'] ?? '');
     $state['error'] = null;
     $state = update_check_compare($state);
     update_check_save($state);
