@@ -277,9 +277,15 @@ require __DIR__ . '/inc/header.php';
                 const enabledCount = group.connections.filter(
                     item => item.connection.status === 'enabled'
                 ).length;
-                const partialCount = group.connections.filter(
-                    item => item.connection.status === 'partial'
-                ).length;
+                const totalCount = group.connections.length;
+                const connectionStateClass =
+                    totalCount === 0
+                        ? 'neutral'
+                        : enabledCount === totalCount
+                            ? 'good'
+                            : enabledCount === 0
+                                ? 'bad'
+                                : 'warning';
 
                 return `
                     <section class="card vpn-summary-card">
@@ -308,22 +314,8 @@ require __DIR__ . '/inc/header.php';
                                 <span class="vpn-summary-label">
                                     Connections
                                 </span>
-                                <span class="badge neutral">
-                                    ${group.connections.length}
-                                </span>
-                            </div>
-
-                            <div class="vpn-summary-metric">
-                                <span class="vpn-summary-label">
-                                    Summary
-                                </span>
-                                <span class="muted">
-                                    ${enabledCount} enabled
-                                    ${
-                                        partialCount
-                                            ? ' · ' + partialCount + ' partial'
-                                            : ''
-                                    }
+                                <span class="badge ${connectionStateClass}">
+                                    ${enabledCount} / ${totalCount}
                                 </span>
                             </div>
 
