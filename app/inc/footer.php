@@ -22,6 +22,7 @@
 <script>window.opnSentralCsrf=<?= json_encode(csrf_token(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;</script>
 <script src="/assets/firewall-card-actions.js?v=062190"></script>
 <script src="/assets/firewall-hardware-card.js?v=062186"></script>
+<script src="/assets/firmware-update-split.js?v=062194"></script>
 <script>
 (function(){
     document.title = 'opnSentral';
