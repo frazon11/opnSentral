@@ -5,6 +5,11 @@ declare(strict_types=1);
 /**
  * Convert the OPNsense firmware/status response into a stable structure
  * for the WebUI.
+ *
+ * OPNsense uses the firmware API for both base-system updates and ordinary
+ * package/plugin updates. Keep those states separate so a package such as
+ * OpenVPN does not make the UI claim that the OPNsense firmware itself is
+ * outdated.
  */
 function normalize_firmware_status(array $value): array
 {
@@ -26,6 +31,8 @@ function normalize_firmware_status(array $value): array
     );
 
     $availableVersion = '';
+    $firmwareUpdateAvailable = false;
+    $packageUpdates = [];
     $action = null;
 
     if ($status === 'upgrade') {
@@ -46,40 +53,55 @@ function normalize_firmware_status(array $value): array
             $availableVersion = (string) end($versions);
         }
 
+        $firmwareUpdateAvailable = true;
         $action = 'firmware_upgrade';
     } elseif ($status === 'update') {
-        $versions = [];
-
         foreach (($value['all_packages'] ?? []) as $package) {
             if (!is_array($package) || empty($package['new'])) {
                 continue;
             }
 
-            $name = strtolower((string) ($package['name'] ?? ''));
+            $name = trim((string) ($package['name'] ?? ''));
+            $nameLower = strtolower($name);
+            $current = (string) (
+                $package['current']
+                ?? $package['old']
+                ?? $package['installed']
+                ?? ''
+            );
+            $new = (string) $package['new'];
 
-            /*
-             * Prefer the main OPNsense package as the displayed target.
-             * Fall back to the highest package version below.
-             */
-            if ($name === 'opnsense' || $name === 'os-opnsense') {
-                $availableVersion = (string) $package['new'];
-                break;
+            if ($nameLower === 'opnsense' || $nameLower === 'os-opnsense') {
+                $availableVersion = $new;
+                $firmwareUpdateAvailable = true;
+                continue;
             }
 
-            $versions[] = (string) $package['new'];
+            $packageUpdates[] = [
+                'name' => $name !== '' ? $name : 'package',
+                'current' => $current,
+                'new' => $new,
+            ];
         }
 
-        if ($availableVersion === '' && $versions) {
-            usort($versions, 'version_compare');
-            $availableVersion = (string) end($versions);
-        }
-
-        if ($availableVersion === '' && !empty($value['product_target'])) {
+        /*
+         * product_target is a firmware target only when it differs from the
+         * currently installed OPNsense version. Do not use an unrelated
+         * package version as the firmware target.
+         */
+        if (
+            !$firmwareUpdateAvailable
+            && !empty($value['product_target'])
+            && (string) $value['product_target'] !== $currentVersion
+        ) {
             $availableVersion = (string) $value['product_target'];
+            $firmwareUpdateAvailable = true;
         }
 
         $action = 'firmware_update';
     }
+
+    $overallUpdateAvailable = in_array($status, ['update', 'upgrade'], true);
 
     return [
         'checked' => $status !== 'none' || stripos($message, 'requires to check') === false,
@@ -87,7 +109,11 @@ function normalize_firmware_status(array $value): array
         'message' => $message,
         'current_version' => $currentVersion,
         'available_version' => $availableVersion,
-        'update_available' => in_array($status, ['update', 'upgrade'], true),
+        'firmware_update_available' => $firmwareUpdateAvailable,
+        'package_update_available' => count($packageUpdates) > 0,
+        'package_update_count' => count($packageUpdates),
+        'package_updates' => $packageUpdates,
+        'update_available' => $overallUpdateAvailable,
         'action' => $action,
         'action_label' => $status === 'upgrade' ? 'Upgrade now' : 'Update now',
         'requires_reboot' => (string) ($value['status_reboot'] ?? '0') === '1',
