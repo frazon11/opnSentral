@@ -8,6 +8,7 @@ on:
       - "app/**"
       - "scripts/check-agent-runtime-isolation.php"
       - "scripts/check-feature-contracts.php"
+      - "scripts/check-ids-rendering.php"
       - "Dockerfile"
       - ".github/workflows/docker-publish.yml"
     tags:
@@ -79,12 +80,16 @@ jobs:
             php -l "$file" >/dev/null
           done < <(find app -type f \( -name '*.php' -o -path 'app/agent/opnsentral-agent' \) -print0)
           php -l scripts/check-feature-contracts.php >/dev/null
+          php -l scripts/check-ids-rendering.php >/dev/null
 
       - name: Check agent runtime config isolation
         run: php scripts/check-agent-runtime-isolation.php
 
       - name: Check feature contracts
         run: php scripts/check-feature-contracts.php
+
+      - name: Check IDS rendering
+        run: php scripts/check-ids-rendering.php
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
