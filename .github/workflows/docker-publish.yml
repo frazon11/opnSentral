@@ -7,8 +7,10 @@ on:
     paths:
       - "app/**"
       - "scripts/check-agent-runtime-isolation.php"
+      - "scripts/check-agent-recovery.php"
       - "scripts/check-feature-contracts.php"
       - "scripts/check-ids-rendering.php"
+      - "opnsense-plugin/opnsentral-agent/**"
       - "Dockerfile"
       - ".github/workflows/docker-publish.yml"
     tags:
@@ -79,11 +81,16 @@ jobs:
           while IFS= read -r -d '' file; do
             php -l "$file" >/dev/null
           done < <(find app -type f \( -name '*.php' -o -path 'app/agent/opnsentral-agent' \) -print0)
+          php -l scripts/check-agent-recovery.php >/dev/null
           php -l scripts/check-feature-contracts.php >/dev/null
           php -l scripts/check-ids-rendering.php >/dev/null
+          php -l opnsense-plugin/opnsentral-agent/src/etc/inc/plugins.inc.d/opnsentralagent.inc >/dev/null
 
       - name: Check agent runtime config isolation
         run: php scripts/check-agent-runtime-isolation.php
+
+      - name: Check agent recovery
+        run: php scripts/check-agent-recovery.php
 
       - name: Check feature contracts
         run: php scripts/check-feature-contracts.php
