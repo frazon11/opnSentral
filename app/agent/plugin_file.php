@@ -9,6 +9,7 @@ $files = [
     'rc' => '/opt/opnsentral-agent-plugin/etc/rc.d/opnsentral_agent',
     'lockout_guard_rc' => '/opt/opnsentral-agent-plugin/etc/rc.d/opnsentral_lockout_guard',
     'syshook' => '/opt/opnsentral-agent-plugin/etc/rc.syshook.d/start/50-opnsentral-agent',
+    'service_registry' => '/opt/opnsentral-agent-plugin/etc/inc/plugins.inc.d/opnsentralagent.inc',
     'bootstrap' => '/opt/opnsentral-agent-plugin/opnsense/scripts/OPNsense/OpnSentralAgent/bootstrap.php',
     'lockout_script' => '/opt/opnsentral-agent-plugin/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout.php',
     'lockout_guard' => '/opt/opnsentral-agent-plugin/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout_guard.sh',
