@@ -76,9 +76,45 @@ $title = $allowed[$view];
         return target;
     }
 
+    function finalColumnName(column){
+        return String(column).split('·').pop().trim().toLowerCase();
+    }
+
     function isEnabledColumn(column){
-        const finalPart=String(column).split('·').pop().trim().toLowerCase();
-        return finalPart==='enabled';
+        return finalColumnName(column)==='enabled';
+    }
+
+    function isDocumentationColumn(column){
+        return finalColumnName(column)==='documentation';
+    }
+
+    function isDocumentationUrlColumn(column){
+        return finalColumnName(column)==='documentation_url';
+    }
+
+    function columnLabel(column){
+        return isDocumentationUrlColumn(column)?'Documentation':column;
+    }
+
+    function safeHttpUrl(value){
+        const raw=String(value??'').trim();
+        if(raw==='') return null;
+        try{
+            const parsed=new URL(raw,window.location.href);
+            return (parsed.protocol==='http:'||parsed.protocol==='https:')?parsed.href:null;
+        }catch(error){
+            return null;
+        }
+    }
+
+    function renderCell(column,value){
+        if(isDocumentationUrlColumn(column)){
+            const url=safeHttpUrl(value);
+            if(url){
+                return '<a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Open documentation</a>';
+            }
+        }
+        return esc(display(value));
     }
 
     function enabledState(value){
@@ -159,8 +195,12 @@ $title = $allowed[$view];
             });
         });
 
+        const hasDocumentationUrl=flattened.some(row=>Object.keys(row).some(column=>isDocumentationUrlColumn(column)&&safeHttpUrl(row[column])));
         const columns=[];
-        flattened.forEach(row=>Object.keys(row).forEach(key=>{if(!columns.includes(key)) columns.push(key);}));
+        flattened.forEach(row=>Object.keys(row).forEach(key=>{
+            if(hasDocumentationUrl&&isDocumentationColumn(key)) return;
+            if(!columns.includes(key)) columns.push(key);
+        }));
         const preferred=['Firewall','Status','Error','Endpoint'];
         columns.sort((a,b)=>{
             const ai=preferred.indexOf(a),bi=preferred.indexOf(b);
@@ -189,10 +229,10 @@ $title = $allowed[$view];
         content.innerHTML=
             '<div style="padding:10px 14px;border-bottom:1px solid var(--border-color, #3d4852)" class="muted" data-ids-visible-count></div>'+
             '<div class="table-wrap"><table class="management-table"><thead>'+
-                '<tr>'+columns.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr>'+
+                '<tr>'+columns.map(c=>'<th>'+esc(columnLabel(c))+'</th>').join('')+'</tr>'+
                 '<tr class="ids-column-filter-row">'+columns.map(c=>'<th>'+buildHeaderFilter(c)+'</th>').join('')+'</tr>'+
             '</thead><tbody>'+
-                flattened.map((row,index)=>'<tr data-row-index="'+index+'">'+columns.map(c=>'<td>'+esc(display(row[c]))+'</td>').join('')+'</tr>').join('')+
+                flattened.map((row,index)=>'<tr data-row-index="'+index+'">'+columns.map(c=>'<td>'+renderCell(c,row[c])+'</td>').join('')+'</tr>').join('')+
             '</tbody></table></div>';
 
         bindHeaderFilters();
