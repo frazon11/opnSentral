@@ -174,7 +174,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
     try {
         require_configuration_unlocked(false);
-        $nameValue = trim((string)($_POST['name'] ?? $originalName));
+
+        // Alias renaming is deliberately disabled here. A rename can affect
+        // firewall/NAT/other-alias references and therefore needs a dedicated,
+        // reference-aware operation with post-change verification.
+        $nameValue = $originalName;
+        if (isset($_POST['name']) && strcasecmp(trim((string)$_POST['name']), $originalName) !== 0) {
+            throw new RuntimeException('Alias renaming is disabled. Change content, type, description or enabled state only.');
+        }
+
         $typeValue = trim((string)($_POST['type'] ?? 'host'));
         $contentValue = (string)($_POST['content'] ?? '');
         $descriptionValue = trim((string)($_POST['description'] ?? ''));
@@ -183,7 +191,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $targetFirewallId = (int)($_POST['target_firewall_id'] ?? $sourceFirewallId);
         $lines = central_alias_lines($contentValue);
 
-        if ($nameValue === '') throw new RuntimeException('Alias name must not be empty.');
         if (!isset($types[$typeValue])) throw new RuntimeException('Invalid alias type.');
         if ($lines === []) throw new RuntimeException('Enter at least one alias value.');
         if (mb_strlen($descriptionValue) > 255) throw new RuntimeException('Description may contain at most 255 characters.');
@@ -191,7 +198,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($scopeValue === 'one' && !isset($firewallById[$targetFirewallId])) throw new RuntimeException('Select a valid firewall.');
 
         $targets = $scopeValue === 'one' ? [$firewallById[$targetFirewallId]] : $firewalls;
-        $sourceWasRenamed = false;
 
         foreach ($targets as $firewall) {
             try {
@@ -207,10 +213,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $uuid = trim((string)$existing['uuid']);
                 backup_before_change($firewall, 'alias-edit');
 
-                // OPNsense set_item supports partial updates. Include name so a rename
-                // is handled by AliasController::setItemAction(), which also refactors references.
+                // Name is intentionally omitted. Normal alias editing must never
+                // implicitly perform a rename.
                 $payload = [
-                    'name' => $nameValue,
                     'type' => $typeValue,
                     'content' => implode("\n", $lines),
                     'description' => $descriptionValue,
@@ -228,19 +233,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $reconfigure = opn_raw_request($firewall, 'firewall/alias/reconfigure', 'POST', [], 45);
                 alias_edit_assert_success($reconfigure, 'reconfigure');
-                alias_edit_verify($firewall, $nameValue, $typeValue, $lines, $descriptionValue, $enabledValue, $types);
+                alias_edit_verify($firewall, $originalName, $typeValue, $lines, $descriptionValue, $enabledValue, $types);
                 $results[] = ['ok'=>true,'skipped'=>false,'name'=>$firewall['name'],'message'=>'Updated and verified.'];
-
-                if ((int)$firewall['id'] === $sourceFirewallId && strcasecmp($originalName, $nameValue) !== 0) {
-                    $sourceWasRenamed = true;
-                }
             } catch (Throwable $exception) {
                 $results[] = ['ok'=>false,'skipped'=>false,'name'=>$firewall['name'],'message'=>$exception->getMessage()];
             }
-        }
-
-        if ($sourceWasRenamed) {
-            $originalName = $nameValue;
         }
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
@@ -250,9 +247,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 require __DIR__ . '/inc/header.php';
 ?>
 <style>
-.alias-edit-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr);gap:20px}.alias-edit-form label{display:block;font-weight:700;margin:14px 0 6px}.alias-edit-form input[type=text],.alias-edit-form select,.alias-edit-form textarea{width:100%;box-sizing:border-box}.alias-edit-form textarea{min-height:220px;font-family:monospace;white-space:pre}.alias-edit-enabled{display:flex!important;align-items:center;gap:9px}.alias-edit-enabled input{width:auto}.alias-edit-source{padding:10px;border-radius:6px;background:rgba(127,127,127,.08)}.alias-edit-results{display:grid;gap:8px}.alias-edit-result{padding:10px;border-radius:6px;background:rgba(127,127,127,.08)}.alias-edit-result.good{border-left:4px solid #2aa84a}.alias-edit-result.bad{border-left:4px solid #d74747}@media(max-width:850px){.alias-edit-grid{grid-template-columns:1fr}}
+.alias-edit-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr);gap:20px}.alias-edit-form label{display:block;font-weight:700;margin:14px 0 6px}.alias-edit-form input[type=text],.alias-edit-form select,.alias-edit-form textarea{width:100%;box-sizing:border-box}.alias-edit-form textarea{min-height:220px;font-family:monospace;white-space:pre}.alias-edit-enabled{display:flex!important;align-items:center;gap:9px}.alias-edit-enabled input{width:auto}.alias-edit-source{padding:10px;border-radius:6px;background:rgba(127,127,127,.08)}.alias-edit-results{display:grid;gap:8px}.alias-edit-result{padding:10px;border-radius:6px;background:rgba(127,127,127,.08)}.alias-edit-result.good{border-left:4px solid #2aa84a}.alias-edit-result.bad{border-left:4px solid #d74747}.alias-name-readonly{opacity:.8;cursor:not-allowed}@media(max-width:850px){.alias-edit-grid{grid-template-columns:1fr}}
 </style>
-<div class="page-title"><div><h1>Edit alias</h1><p>Edit name, type, content, description and enabled state.</p></div><a class="button secondary" href="/alias_overview.php">Back to aliases</a></div>
+<div class="page-title"><div><h1>Edit alias</h1><p>Edit type, content, description and enabled state. Alias renaming is disabled until a reference-safe rename operation is available.</p></div><a class="button secondary" href="/alias_overview.php">Back to aliases</a></div>
 <?php if ($error): ?><div class="alert error"><?= h($error) ?></div><?php endif; ?>
 <div class="alias-edit-grid">
 <section class="card">
@@ -262,7 +259,9 @@ require __DIR__ . '/inc/header.php';
         <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
         <input type="hidden" name="original_name" value="<?= h($originalName) ?>">
         <input type="hidden" name="source_firewall_id" value="<?= (int)$sourceFirewallId ?>">
-        <label>Name</label><input type="text" name="name" required value="<?= h($nameValue) ?>">
+        <label>Name</label>
+        <input type="text" class="alias-name-readonly" readonly value="<?= h($nameValue) ?>">
+        <small class="muted">Read only. Renaming is disabled because references must be checked and updated safely.</small>
         <label>Type</label><select name="type"><?php foreach ($types as $value=>$label): ?><option value="<?= h($value) ?>" <?= $typeValue===$value?'selected':'' ?>><?= h($label) ?></option><?php endforeach; ?></select>
         <label>Content</label><textarea name="content" required spellcheck="false"><?= h($contentValue) ?></textarea><small class="muted">One value per line.</small>
         <label>Description</label><input type="text" name="description" maxlength="255" value="<?= h($descriptionValue) ?>"><small class="muted">Optional. Maximum 255 characters.</small>
