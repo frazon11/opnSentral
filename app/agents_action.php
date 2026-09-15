@@ -4,11 +4,49 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/agent_deployment.php';
+require_once __DIR__ . '/inc/opnsense.php';
 require_login();
 require_csrf();
 
 $action = (string) ($_POST['action'] ?? '');
 $pdo = db();
+
+function agent_action_is_fresh(array $agent): bool
+{
+    $lastSeen = !empty($agent['last_seen_at']) ? (strtotime((string) $agent['last_seen_at']) ?: 0) : 0;
+    return $lastSeen > 0 && (time() - $lastSeen) < 300;
+}
+
+function agent_action_recover_service(PDO $pdo, array $agent): string
+{
+    $firewallId = (int) ($agent['firewall_id'] ?? 0);
+    if ($firewallId <= 0) {
+        throw new RuntimeException('The stale agent is not associated with a managed firewall.');
+    }
+
+    $statement = $pdo->prepare('SELECT * FROM firewalls WHERE id = ?');
+    $statement->execute([$firewallId]);
+    $firewall = $statement->fetch();
+    if (!$firewall) {
+        throw new RuntimeException('The associated managed firewall no longer exists.');
+    }
+
+    $response = opn_raw_request(
+        $firewall,
+        'core/service/start/opnsentral_agent',
+        'POST',
+        [],
+        20
+    );
+    $responseText = strtolower(json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '');
+    foreach (['unknown service', 'could not find', 'not found', 'failed', 'error'] as $failure) {
+        if ($responseText !== '' && str_contains($responseText, $failure)) {
+            throw new RuntimeException('OPNsense did not accept the opnSentral agent service start request.');
+        }
+    }
+
+    return (string) ($firewall['name'] ?? ('Firewall #' . $firewallId));
+}
 
 if ($action === 'create_registration') {
     $firewallId = (int) ($_POST['firewall_id'] ?? 0);
@@ -135,10 +173,25 @@ if ($action === 'create_registration') {
         exit('Agent 0.1.2 or newer is required for outbound self-update.');
     }
     try {
+        $recoveredFirewall = null;
+        if (!agent_action_is_fresh($agent)) {
+            $recoveredFirewall = agent_action_recover_service($pdo, $agent);
+            sleep(3);
+            $statement->execute([$id]);
+            $agent = $statement->fetch() ?: $agent;
+            if (!agent_action_is_fresh($agent)) {
+                throw new RuntimeException(
+                    'Agent service start was requested on ' . $recoveredFirewall .
+                    ', but no heartbeat arrived yet. Refresh this page in a minute. '
+                    . 'If it remains stale, this older installation predates the recoverable-service registration and needs one full agent installer repair.'
+                );
+            }
+        }
         $jobId = agent_queue_self_update($agent);
-        $_SESSION['agent_update_result'] = 'Self-update job #' . $jobId . ' queued for ' . ((string) ($agent['name'] ?: $agent['last_hostname'] ?: $agent['agent_id'])) . '.';
+        $_SESSION['agent_update_result'] = ($recoveredFirewall !== null ? 'Recovered agent service on ' . $recoveredFirewall . '. ' : '')
+            . 'Self-update job #' . $jobId . ' queued for ' . ((string) ($agent['name'] ?: $agent['last_hostname'] ?: $agent['agent_id'])) . '.';
     } catch (Throwable $exception) {
-        $_SESSION['agent_update_result'] = 'Could not queue agent update: ' . $exception->getMessage();
+        $_SESSION['agent_update_result'] = 'Could not recover/update agent: ' . $exception->getMessage();
     }
 } elseif ($action === 'self_update_all') {
     require_configuration_unlocked(false);
@@ -154,6 +207,7 @@ if ($action === 'create_registration') {
     $skippedDisabled = 0;
     $skippedOld = 0;
     $skippedPending = 0;
+    $recoveryRequested = 0;
     $queueFailed = 0;
     $queueErrors = [];
 
@@ -173,6 +227,19 @@ if ($action === 'create_registration') {
             $skippedOld++;
             continue;
         }
+
+        if (!agent_action_is_fresh($agent)) {
+            try {
+                agent_action_recover_service($pdo, $agent);
+                $recoveryRequested++;
+            } catch (Throwable $exception) {
+                $queueFailed++;
+                $label = (string) ($agent['name'] ?: $agent['last_hostname'] ?: $agent['agent_id']);
+                $queueErrors[] = $label . ': recovery failed: ' . $exception->getMessage();
+            }
+            continue;
+        }
+
         if (version_compare($current, $targetVersion, '>=')) {
             $skippedCurrent++;
             continue;
@@ -195,15 +262,19 @@ if ($action === 'create_registration') {
     }
 
     $message = sprintf(
-        'Update all agents → target v%s: %d queued, %d already current, %d disabled, %d too old/unknown for self-update, %d already queued/running, %d queue failures.',
+        'Update all agents → target v%s: %d queued, %d recovery requests sent, %d already current, %d disabled, %d too old/unknown for self-update, %d already queued/running, %d failures.',
         $targetVersion,
         $queued,
+        $recoveryRequested,
         $skippedCurrent,
         $skippedDisabled,
         $skippedOld,
         $skippedPending,
         $queueFailed
     );
+    if ($recoveryRequested > 0) {
+        $message .= ' Refresh in about a minute; recovered agents can then receive updates.';
+    }
     if ($queueErrors !== []) {
         $message .= ' ' . implode(' | ', array_slice($queueErrors, 0, 5));
     }
