@@ -24,6 +24,7 @@ command -v fetch >/dev/null 2>&1 || { echo "FreeBSD fetch is required." >&2; exi
 command -v curl >/dev/null 2>&1 || { echo "curl is required on OPNsense." >&2; exit 1; }
 [ -x /usr/local/bin/php ] || { echo "/usr/local/bin/php is required." >&2; exit 1; }
 [ -x /usr/local/sbin/configctl ] || { echo "/usr/local/sbin/configctl is required." >&2; exit 1; }
+[ -x /usr/local/sbin/pluginctl ] || { echo "/usr/local/sbin/pluginctl is required." >&2; exit 1; }
 
 TMPDIR="/tmp/opnsentral-plugin.$$"
 trap 'rm -rf "$TMPDIR"' EXIT INT TERM
@@ -46,6 +47,7 @@ fetch_plugin_file()
 fetch_plugin_file rc /usr/local/etc/rc.d/opnsentral_agent 0755
 fetch_plugin_file lockout_guard_rc /usr/local/etc/rc.d/opnsentral_lockout_guard 0755
 fetch_plugin_file syshook /usr/local/etc/rc.syshook.d/start/50-opnsentral-agent 0755
+fetch_plugin_file service_registry /usr/local/etc/inc/plugins.inc.d/opnsentralagent.inc 0644
 fetch_plugin_file bootstrap /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/bootstrap.php 0755
 fetch_plugin_file lockout_script /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout.php 0755
 fetch_plugin_file lockout_guard /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout_guard.sh 0755
@@ -56,6 +58,7 @@ fetch_plugin_file acl /usr/local/opnsense/mvc/app/models/OPNsense/OpnSentralAgen
 fetch_plugin_file menu /usr/local/opnsense/mvc/app/models/OPNsense/OpnSentralAgent/Menu/Menu.xml 0644
 fetch_plugin_file view /usr/local/opnsense/mvc/app/views/OPNsense/OpnSentralAgent/index.volt 0644
 
+/usr/local/bin/php -l /usr/local/etc/inc/plugins.inc.d/opnsentralagent.inc >/dev/null
 /usr/local/bin/php -l /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/bootstrap.php >/dev/null
 /usr/local/bin/php -l /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout.php >/dev/null
 /usr/local/bin/php -l /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/IndexController.php >/dev/null
@@ -65,6 +68,14 @@ service configd restart >/dev/null
 sleep 1
 /usr/local/sbin/configctl configd actions | grep -q 'opnsentralagent sshlockout.status' || {
     echo "opnSentral sshlockout configd actions were not registered." >&2
+    exit 1
+}
+/usr/local/sbin/configctl configd actions | grep -q 'opnsentralagent agent.start' || {
+    echo "opnSentral agent service recovery action was not registered." >&2
+    exit 1
+}
+/usr/local/sbin/pluginctl -S opnsentral_agent >/dev/null 2>&1 || {
+    echo "opnSentral agent was not registered in the OPNsense service registry." >&2
     exit 1
 }
 
@@ -93,6 +104,7 @@ fi
 service opnsentral_agent onestatus >/dev/null
 
 [ -x /usr/local/etc/rc.syshook.d/start/50-opnsentral-agent ] || { echo "Agent startup recovery hook was not installed correctly." >&2; exit 1; }
+[ -r /usr/local/etc/inc/plugins.inc.d/opnsentralagent.inc ] || { echo "Agent OPNsense service registration was not installed correctly." >&2; exit 1; }
 [ -x /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout.php ] || { echo "SSH lockout trusted-host helper was not installed correctly." >&2; exit 1; }
 [ -x /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout_guard.sh ] || { echo "SSH lockout trusted-host guard was not installed correctly." >&2; exit 1; }
 [ -r /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/LockoutController.php ] || { echo "SSH lockout trusted-host API was not installed correctly." >&2; exit 1; }
@@ -100,6 +112,7 @@ service opnsentral_agent onestatus >/dev/null
 echo ""
 echo "os-opnsentral-agent installed and online."
 echo "Service: service opnsentral_agent status"
+echo "OPNsense service registry: /usr/local/etc/inc/plugins.inc.d/opnsentralagent.inc"
 echo "Lockout guard: service opnsentral_lockout_guard status"
 echo "Boot recovery: /usr/local/etc/rc.syshook.d/start/50-opnsentral-agent"
 echo "SSH lockout: /api/opnsentralagent/lockout/status"
