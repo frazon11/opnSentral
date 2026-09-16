@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "app/**"
+      - "scripts/check-admin-api-login.php"
       - "scripts/check-agent-runtime-isolation.php"
       - "scripts/check-agent-recovery.php"
       - "scripts/check-feature-contracts.php"
@@ -82,11 +83,15 @@ jobs:
           while IFS= read -r -d '' file; do
             php -l "$file" >/dev/null
           done < <(find app -type f \( -name '*.php' -o -path 'app/agent/opnsentral-agent' \) -print0)
+          php -l scripts/check-admin-api-login.php >/dev/null
           php -l scripts/check-agent-recovery.php >/dev/null
           php -l scripts/check-feature-contracts.php >/dev/null
           php -l scripts/check-firmware-ui.php >/dev/null
           php -l scripts/check-ids-rendering.php >/dev/null
           php -l opnsense-plugin/opnsentral-agent/src/etc/inc/plugins.inc.d/opnsentralagent.inc >/dev/null
+
+      - name: Check admin API-key login
+        run: php scripts/check-admin-api-login.php
 
       - name: Check agent runtime config isolation
         run: php scripts/check-agent-runtime-isolation.php
