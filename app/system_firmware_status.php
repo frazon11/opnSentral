@@ -27,9 +27,21 @@ require __DIR__ . '/inc/header.php';
 .firmware-meta-grid{display:grid;grid-template-columns:minmax(120px,180px) minmax(0,1fr);gap:7px 18px;margin:0}
 .firmware-meta-grid dt{font-weight:700;color:var(--muted)}
 .firmware-meta-grid dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.package-updates{margin-top:12px;border-top:1px solid rgba(127,127,127,.18);padding-top:8px}
+.package-updates[hidden]{display:none}
+.package-updates summary{cursor:pointer;display:flex;align-items:center;gap:7px;padding:5px 0;font-weight:700}
+.package-updates summary::-webkit-details-marker{display:none}
+.package-updates summary::before{content:'▸';display:inline-block;transition:transform .15s ease}
+.package-updates[open] summary::before{transform:rotate(90deg)}
+.package-updates-list{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:5px}
+.package-updates-list li{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:14px;align-items:center;padding:6px 8px;border-radius:6px;background:rgba(127,127,127,.06)}
+.package-updates-name{font-weight:600;overflow-wrap:anywhere}
+.package-updates-version{font-family:monospace;white-space:nowrap;color:var(--muted)}
 @media (max-width:720px){
   .firmware-meta-grid{grid-template-columns:1fr;gap:3px}
   .firmware-meta-grid dd{margin-bottom:8px}
+  .package-updates-list li{grid-template-columns:1fr;gap:2px}
+  .package-updates-version{white-space:normal}
 }
 </style>
 <div class="page-title management-page-title">
@@ -50,6 +62,10 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
   <div class="firmware-details muted">No firmware information loaded.</div>
+  <details class="package-updates" hidden>
+    <summary><span class="package-updates-summary">Available packages</span></summary>
+    <ul class="package-updates-list"></ul>
+  </details>
   <div class="firmware-meta" hidden>
     <dl class="firmware-meta-grid"></dl>
   </div>
@@ -154,6 +170,34 @@ require __DIR__ . '/inc/header.php';
    }
    panel.hidden=rows.length===0;
  }
+ function renderPackageUpdates(card,summary){
+   const panel=card.querySelector('.package-updates');
+   const label=card.querySelector('.package-updates-summary');
+   const list=card.querySelector('.package-updates-list');
+   if(!panel||!label||!list) return;
+   const updates=Array.isArray(summary?.package_updates)?summary.package_updates:[];
+   list.replaceChildren();
+   panel.open=false;
+   if(updates.length===0){
+     panel.hidden=true;
+     return;
+   }
+   label.textContent='Available packages ('+updates.length+')';
+   for(const pkg of updates){
+     const li=document.createElement('li');
+     const name=document.createElement('span');
+     const version=document.createElement('span');
+     name.className='package-updates-name';
+     version.className='package-updates-version';
+     name.textContent=String(pkg?.name||'package');
+     const current=String(pkg?.current||'').trim();
+     const next=String(pkg?.new||'').trim();
+     version.textContent=current&&next?current+' → '+next:(next||current||'update available');
+     li.append(name,version);
+     list.append(li);
+   }
+   panel.hidden=false;
+ }
  function show(text,bad=false){message.textContent=text;message.className='alert '+(bad?'error':'goodbox');}
  function storageKey(id){return 'opnsentral-firmware-audit-'+id;}
  function renderAudit(card,record){
@@ -181,12 +225,15 @@ require __DIR__ . '/inc/header.php';
    const state=card.querySelector('.firmware-state'), details=card.querySelector('.firmware-details'), update=card.querySelector('.firmware-update');
    state.textContent='Checking…'; state.className='firmware-state badge neutral'; update.classList.add('hidden');
    card.querySelector('.firmware-meta')?.setAttribute('hidden','');
+   const packagePanel=card.querySelector('.package-updates');
+   if(packagePanel){packagePanel.hidden=true;packagePanel.open=false;}
    try{
      const data=await action(card,'firmware_check');
      const s=data.summary||{};
      state.textContent=s.update_available?'Update available':'Up to date';
      state.className='firmware-state badge '+(s.update_available?'warning':'good');
      details.textContent=s.message||s.status||'Firmware status loaded.';
+     renderPackageUpdates(card,s);
      renderFirmwareMeta(card,data.value||{});
      if(s.update_available&&s.action){
        update.dataset.action=s.action;
