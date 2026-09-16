@@ -16,7 +16,7 @@ $required = [
     "label.textContent='Available packages ('+updates.length+')';" => 'collapsed summary must show the package count',
     "name.textContent=String(pkg?.name||'package');" => 'package names must be rendered as text, not HTML',
     "version.textContent=current&&next?current+' → '+next" => 'package version transitions must be rendered safely',
-    'panel.hidden=updates.length===0' => 'unused package list must be hidden',
+    'panel.hidden=true;' => 'unused package list must be hidden',
 ];
 
 foreach ($required as $needle => $message) {
