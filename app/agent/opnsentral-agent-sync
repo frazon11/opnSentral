@@ -1,0 +1,208 @@
+#!/usr/local/bin/php
+<?php
+
+declare(strict_types=1);
+
+const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
+const STATE_PATH = '/var/db/opnsentral-agent-sync.json';
+const SYNC_SCHEMA_VERSION = 1;
+
+function fail(string $message): never
+{
+    fwrite(STDERR, "opnSentral delta sync: {$message}\n");
+    exit(1);
+}
+
+function load_json_file(string $path): array
+{
+    if (!is_file($path)) return [];
+    $decoded = json_decode((string)file_get_contents($path), true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function save_state(array $state): void
+{
+    $dir = dirname(STATE_PATH);
+    if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+        fail('Could not create state directory.');
+    }
+    if (file_put_contents(STATE_PATH, json_encode($state, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n", LOCK_EX) === false) {
+        fail('Could not save local sync state.');
+    }
+    chmod(STATE_PATH, 0600);
+}
+
+function command_value(string $command): string
+{
+    return trim((string)shell_exec($command . ' 2>/dev/null'));
+}
+
+function hostname_value(): string
+{
+    $hostname = gethostname();
+    return is_string($hostname) && $hostname !== '' ? $hostname : 'opnsense';
+}
+
+function opnsense_version(): string
+{
+    foreach (['/usr/local/sbin/opnsense-version -a','/usr/local/sbin/opnsense-version'] as $cmd) {
+        $value = command_value($cmd);
+        if ($value !== '') return substr($value, 0, 128);
+    }
+    return 'unknown';
+}
+
+function normalize(mixed $value): mixed
+{
+    if (!is_array($value)) return $value;
+    if (array_is_list($value)) return array_map('normalize', $value);
+    ksort($value, SORT_STRING);
+    foreach ($value as $key => $item) $value[$key] = normalize($item);
+    return $value;
+}
+
+function section_hash(mixed $value): string
+{
+    return hash('sha256', json_encode(normalize($value), JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));
+}
+
+function collect_system(): array
+{
+    $uptime = command_value('/usr/bin/uptime');
+    $kernel = command_value('/usr/bin/uname -a');
+    $arch = php_uname('m');
+    $cpu = command_value('/sbin/sysctl -n hw.model');
+    $cpus = command_value('/sbin/sysctl -n hw.ncpu');
+    $physmem = command_value('/sbin/sysctl -n hw.physmem');
+    $load = command_value('/sbin/sysctl -n vm.loadavg');
+
+    return [
+        'hostname' => hostname_value(),
+        'version' => opnsense_version(),
+        'architecture' => $arch,
+        'kernel' => $kernel,
+        'uptime' => $uptime,
+        'cpu_model' => $cpu,
+        'cpu_count' => $cpus,
+        'physical_memory_bytes' => $physmem,
+        'load_average' => $load,
+        'collected_at' => gmdate('c'),
+    ];
+}
+
+function collect_firmware(): array
+{
+    $version = opnsense_version();
+    return [
+        'product' => [
+            'product_name' => 'OPNsense',
+            'product_version' => $version,
+            'product_arch' => php_uname('m'),
+        ],
+        'connection' => 'agent-cache',
+        'last_check' => gmdate('c'),
+        'needs_reboot' => false,
+        '_agent_cached' => true,
+    ];
+}
+
+function run_process(array $command, string $stdin): array
+{
+    $proc = proc_open($command, [0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']], $pipes);
+    if (!is_resource($proc)) throw new RuntimeException('Could not start curl.');
+    fwrite($pipes[0], $stdin);
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]); fclose($pipes[2]);
+    $status = proc_close($proc);
+    return ['status'=>$status,'stdout'=>(string)$stdout,'stderr'=>(string)$stderr];
+}
+
+function signed_post(array $config, array $payload): array
+{
+    foreach (['server_url','agent_id','agent_secret'] as $key) {
+        if (trim((string)($config[$key] ?? '')) === '') throw new RuntimeException('Missing '.$key.' in agent config.');
+    }
+
+    $body = json_encode($payload, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+    $timestamp = (string)time();
+    $nonce = bin2hex(random_bytes(16));
+    $canonical = $timestamp."\n".$nonce."\n".hash('sha256', $body);
+    $signature = hash_hmac('sha256', $canonical, (string)$config['agent_secret']);
+    $url = rtrim((string)$config['server_url'], '/') . '/api/agent_report.php';
+
+    $curl = is_executable('/usr/local/bin/curl') ? '/usr/local/bin/curl' : '/usr/bin/curl';
+    $command = [$curl,'--silent','--show-error','--fail','--connect-timeout','10','--max-time','60','--proto','=https',
+        '--header','Content-Type: application/json','--header','Accept: application/json',
+        '--header','X-OpnSentral-Agent-ID: '.$config['agent_id'],
+        '--header','X-OpnSentral-Timestamp: '.$timestamp,
+        '--header','X-OpnSentral-Nonce: '.$nonce,
+        '--header','X-OpnSentral-Signature: '.$signature,
+        '--request','POST','--data-binary','@-'];
+    if (($config['verify_tls'] ?? true) === false) $command[] = '--insecure';
+    $command[] = $url;
+
+    $result = run_process($command, $body);
+    if ((int)$result['status'] !== 0) throw new RuntimeException(trim($result['stderr']) ?: 'HTTPS request failed.');
+    $decoded = json_decode($result['stdout'], true);
+    if (!is_array($decoded) || ($decoded['ok'] ?? false) !== true) throw new RuntimeException((string)($decoded['error'] ?? 'Server rejected sync.'));
+    return $decoded;
+}
+
+$config = load_json_file(CONFIG_PATH);
+if ($config === []) fail('Existing opnSentral agent registration was not found.');
+$previous = load_json_file(STATE_PATH);
+$revision = max(0, (int)($previous['revision'] ?? 0));
+$lastFull = max(0, (int)($previous['last_full_at'] ?? 0));
+$previousHashes = is_array($previous['hashes'] ?? null) ? $previous['hashes'] : [];
+
+$sections = [
+    'system' => collect_system(),
+    'firmware' => collect_firmware(),
+];
+$hashes = [];
+$changed = [];
+foreach ($sections as $name => $value) {
+    $hashes[$name] = section_hash($value);
+    if (($previousHashes[$name] ?? '') !== $hashes[$name]) $changed[$name] = $value;
+}
+
+$full = $revision === 0 || $lastFull === 0 || (time() - $lastFull) >= 86400;
+$nextRevision = $revision + 1;
+$payload = [
+    'hostname' => hostname_value(),
+    'agent_version' => 'delta-sync-0.1',
+    'opnsense_version' => opnsense_version(),
+    'architecture' => php_uname('m'),
+    'platform' => 'opnsense',
+    'reported_at' => gmdate('c'),
+    'sync' => [
+        'mode' => $full ? 'full' : 'delta',
+        'revision' => $nextRevision,
+        'base_revision' => $revision,
+        'schema_version' => SYNC_SCHEMA_VERSION,
+    ],
+    'sections' => $full ? $sections : $changed,
+];
+
+try {
+    $response = signed_post($config, $payload);
+    if (($response['resync_required'] ?? false) === true) {
+        $payload['sync']['mode'] = 'full';
+        $payload['sync']['base_revision'] = 0;
+        $payload['sections'] = $sections;
+        $response = signed_post($config, $payload);
+    }
+
+    save_state([
+        'revision' => (int)($response['revision'] ?? $nextRevision),
+        'last_full_at' => $full ? time() : $lastFull,
+        'hashes' => $hashes,
+        'last_success_at' => time(),
+    ]);
+
+    fwrite(STDOUT, 'opnSentral delta sync OK; revision='.(int)($response['revision'] ?? $nextRevision).'; changed='.implode(',', array_keys($changed))."\n");
+} catch (Throwable $exception) {
+    fail($exception->getMessage());
+}
