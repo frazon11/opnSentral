@@ -6,14 +6,18 @@ on:
       - main
     paths:
       - "app/**"
+      - "webssh/**"
       - "scripts/check-admin-api-login.php"
       - "scripts/check-agent-runtime-isolation.php"
       - "scripts/check-agent-recovery.php"
       - "scripts/check-feature-contracts.php"
       - "scripts/check-firmware-ui.php"
       - "scripts/check-ids-rendering.php"
+      - "scripts/check-webssh.php"
       - "opnsense-plugin/opnsentral-agent/**"
       - "Dockerfile"
+      - "apache.conf"
+      - "entrypoint.sh"
       - ".github/workflows/docker-publish.yml"
     tags:
       - "v*"
@@ -70,13 +74,15 @@ jobs:
         run: |
           test -f Dockerfile || { echo "::error::Dockerfile is missing from repository root"; exit 1; }
           test -d app || { echo "::error::app directory is missing from repository root"; exit 1; }
+          test -f webssh/server.js || { echo "::error::webssh/server.js is missing"; exit 1; }
+          test -f webssh/package.json || { echo "::error::webssh/package.json is missing"; exit 1; }
           test -f telemetry-server/Dockerfile || { echo "::error::telemetry-server/Dockerfile is missing"; exit 1; }
           test -d telemetry-server/app || { echo "::error::telemetry-server/app directory is missing"; exit 1; }
           echo "Building version: ${{ steps.version.outputs.version }}"
           echo "Building commit: $GITHUB_SHA"
           echo "Triggered by ref: $GITHUB_REF"
 
-      - name: Lint PHP sources
+      - name: Lint PHP and JavaScript sources
         shell: bash
         run: |
           set -euo pipefail
@@ -88,7 +94,9 @@ jobs:
           php -l scripts/check-feature-contracts.php >/dev/null
           php -l scripts/check-firmware-ui.php >/dev/null
           php -l scripts/check-ids-rendering.php >/dev/null
+          php -l scripts/check-webssh.php >/dev/null
           php -l opnsense-plugin/opnsentral-agent/src/etc/inc/plugins.inc.d/opnsentralagent.inc >/dev/null
+          node --check webssh/server.js
 
       - name: Check admin API-key login
         run: php scripts/check-admin-api-login.php
@@ -107,6 +115,9 @@ jobs:
 
       - name: Check IDS rendering
         run: php scripts/check-ids-rendering.php
+
+      - name: Check WebSSH
+        run: php scripts/check-webssh.php
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
