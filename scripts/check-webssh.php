@@ -54,8 +54,12 @@ foreach ($checks as [$file, $needle, $message]) {
     }
 }
 
-if (preg_match('/new WebSocket\([^\n]*(?:host|target)\s*\+/i', $contents['page'])) {
-    fwrite(STDERR, "WebSSH regression failed: browser appears able to construct a WebSocket target from host data.\n");
+if (!str_contains($contents['page'], "new WebSocket(scheme+'//'+location.host+'/webssh/socket')")) {
+    fwrite(STDERR, "WebSSH regression failed: browser must connect only to the same-origin WebSSH socket.\n");
+    exit(1);
+}
+if (str_contains($contents['page'], 'new WebSocket(selected.host') || str_contains($contents['page'], 'new WebSocket(target.host')) {
+    fwrite(STDERR, "WebSSH regression failed: browser must not construct WebSocket destinations from firewall host data.\n");
     exit(1);
 }
 
@@ -76,6 +80,8 @@ if ($payload === '' || !hash_equals($expected, $signature)) {
     exit(1);
 }
 
+$padding = strlen($payload) % 4;
+if ($padding !== 0) $payload .= str_repeat('=', 4 - $padding);
 $decoded = json_decode(base64_decode(strtr($payload, '-_', '+/')), true);
 if (!is_array($decoded) || ($decoded['host'] ?? '') !== '192.0.2.10' || ($decoded['firewall_id'] ?? 0) !== 42) {
     fwrite(STDERR, "WebSSH regression failed: generated target token payload is invalid.\n");
