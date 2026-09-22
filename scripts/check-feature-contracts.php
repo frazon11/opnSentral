@@ -82,6 +82,20 @@ require_contains($cardActions, "Notifications: ", 'Dashboard must expose per-fir
 require_contains($cardActions, '/ssh_lockout.php?firewall_id=', 'per-firewall Manage page must expose SSH/WebGUI lockout management');
 require_contains($cardActions, "link.href='/blocked_ips.php'", 'Firewall navigation must expose fleet blocked-IP management');
 
+$header = read_required($root . '/app/inc/header.php');
+require_contains($header, '<span class="menu-level2">Tools</span>', 'opnSentral navigation must expose Tools as a second-level section');
+require_contains($header, '<span class="menu-level2">Settings</span>', 'opnSentral navigation must expose Settings as a second-level section');
+require_contains($header, 'href="/settings.php"><span>General</span></a>', 'application settings page must live under Settings as General');
+require_contains($header, 'href="/notifications.php"', 'Notifications must remain available under opnSentral Settings');
+require_not_contains($header, '<span>Application Settings</span>', 'legacy Application Settings label must not return');
+$toolsPos = strpos($header, '<span class="menu-level2">Tools</span>');
+$settingsPos = strpos($header, '<span class="menu-level2">Settings</span>', $toolsPos === false ? 0 : $toolsPos + 1);
+$notificationsPos = strpos($header, 'href="/notifications.php"', $settingsPos === false ? 0 : $settingsPos + 1);
+if ($toolsPos === false || $settingsPos === false || $notificationsPos === false || !($toolsPos < $settingsPos && $settingsPos < $notificationsPos)) {
+    fwrite(STDERR, "Feature contract failed: opnSentral Tools/Settings/Notifications hierarchy changed unexpectedly.\n");
+    exit(1);
+}
+
 $installer = read_required($root . '/app/agent/install-plugin.sh');
 require_contains($installer, 'fetch_plugin_file syshook', 'agent installer must deploy the OPNsense startup recovery hook');
 require_contains($installer, '/usr/local/etc/rc.syshook.d/start/50-opnsentral-agent', 'agent installer must verify the startup recovery hook');
