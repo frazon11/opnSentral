@@ -169,6 +169,10 @@ function nav_active_query(string $path, string $key, string $value): string {
                 <span class="menu-level1">opnSentral</span>
                 <a class="menu-link<?= nav_active(['/firewall_edit.php']) ?>" href="/firewall_edit.php"><span><?= h(t('menu.add_firewall')) ?></span></a>
                 <a class="menu-link<?= nav_active(['/agents.php','/agent_bootstrap.php']) ?>" href="/agents.php"><span>Agents</span></a>
+
+                <span class="menu-level2">Tools</span>
+                <a class="menu-link<?= nav_active(['/webssh.php']) ?>" href="/webssh.php"><span>WebSSH</span></a>
+
                 <a class="menu-link<?= nav_active(['/troubleshooting.php']) ?>" href="/troubleshooting.php"><span>Troubleshooting</span></a>
                 <a class="menu-link<?= nav_active(['/settings.php']) ?>" href="/settings.php"><span>Application Settings</span></a>
                 <a class="menu-link<?= nav_active(['/notifications.php']) ?>" href="/notifications.php"><span><?= h(t('menu.notifications')) ?></span></a>
