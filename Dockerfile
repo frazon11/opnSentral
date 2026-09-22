@@ -13,6 +13,8 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        nodejs \
+        npm \
         libcurl4t64 \
         libsqlite3-0 \
         libcurl4-openssl-dev \
@@ -30,11 +32,19 @@ RUN set -eux; \
         'max_execution_time=600' \
         'max_input_time=600' \
         > /usr/local/etc/php/conf.d/opnsentral-uploads.ini; \
-    a2enmod rewrite headers; \
-    apt-mark manual ca-certificates curl libcurl4t64 libsqlite3-0 libzip5; \
+    a2enmod rewrite headers proxy proxy_http proxy_wstunnel; \
+    apt-mark manual ca-certificates curl nodejs npm libcurl4t64 libsqlite3-0 libzip5; \
     apt-get purge -y --auto-remove libcurl4-openssl-dev libsqlite3-dev libzip-dev; \
     php -r 'if (!class_exists("ZipArchive")) { fwrite(STDERR, "ZipArchive lost after cleanup\\n"); exit(1); }'; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+COPY webssh/ /opt/opnsentral-webssh/
+RUN set -eux; \
+    cd /opt/opnsentral-webssh; \
+    npm install --omit=dev --omit=optional; \
+    test -f node_modules/xterm/lib/xterm.js; \
+    test -f node_modules/xterm-addon-fit/lib/xterm-addon-fit.js; \
+    test -f node_modules/xterm/css/xterm.css
 
 COPY app/ /var/www/html/
 COPY opnsense-plugin/opnsentral-agent/src/ /opt/opnsentral-agent-plugin/
@@ -42,10 +52,14 @@ COPY apache.conf /etc/apache2/conf-available/opnsentral.conf
 COPY entrypoint.sh /usr/local/bin/opnsentral-entrypoint
 
 RUN set -eux; \
+    mkdir -p /var/www/html/assets/vendor/xterm; \
+    cp /opt/opnsentral-webssh/node_modules/xterm/lib/xterm.js /var/www/html/assets/vendor/xterm/xterm.js; \
+    cp /opt/opnsentral-webssh/node_modules/xterm-addon-fit/lib/xterm-addon-fit.js /var/www/html/assets/vendor/xterm/xterm-addon-fit.js; \
+    cp /opt/opnsentral-webssh/node_modules/xterm/css/xterm.css /var/www/html/assets/vendor/xterm/xterm.css; \
     chmod +x /usr/local/bin/opnsentral-entrypoint; \
     a2enconf opnsentral; \
     mkdir -p /var/www/data /var/www/backups; \
-    chown -R www-data:www-data /var/www/html /var/www/data /var/www/backups
+    chown -R www-data:www-data /var/www/html /var/www/data /var/www/backups /opt/opnsentral-webssh
 
 WORKDIR /var/www/html
 
