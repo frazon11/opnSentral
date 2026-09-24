@@ -6,6 +6,9 @@ require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/webssh.php';
 require_login();
 
+$keyFlash = $_SESSION['webssh_key_result'] ?? null;
+unset($_SESSION['webssh_key_result']);
+
 $firewalls = db()->query('SELECT * FROM firewalls ORDER BY name')->fetchAll();
 $rows = [];
 foreach ($firewalls as $firewall) {
@@ -51,8 +54,18 @@ require __DIR__ . '/inc/header.php';
     <a class="button secondary" href="/ssh_access.php">Managed SSH Access</a>
 </div>
 
+<?php if (is_array($keyFlash)): ?>
+<div class="alert <?= !empty($keyFlash['ok']) ? 'goodbox' : 'error' ?>">
+    <?= h((string) ($keyFlash['message'] ?? '')) ?>
+</div>
+<?php endif; ?>
+
 <div class="alert warningbox">
     WebSSH can connect only to firewalls already configured in opnSentral. Stored WebSSH credentials are encrypted with APP_KEY and passed to the internal SSH bridge only inside a short-lived encrypted token; they are never exposed to browser JavaScript in plaintext. Host keys use trust-on-first-use and are pinned for later sessions.
+</div>
+
+<div class="alert goodbox">
+    <strong>RSA key deployment:</strong> opnSentral can generate a dedicated 3072-bit RSA keypair per firewall and deploy only the public key to the configured OPNsense SSH user through agent <?= h(WEBSSH_KEY_AGENT_MIN_VERSION) ?> or newer. Existing authorized_keys entries are preserved.
 </div>
 
 <div class="webssh-table-wrap">
@@ -76,8 +89,21 @@ require __DIR__ . '/inc/header.php';
                 data-host="<?= h((string) $target['host']) ?>"
                 data-port="<?= (int) $target['port'] ?>"
                 data-auto="<?= !empty($entry['auto_auth']) ? '1' : '0' ?>">Open terminal</button>
-            <?php if (empty($entry['auto_auth'])): ?>
+            <?php
+                $sshUser = trim((string) ($firewall['ssh_username'] ?? ''));
+                $hasStoredRsaCandidate = (string) ($firewall['ssh_auth_method'] ?? '') === 'key'
+                    && trim((string) ($firewall['ssh_private_key_enc'] ?? '')) !== '';
+            ?>
+            <?php if ($sshUser === ''): ?>
                 <a class="button secondary" href="/firewall_edit.php?id=<?= (int) $firewall['id'] ?>">Configure login</a>
+            <?php else: ?>
+                <form method="post" action="/webssh_key_action.php" style="display:inline" onsubmit="return confirm('<?= $hasStoredRsaCandidate ? 'Deploy the stored RSA public key' : 'Generate a new 3072-bit RSA keypair and deploy its public key' ?> to <?= h($sshUser) ?> on <?= h((string) $firewall['name']) ?>? Existing authorized_keys entries will be preserved.');">
+                    <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+                    <input type="hidden" name="firewall_id" value="<?= (int) $firewall['id'] ?>">
+                    <input type="hidden" name="action" value="<?= $hasStoredRsaCandidate ? 'deploy_existing' : 'generate_deploy' ?>">
+                    <button type="submit" class="button secondary"><?= $hasStoredRsaCandidate ? 'Deploy public key' : 'Generate RSA + deploy' ?></button>
+                </form>
+                <a class="button secondary" href="/firewall_edit.php?id=<?= (int) $firewall['id'] ?>">Connection settings</a>
             <?php endif; ?>
         </td>
     <?php else: ?>
