@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-const AGENT_VERSION = '0.1.16';
+const AGENT_VERSION = '0.1.17';
 const CONFIG_PATH = '/usr/local/etc/opnsentral-agent.json';
 
 function fail(string $message, int $code = 1): never
