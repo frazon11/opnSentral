@@ -97,7 +97,7 @@ require __DIR__ . '/inc/header.php';
             <?php if ($sshUser === ''): ?>
                 <a class="button secondary" href="/firewall_edit.php?id=<?= (int) $firewall['id'] ?>">Configure login</a>
             <?php else: ?>
-                <form method="post" action="/webssh_key_action.php" style="display:inline" onsubmit="return confirm('<?= $hasStoredRsaCandidate ? 'Deploy the stored RSA public key' : 'Generate a new 3072-bit RSA keypair and deploy its public key' ?> to <?= h($sshUser) ?> on <?= h((string) $firewall['name']) ?>? Existing authorized_keys entries will be preserved.');">
+                <form method="post" action="/webssh_key_action.php" style="display:inline" onsubmit="return confirm('Proceed with SSH public-key deployment? Existing authorized_keys entries will be preserved.');">
                     <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
                     <input type="hidden" name="firewall_id" value="<?= (int) $firewall['id'] ?>">
                     <input type="hidden" name="action" value="<?= $hasStoredRsaCandidate ? 'deploy_existing' : 'generate_deploy' ?>">
