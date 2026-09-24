@@ -20,6 +20,29 @@ function appKey() {
   return Buffer.from(raw, 'hex');
 }
 
+function decryptCredentialBlob(blob) {
+  const raw = Buffer.from(String(blob || ''), 'base64');
+  if (raw.length < 29) throw new Error('Invalid WebSSH credential blob.');
+  const iv = raw.subarray(0, 12);
+  const tag = raw.subarray(12, 28);
+  const ciphertext = raw.subarray(28);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', appKey(), iv);
+  decipher.setAuthTag(tag);
+  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+  const credentials = JSON.parse(plaintext);
+  const username = String(credentials.username || '').trim();
+  const authMethod = String(credentials.auth_method || 'password');
+  const password = String(credentials.password || '');
+  const privateKey = String(credentials.private_key || '');
+  if (!username || username.length > 128) throw new Error('Stored SSH username is invalid.');
+  if (authMethod === 'key') {
+    if (!privateKey || privateKey.length > 131072) throw new Error('Stored SSH private key is invalid.');
+  } else if (!password || password.length > 4096) {
+    throw new Error('Stored SSH password is invalid.');
+  }
+  return { username, authMethod: authMethod === 'key' ? 'key' : 'password', password, privateKey };
+}
+
 function timingSafeHexEqual(a, b) {
   if (!/^[a-f0-9]{64}$/i.test(a) || !/^[a-f0-9]{64}$/i.test(b)) return false;
   return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
@@ -49,11 +72,12 @@ function decodeToken(token) {
   const port = Number(payload.port || 22);
   const firewallId = Number(payload.firewall_id || 0);
   const firewallName = String(payload.firewall_name || '').trim();
+  const credentialBlob = String(payload.credential_blob || '');
   if (!host || !Number.isInteger(port) || port < 1 || port > 65535 || !Number.isInteger(firewallId) || firewallId < 1) {
     throw new Error('Incomplete WebSSH target token.');
   }
 
-  return { host, port, firewallId, firewallName };
+  return { host, port, firewallId, firewallName, credentialBlob };
 }
 
 function readKnownHosts() {
@@ -159,12 +183,19 @@ wss.on('connection', (ws) => {
       let privateKey = '';
       try {
         target = decodeToken(message.token);
-        username = String(message.username || '').trim();
-        password = String(message.password || '');
-        privateKey = String(message.private_key || '');
-        if (!username || username.length > 128) throw new Error('A valid SSH username is required.');
-        if (!password && !privateKey) throw new Error('Enter an SSH password or private key.');
-        if (password.length > 4096 || privateKey.length > 131072) throw new Error('SSH credential input is too large.');
+        if (target.credentialBlob) {
+          const stored = decryptCredentialBlob(target.credentialBlob);
+          username = stored.username;
+          password = stored.authMethod === 'password' ? stored.password : '';
+          privateKey = stored.authMethod === 'key' ? stored.privateKey : '';
+        } else {
+          username = String(message.username || '').trim();
+          password = String(message.password || '');
+          privateKey = String(message.private_key || '');
+          if (!username || username.length > 128) throw new Error('A valid SSH username is required.');
+          if (!password && !privateKey) throw new Error('No stored WebSSH credentials are configured. Enter an SSH password or private key.');
+          if (password.length > 4096 || privateKey.length > 131072) throw new Error('SSH credential input is too large.');
+        }
       } catch (error) {
         send(ws, { type: 'error', message: error.message || 'Invalid WebSSH connection request.' });
         return;
