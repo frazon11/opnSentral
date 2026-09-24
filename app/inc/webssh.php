@@ -29,7 +29,7 @@ function webssh_target_from_firewall(array $firewall): array
         'firewall_id' => (int) ($firewall['id'] ?? 0),
         'firewall_name' => trim((string) ($firewall['name'] ?? 'Firewall')),
         'host' => $host,
-        'port' => 22,
+        'port' => max(1, min(65535, (int) ($firewall['ssh_port'] ?? 22))),
     ];
 }
 
