@@ -77,3 +77,72 @@ function webssh_create_target_token(array $firewall, int $lifetime = 90): string
     $signature = hash_hmac('sha256', $encoded, crypto_key());
     return $encoded . '.' . $signature;
 }
+
+
+function webssh_ssh_string(string $value): string
+{
+    return pack('N', strlen($value)) . $value;
+}
+
+function webssh_ssh_mpint(string $value): string
+{
+    $value = ltrim($value, "\0");
+    if ($value === '') $value = "\0";
+    if ((ord($value[0]) & 0x80) !== 0) $value = "\0" . $value;
+    return pack('N', strlen($value)) . $value;
+}
+
+function webssh_rsa_public_key_from_private(string $privateKey, string $comment = 'opnSentral'): string
+{
+    $key = openssl_pkey_get_private($privateKey);
+    if ($key === false) {
+        throw new RuntimeException('Stored private key is not an OpenSSL-readable RSA private key.');
+    }
+    $details = openssl_pkey_get_details($key);
+    if (!is_array($details) || ($details['type'] ?? null) !== OPENSSL_KEYTYPE_RSA || !is_array($details['rsa'] ?? null)) {
+        throw new RuntimeException('Stored private key is not an RSA key.');
+    }
+    $n = (string) ($details['rsa']['n'] ?? '');
+    $e = (string) ($details['rsa']['e'] ?? '');
+    if ($n === '' || $e === '') throw new RuntimeException('Could not extract RSA public-key parameters.');
+    $blob = webssh_ssh_string('ssh-rsa') . webssh_ssh_mpint($e) . webssh_ssh_mpint($n);
+    $comment = preg_replace('/[^A-Za-z0-9._@-]+/', '-', trim($comment)) ?: 'opnSentral';
+    return 'ssh-rsa ' . base64_encode($blob) . ' ' . $comment;
+}
+
+function webssh_generate_rsa_keypair(int $bits = 3072, string $comment = 'opnSentral'): array
+{
+    $bits = max(2048, min(4096, $bits));
+    $key = openssl_pkey_new([
+        'private_key_type' => OPENSSL_KEYTYPE_RSA,
+        'private_key_bits' => $bits,
+    ]);
+    if ($key === false) throw new RuntimeException('Could not generate RSA keypair.');
+    $privateKey = '';
+    if (!openssl_pkey_export($key, $privateKey) || trim($privateKey) === '') {
+        throw new RuntimeException('Could not export generated RSA private key.');
+    }
+    $publicKey = webssh_rsa_public_key_from_private($privateKey, $comment);
+    return ['private_key' => $privateKey, 'public_key' => $publicKey, 'bits' => $bits];
+}
+
+function webssh_queue_public_key_deploy(array $firewall, string $publicKey): int
+{
+    $username = trim((string) ($firewall['ssh_username'] ?? ''));
+    if ($username === '') throw new RuntimeException('Configure the WebSSH SSH username before deploying a public key.');
+
+    $statement = db()->prepare('SELECT * FROM agents WHERE firewall_id = ? AND enabled = 1 ORDER BY id DESC LIMIT 1');
+    $statement->execute([(int) ($firewall['id'] ?? 0)]);
+    $agent = $statement->fetch();
+    if (!is_array($agent)) throw new RuntimeException('No enabled opnSentral agent is linked to this firewall.');
+
+    $statement = db()->prepare('INSERT INTO agent_jobs(agent_id, job_type, payload_json, status, created_at) VALUES(?,?,?,?,?)');
+    $statement->execute([
+        (int) $agent['id'],
+        'add_access_user_authorized_key',
+        json_encode(['user' => $username, 'authorized_key' => $publicKey], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+        'queued',
+        gmdate('c'),
+    ]);
+    return (int) db()->lastInsertId();
+}
