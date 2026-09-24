@@ -70,6 +70,7 @@ $checks = [
     ['helper', "'add_access_user_authorized_key'", 'public-key deployment must use the narrow agent job'],
     ['helper', "WEBSSH_KEY_AGENT_MIN_VERSION = '0.1.17'", 'public-key deployment must require the agent version that implements the narrow job'],
     ['key_action', 'require_csrf();', 'public-key deployment action must require CSRF protection'],
+    ['key_action', 'webssh_public_key_deploy_agent($firewall);', 'key generation must verify agent readiness before changing stored authentication'],
     ['key_action', "webssh_generate_rsa_keypair(3072", 'generated deployment keys must use 3072-bit RSA'],
     ['key_action', 'encrypt_value((string) $pair[\'private_key\'])', 'generated private key must be encrypted before database storage'],
     ['agent', "const AGENT_VERSION = '0.1.17'", 'agent version must identify SSH public-key deployment support'],
@@ -77,6 +78,13 @@ $checks = [
     ['agent', '$existing[]=$key', 'agent must append the opnSentral key rather than replace existing Authorized Keys'],
     ['agent', 'authorized_key_file_contains', 'agent must verify the deployed key in authorized_keys'],
 ];
+
+$agentCheckPos = strpos($contents['key_action'], 'webssh_public_key_deploy_agent($firewall);');
+$keyGeneratePos = strpos($contents['key_action'], 'webssh_generate_rsa_keypair(3072');
+if ($agentCheckPos === false || $keyGeneratePos === false || $agentCheckPos > $keyGeneratePos) {
+    fwrite(STDERR, "WebSSH regression failed: agent readiness must be checked before generating/storing a replacement key.\n");
+    exit(1);
+}
 
 foreach ($checks as [$file, $needle, $message]) {
     if (!str_contains($contents[$file], $needle)) {
