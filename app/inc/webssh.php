@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
 
+const WEBSSH_KEY_AGENT_MIN_VERSION = '0.1.17';
+
 function webssh_base64url(string $value): string
 {
     return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
@@ -135,6 +137,10 @@ function webssh_queue_public_key_deploy(array $firewall, string $publicKey): int
     $statement->execute([(int) ($firewall['id'] ?? 0)]);
     $agent = $statement->fetch();
     if (!is_array($agent)) throw new RuntimeException('No enabled opnSentral agent is linked to this firewall.');
+    $agentVersion = trim((string) ($agent['last_version'] ?? ''));
+    if ($agentVersion === '' || version_compare($agentVersion, WEBSSH_KEY_AGENT_MIN_VERSION, '<')) {
+        throw new RuntimeException('Update the opnSentral agent on this firewall to ' . WEBSSH_KEY_AGENT_MIN_VERSION . ' or newer before deploying an SSH public key.');
+    }
 
     $statement = db()->prepare('INSERT INTO agent_jobs(agent_id, job_type, payload_json, status, created_at) VALUES(?,?,?,?,?)');
     $statement->execute([
