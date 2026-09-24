@@ -16,7 +16,21 @@ function db(): PDO {
  $p->exec('CREATE TABLE IF NOT EXISTS firewalls (
  id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,base_url TEXT NOT NULL,
  api_key_enc TEXT NOT NULL,api_secret_enc TEXT NOT NULL,verify_tls INTEGER NOT NULL DEFAULT 1,
+ ssh_username TEXT NOT NULL DEFAULT "",ssh_auth_method TEXT NOT NULL DEFAULT "password",
+ ssh_password_enc TEXT NOT NULL DEFAULT "",ssh_private_key_enc TEXT NOT NULL DEFAULT "",
+ ssh_port INTEGER NOT NULL DEFAULT 22,
  notes TEXT NOT NULL DEFAULT "",created_at TEXT NOT NULL,updated_at TEXT NOT NULL)');
+ $firewallColumns=[];
+ foreach($p->query('PRAGMA table_info(firewalls)')->fetchAll() as $column){$firewallColumns[(string)$column['name']]=true;}
+ foreach([
+  'ssh_username'=>'TEXT NOT NULL DEFAULT ""',
+  'ssh_auth_method'=>'TEXT NOT NULL DEFAULT "password"',
+  'ssh_password_enc'=>'TEXT NOT NULL DEFAULT ""',
+  'ssh_private_key_enc'=>'TEXT NOT NULL DEFAULT ""',
+  'ssh_port'=>'INTEGER NOT NULL DEFAULT 22',
+ ] as $column=>$definition){
+  if(!isset($firewallColumns[$column]))$p->exec('ALTER TABLE firewalls ADD COLUMN '.$column.' '.$definition);
+ }
  $p->exec('CREATE TABLE IF NOT EXISTS alert_states (state_key TEXT PRIMARY KEY,state_value TEXT NOT NULL,failure_count INTEGER NOT NULL DEFAULT 0,details TEXT NOT NULL DEFAULT "",updated_at TEXT NOT NULL)');
  $p->exec('CREATE TABLE IF NOT EXISTS alert_log (id INTEGER PRIMARY KEY AUTOINCREMENT,state_key TEXT NOT NULL,event_type TEXT NOT NULL,subject TEXT NOT NULL,message TEXT NOT NULL,sent_ok INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT "",created_at TEXT NOT NULL)');
  $p->exec('CREATE TABLE IF NOT EXISTS backups (
