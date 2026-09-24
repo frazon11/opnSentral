@@ -14,6 +14,8 @@ $files = [
     'header' => $root . '/app/inc/header.php',
     'config' => $root . '/app/inc/config.php',
     'firewall_edit' => $root . '/app/firewall_edit.php',
+    'key_action' => $root . '/app/webssh_key_action.php',
+    'agent' => $root . '/app/agent/opnsentral-agent',
 ];
 
 foreach ($files as $label => $path) {
@@ -61,6 +63,19 @@ $checks = [
     ['firewall_edit', 'encrypt_value($sshPrivateKey)', 'SSH private keys must be encrypted before storage'],
     ['page', "tokenData.auto_auth===true", 'WebSSH must automatically use stored credentials when configured'],
     ['page', "auth.style.display=selected.auto?'none':'grid'", 'manual credential form must stay hidden for automatic-login targets'],
+    ['page', '/webssh_key_action.php', 'WebSSH page must expose public-key deployment actions'],
+    ['page', 'Generate RSA + deploy', 'WebSSH page must offer one-click RSA key generation and deployment'],
+    ['helper', 'webssh_generate_rsa_keypair', 'WebSSH helper must generate RSA keypairs server-side'],
+    ['helper', "OPENSSL_KEYTYPE_RSA", 'generated WebSSH keys must be RSA'],
+    ['helper', "'add_access_user_authorized_key'", 'public-key deployment must use the narrow agent job'],
+    ['helper', "WEBSSH_KEY_AGENT_MIN_VERSION = '0.1.17'", 'public-key deployment must require the agent version that implements the narrow job'],
+    ['key_action', 'require_csrf();', 'public-key deployment action must require CSRF protection'],
+    ['key_action', "webssh_generate_rsa_keypair(3072", 'generated deployment keys must use 3072-bit RSA'],
+    ['key_action', "encrypt_value((string) $pair['private_key'])", 'generated private key must be encrypted before database storage'],
+    ['agent', "const AGENT_VERSION = '0.1.17'", 'agent version must identify SSH public-key deployment support'],
+    ['agent', "if ($type==='add_access_user_authorized_key')", 'agent must execute only the narrow Authorized Key job'],
+    ['agent', '$existing[]=$key', 'agent must append the opnSentral key rather than replace existing Authorized Keys'],
+    ['agent', 'authorized_key_file_contains', 'agent must verify the deployed key in authorized_keys'],
 ];
 
 foreach ($checks as [$file, $needle, $message]) {
@@ -77,6 +92,12 @@ if (!str_contains($contents['page'], "new WebSocket(scheme+'//'+location.host+'/
 if (str_contains($contents['page'], 'new WebSocket(selected.host') || str_contains($contents['page'], 'new WebSocket(target.host')) {
     fwrite(STDERR, "WebSSH regression failed: browser must not construct WebSocket destinations from firewall host data.\n");
     exit(1);
+}
+
+function authorized_key_identity_for_test(string $line): string
+{
+    $parts = preg_split('/\s+/', trim($line), 3) ?: [];
+    return (string) ($parts[0] ?? '') . ' ' . (string) ($parts[1] ?? '');
 }
 
 putenv('APP_KEY=' . str_repeat('ab', 32));
@@ -122,6 +143,21 @@ if (!is_array($credentials) || ($credentials['username'] ?? '') !== 'adminfk' ||
 }
 if (str_contains($token, 'test-password')) {
     fwrite(STDERR, "WebSSH regression failed: plaintext SSH password leaked into target token.\n");
+    exit(1);
+}
+
+$keypair = webssh_generate_rsa_keypair(2048, 'regression-test');
+if (!str_contains((string) ($keypair['private_key'] ?? ''), 'PRIVATE KEY')) {
+    fwrite(STDERR, "WebSSH regression failed: RSA private key generation failed.\n");
+    exit(1);
+}
+if (!str_starts_with((string) ($keypair['public_key'] ?? ''), 'ssh-rsa ')) {
+    fwrite(STDERR, "WebSSH regression failed: RSA public key is not in OpenSSH authorized_keys format.\n");
+    exit(1);
+}
+$derived = webssh_rsa_public_key_from_private((string) $keypair['private_key'], 'regression-test');
+if (authorized_key_identity_for_test((string) $derived) !== authorized_key_identity_for_test((string) $keypair['public_key'])) {
+    fwrite(STDERR, "WebSSH regression failed: generated RSA public key does not round-trip from the private key.\n");
     exit(1);
 }
 
