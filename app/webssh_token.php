@@ -24,7 +24,7 @@ try {
         throw new RuntimeException('Invalid firewall id.');
     }
 
-    $statement = db()->prepare('SELECT id,name,base_url FROM firewalls WHERE id = ? LIMIT 1');
+    $statement = db()->prepare('SELECT * FROM firewalls WHERE id = ? LIMIT 1');
     $statement->execute([(int) $id]);
     $firewall = $statement->fetch();
     if (!is_array($firewall)) {
@@ -37,6 +37,7 @@ try {
         'ok' => true,
         'token' => webssh_create_target_token($firewall),
         'target' => $target,
+        'auto_auth' => webssh_credentials_configured($firewall),
     ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 } catch (Throwable $exception) {
     if (http_response_code() < 400) http_response_code(500);
