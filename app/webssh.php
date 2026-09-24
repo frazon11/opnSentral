@@ -6,12 +6,17 @@ require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/webssh.php';
 require_login();
 
-$firewalls = db()->query('SELECT id,name,base_url FROM firewalls ORDER BY name')->fetchAll();
+$firewalls = db()->query('SELECT * FROM firewalls ORDER BY name')->fetchAll();
 $rows = [];
 foreach ($firewalls as $firewall) {
     try {
         $target = webssh_target_from_firewall($firewall);
-        $rows[] = ['firewall' => $firewall, 'target' => $target, 'error' => ''];
+        $rows[] = [
+            'firewall' => $firewall,
+            'target' => $target,
+            'auto_auth' => webssh_credentials_configured($firewall),
+            'error' => '',
+        ];
     } catch (Throwable $exception) {
         $rows[] = ['firewall' => $firewall, 'target' => null, 'error' => $exception->getMessage()];
     }
@@ -47,12 +52,12 @@ require __DIR__ . '/inc/header.php';
 </div>
 
 <div class="alert warningbox">
-    WebSSH can connect only to firewalls already configured in opnSentral. SSH credentials are used for the current connection only and are not stored by opnSentral. Host keys use trust-on-first-use and are pinned for later sessions.
+    WebSSH can connect only to firewalls already configured in opnSentral. Stored WebSSH credentials are encrypted with APP_KEY and passed to the internal SSH bridge only inside a short-lived encrypted token; they are never exposed to browser JavaScript in plaintext. Host keys use trust-on-first-use and are pinned for later sessions.
 </div>
 
 <div class="webssh-table-wrap">
 <table class="webssh-table">
-<thead><tr><th>Firewall</th><th>SSH target</th><th>Port</th><th>Action</th></tr></thead>
+<thead><tr><th>Firewall</th><th>SSH target</th><th>Port</th><th>Authentication</th><th>Action</th></tr></thead>
 <tbody>
 <?php foreach ($rows as $entry):
     $firewall = $entry['firewall'];
@@ -62,15 +67,26 @@ require __DIR__ . '/inc/header.php';
     <td><strong><?= h((string) $firewall['name']) ?></strong><div class="muted"><?= h((string) $firewall['base_url']) ?></div></td>
     <?php if (is_array($target)): ?>
         <td><?= h((string) $target['host']) ?></td>
-        <td>22</td>
-        <td><button type="button" class="button webssh-open" data-id="<?= (int) $firewall['id'] ?>" data-name="<?= h((string) $firewall['name']) ?>" data-host="<?= h((string) $target['host']) ?>">Open terminal</button></td>
+        <td><?= (int) $target['port'] ?></td>
+        <td><?= !empty($entry['auto_auth']) ? '<span class="badge good">Stored</span>' : '<span class="badge warning">Manual</span>' ?></td>
+        <td>
+            <button type="button" class="button webssh-open"
+                data-id="<?= (int) $firewall['id'] ?>"
+                data-name="<?= h((string) $firewall['name']) ?>"
+                data-host="<?= h((string) $target['host']) ?>"
+                data-port="<?= (int) $target['port'] ?>"
+                data-auto="<?= !empty($entry['auto_auth']) ? '1' : '0' ?>">Open terminal</button>
+            <?php if (empty($entry['auto_auth'])): ?>
+                <a class="button secondary" href="/firewall_edit.php?id=<?= (int) $firewall['id'] ?>">Configure login</a>
+            <?php endif; ?>
+        </td>
     <?php else: ?>
-        <td colspan="2"><span class="badge bad">Unavailable</span> <?= h((string) $entry['error']) ?></td>
+        <td colspan="3"><span class="badge bad">Unavailable</span> <?= h((string) $entry['error']) ?></td>
         <td>—</td>
     <?php endif; ?>
 </tr>
 <?php endforeach; ?>
-<?php if (!$rows): ?><tr><td colspan="4" class="muted">No firewalls configured.</td></tr><?php endif; ?>
+<?php if (!$rows): ?><tr><td colspan="5" class="muted">No firewalls configured.</td></tr><?php endif; ?>
 </tbody>
 </table>
 </div>
@@ -84,7 +100,7 @@ require __DIR__ . '/inc/header.php';
         </div>
     </div>
 
-    <div class="webssh-auth" id="webssh-auth">
+    <div class="webssh-auth" id="webssh-auth" style="display:none">
         <label>Username<input id="webssh-username" value="root" autocomplete="username"></label>
         <label>Authentication<select id="webssh-auth-method"><option value="password">Password</option><option value="key">Private key</option></select></label>
         <label class="webssh-password-field">Password<input type="password" id="webssh-password" autocomplete="new-password"></label>
@@ -92,9 +108,9 @@ require __DIR__ . '/inc/header.php';
         <button type="button" class="button" id="webssh-connect">Connect</button>
     </div>
 
-    <div class="webssh-status" id="webssh-status">Select a firewall and enter its SSH credentials.</div>
+    <div class="webssh-status" id="webssh-status">Select a firewall to connect.</div>
     <div id="webssh-terminal"></div>
-    <div class="webssh-security-note">The SSH target is server-signed by opnSentral. The browser cannot substitute an arbitrary host. A changed SSH host key is rejected.</div>
+    <div class="webssh-security-note">The SSH target is server-signed by opnSentral. Stored credentials remain encrypted while crossing the browser and are decrypted only by the loopback-only WebSSH bridge. A changed SSH host key is rejected.</div>
 </section>
 
 <script src="/assets/vendor/xterm/xterm.js"></script>
@@ -186,13 +202,6 @@ require __DIR__ . '/inc/header.php';
 
     async function connect(){
         if(!selected)return;
-        const user=username.value.trim();
-        const useKey=method.value==='key';
-        const pass=password.value;
-        const key=privateKey.value;
-        if(!user){setStatus('Enter the SSH username.','bad');username.focus();return;}
-        if(useKey&&!key.trim()){setStatus('Paste the SSH private key.','bad');privateKey.focus();return;}
-        if(!useKey&&!pass){setStatus('Enter the SSH password.','bad');password.focus();return;}
 
         disconnect();
         ensureTerminal();
@@ -205,6 +214,25 @@ require __DIR__ . '/inc/header.php';
 
         try{
             const tokenData=await getToken(selected.id);
+            let user='';
+            let useKey=false;
+            let pass='';
+            let key='';
+
+            if(tokenData.auto_auth===true){
+                auth.style.display='none';
+                setStatus('Connecting with stored SSH credentials…','warning');
+            }else{
+                auth.style.display='grid';
+                user=username.value.trim();
+                useKey=method.value==='key';
+                pass=password.value;
+                key=privateKey.value;
+                if(!user){setStatus('No stored WebSSH login is configured. Enter the SSH username.','bad');username.focus();connectButton.disabled=false;reconnectButton.disabled=false;return;}
+                if(useKey&&!key.trim()){setStatus('Paste the SSH private key.','bad');privateKey.focus();connectButton.disabled=false;reconnectButton.disabled=false;return;}
+                if(!useKey&&!pass){setStatus('Enter the SSH password.','bad');password.focus();connectButton.disabled=false;reconnectButton.disabled=false;return;}
+            }
+
             const scheme=location.protocol==='https:'?'wss:':'ws:';
             socket=new WebSocket(scheme+'//'+location.host+'/webssh/socket');
 
@@ -280,16 +308,17 @@ require __DIR__ . '/inc/header.php';
 
     document.querySelectorAll('.webssh-open').forEach(button=>button.addEventListener('click',()=>{
         disconnect();
-        selected={id:Number(button.dataset.id),name:button.dataset.name,host:button.dataset.host};
+        selected={id:Number(button.dataset.id),name:button.dataset.name,host:button.dataset.host,port:Number(button.dataset.port||22),auto:button.dataset.auto==='1'};
         title.textContent='WebSSH · '+selected.name;
-        targetLabel.textContent=selected.host+':22';
+        targetLabel.textContent=selected.host+':'+selected.port;
         card.classList.add('is-open');
         reconnectButton.disabled=false;
+        auth.style.display=selected.auto?'none':'grid';
         ensureTerminal();
-        if(terminal){terminal.clear();terminal.write('\x1b[90mReady to connect to '+selected.name+' ('+selected.host+':22).\x1b[0m\r\n');}
-        setStatus('Enter SSH credentials and click Connect.');
+        if(terminal){terminal.clear();terminal.write('\x1b[90mOpening '+selected.name+' ('+selected.host+':'+selected.port+')…\x1b[0m\r\n');}
+        setStatus(selected.auto?'Connecting automatically…':'No stored login configured. Enter SSH credentials.','warning');
         card.scrollIntoView({behavior:'smooth',block:'start'});
-        password.focus();
+        connect();
     }));
 
     window.addEventListener('beforeunload',disconnect);
