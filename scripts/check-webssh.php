@@ -71,9 +71,9 @@ $checks = [
     ['helper', "WEBSSH_KEY_AGENT_MIN_VERSION = '0.1.17'", 'public-key deployment must require the agent version that implements the narrow job'],
     ['key_action', 'require_csrf();', 'public-key deployment action must require CSRF protection'],
     ['key_action', "webssh_generate_rsa_keypair(3072", 'generated deployment keys must use 3072-bit RSA'],
-    ['key_action', "encrypt_value((string) $pair['private_key'])", 'generated private key must be encrypted before database storage'],
+    ['key_action', 'encrypt_value((string) $pair[\'private_key\'])', 'generated private key must be encrypted before database storage'],
     ['agent', "const AGENT_VERSION = '0.1.17'", 'agent version must identify SSH public-key deployment support'],
-    ['agent', "if ($type==='add_access_user_authorized_key')", 'agent must execute only the narrow Authorized Key job'],
+    ['agent', 'if ($type===\'add_access_user_authorized_key\')', 'agent must execute only the narrow Authorized Key job'],
     ['agent', '$existing[]=$key', 'agent must append the opnSentral key rather than replace existing Authorized Keys'],
     ['agent', 'authorized_key_file_contains', 'agent must verify the deployed key in authorized_keys'],
 ];
