@@ -128,7 +128,7 @@ function webssh_generate_rsa_keypair(int $bits = 3072, string $comment = 'opnSen
     return ['private_key' => $privateKey, 'public_key' => $publicKey, 'bits' => $bits];
 }
 
-function webssh_queue_public_key_deploy(array $firewall, string $publicKey): int
+function webssh_public_key_deploy_agent(array $firewall): array
 {
     $username = trim((string) ($firewall['ssh_username'] ?? ''));
     if ($username === '') throw new RuntimeException('Configure the WebSSH SSH username before deploying a public key.');
@@ -141,6 +141,13 @@ function webssh_queue_public_key_deploy(array $firewall, string $publicKey): int
     if ($agentVersion === '' || version_compare($agentVersion, WEBSSH_KEY_AGENT_MIN_VERSION, '<')) {
         throw new RuntimeException('Update the opnSentral agent on this firewall to ' . WEBSSH_KEY_AGENT_MIN_VERSION . ' or newer before deploying an SSH public key.');
     }
+    return $agent;
+}
+
+function webssh_queue_public_key_deploy(array $firewall, string $publicKey): int
+{
+    $username = trim((string) ($firewall['ssh_username'] ?? ''));
+    $agent = webssh_public_key_deploy_agent($firewall);
 
     $statement = db()->prepare('INSERT INTO agent_jobs(agent_id, job_type, payload_json, status, created_at) VALUES(?,?,?,?,?)');
     $statement->execute([
