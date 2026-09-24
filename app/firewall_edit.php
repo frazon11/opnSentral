@@ -3,7 +3,11 @@ require_once __DIR__ . '/inc/config.php';
 require_login();
 
 $id = (int) ($_GET['id'] ?? 0);
-$firewall = ['name' => '', 'base_url' => '', 'verify_tls' => 1, 'notes' => ''];
+$firewall = [
+    'name' => '', 'base_url' => '', 'verify_tls' => 1, 'notes' => '',
+    'ssh_username' => '', 'ssh_auth_method' => 'password', 'ssh_port' => 22,
+    'ssh_password_enc' => '', 'ssh_private_key_enc' => '',
+];
 $error = '';
 
 if ($id) {
@@ -22,6 +26,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $notes = trim((string) ($_POST['notes'] ?? ''));
         $apiKey = trim((string) ($_POST['api_key'] ?? ''));
         $apiSecret = trim((string) ($_POST['api_secret'] ?? ''));
+        $sshUsername = trim((string) ($_POST['ssh_username'] ?? ''));
+        $sshAuthMethod = (string) ($_POST['ssh_auth_method'] ?? 'password');
+        $sshPort = filter_var($_POST['ssh_port'] ?? 22, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]);
+        $sshPassword = (string) ($_POST['ssh_password'] ?? '');
+        $sshPrivateKey = trim((string) ($_POST['ssh_private_key'] ?? ''));
+        $clearSshCredentials = isset($_POST['clear_ssh_credentials']);
+
+        if (!in_array($sshAuthMethod, ['password', 'key'], true)) {
+            throw new InvalidArgumentException('Invalid SSH authentication method.');
+        }
+        if ($sshPort === false) {
+            throw new InvalidArgumentException('SSH port must be between 1 and 65535.');
+        }
 
         if ($name === '') {
             throw new InvalidArgumentException(t('firewall.name_required'));
@@ -30,47 +47,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $now = gmdate('c');
 
         if ($id) {
+            $existingStatement = db()->prepare('SELECT * FROM firewalls WHERE id = ?');
+            $existingStatement->execute([$id]);
+            $existing = $existingStatement->fetch();
+            if (!is_array($existing)) {
+                throw new RuntimeException('Firewall not found.');
+            }
+
+            $apiKeyEnc = (string) $existing['api_key_enc'];
+            $apiSecretEnc = (string) $existing['api_secret_enc'];
             if ($apiKey !== '' || $apiSecret !== '') {
                 if ($apiKey === '' || $apiSecret === '') {
                     throw new InvalidArgumentException(t('firewall.enter_key_secret'));
                 }
-
-                $statement = db()->prepare(
-                    'UPDATE firewalls SET name=?,base_url=?,api_key_enc=?,api_secret_enc=?,verify_tls=?,notes=?,updated_at=? WHERE id=?'
-                );
-                $statement->execute([
-                    $name,
-                    $url,
-                    encrypt_value($apiKey),
-                    encrypt_value($apiSecret),
-                    $verifyTls,
-                    $notes,
-                    $now,
-                    $id,
-                ]);
-            } else {
-                $statement = db()->prepare(
-                    'UPDATE firewalls SET name=?,base_url=?,verify_tls=?,notes=?,updated_at=? WHERE id=?'
-                );
-                $statement->execute([$name, $url, $verifyTls, $notes, $now, $id]);
+                $apiKeyEnc = encrypt_value($apiKey);
+                $apiSecretEnc = encrypt_value($apiSecret);
             }
+
+            $sshPasswordEnc = (string) ($existing['ssh_password_enc'] ?? '');
+            $sshPrivateKeyEnc = (string) ($existing['ssh_private_key_enc'] ?? '');
+            if ($clearSshCredentials || $sshUsername === '') {
+                $sshUsername = '';
+                $sshPasswordEnc = '';
+                $sshPrivateKeyEnc = '';
+            } elseif ($sshAuthMethod === 'password') {
+                if ($sshPassword !== '') {
+                    $sshPasswordEnc = encrypt_value($sshPassword);
+                }
+                $sshPrivateKeyEnc = '';
+                if ($sshPasswordEnc === '') {
+                    throw new InvalidArgumentException('Enter an SSH password or keep the existing stored password.');
+                }
+            } else {
+                if ($sshPrivateKey !== '') {
+                    $sshPrivateKeyEnc = encrypt_value($sshPrivateKey);
+                }
+                $sshPasswordEnc = '';
+                if ($sshPrivateKeyEnc === '') {
+                    throw new InvalidArgumentException('Enter an SSH private key or keep the existing stored key.');
+                }
+            }
+
+            $statement = db()->prepare(
+                'UPDATE firewalls SET name=?,base_url=?,api_key_enc=?,api_secret_enc=?,verify_tls=?,ssh_username=?,ssh_auth_method=?,ssh_password_enc=?,ssh_private_key_enc=?,ssh_port=?,notes=?,updated_at=? WHERE id=?'
+            );
+            $statement->execute([
+                $name, $url, $apiKeyEnc, $apiSecretEnc, $verifyTls,
+                $sshUsername, $sshAuthMethod, $sshPasswordEnc, $sshPrivateKeyEnc, (int) $sshPort,
+                $notes, $now, $id,
+            ]);
         } else {
             if ($apiKey === '' || $apiSecret === '') {
                 throw new InvalidArgumentException(t('firewall.key_secret_required'));
             }
 
+            $sshPasswordEnc = '';
+            $sshPrivateKeyEnc = '';
+            if ($sshUsername !== '') {
+                if ($sshAuthMethod === 'password') {
+                    if ($sshPassword === '') {
+                        throw new InvalidArgumentException('Enter the SSH password for automatic WebSSH login.');
+                    }
+                    $sshPasswordEnc = encrypt_value($sshPassword);
+                } else {
+                    if ($sshPrivateKey === '') {
+                        throw new InvalidArgumentException('Enter the SSH private key for automatic WebSSH login.');
+                    }
+                    $sshPrivateKeyEnc = encrypt_value($sshPrivateKey);
+                }
+            }
+
             $statement = db()->prepare(
-                'INSERT INTO firewalls(name,base_url,api_key_enc,api_secret_enc,verify_tls,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)'
+                'INSERT INTO firewalls(name,base_url,api_key_enc,api_secret_enc,verify_tls,ssh_username,ssh_auth_method,ssh_password_enc,ssh_private_key_enc,ssh_port,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)'
             );
             $statement->execute([
-                $name,
-                $url,
-                encrypt_value($apiKey),
-                encrypt_value($apiSecret),
-                $verifyTls,
-                $notes,
-                $now,
-                $now,
+                $name, $url, encrypt_value($apiKey), encrypt_value($apiSecret), $verifyTls,
+                $sshUsername, $sshAuthMethod, $sshPasswordEnc, $sshPrivateKeyEnc, (int) $sshPort,
+                $notes, $now, $now,
             ]);
         }
 
@@ -122,6 +175,46 @@ require __DIR__ . '/inc/header.php';
         <?= h(t('firewall.api_secret')) ?>
         <input type="password" name="api_secret" <?= $id ? 'placeholder="' . h(t('firewall.keep_current')) . '"' : 'required' ?>>
     </label>
+
+    <fieldset style="margin:18px 0;padding:14px 16px;border:1px solid var(--border);border-radius:8px">
+        <legend><strong>WebSSH automatic login</strong></legend>
+        <p class="muted" style="margin-top:0">Optional. Stored SSH credentials are encrypted with APP_KEY and are never sent to the browser in plaintext.</p>
+
+        <label>
+            SSH username
+            <input name="ssh_username" value="<?= h((string) ($firewall['ssh_username'] ?? '')) ?>" placeholder="adminfk">
+        </label>
+
+        <label>
+            Authentication
+            <select name="ssh_auth_method" id="ssh-auth-method">
+                <option value="password" <?= (($firewall['ssh_auth_method'] ?? 'password') === 'password') ? 'selected' : '' ?>>Password</option>
+                <option value="key" <?= (($firewall['ssh_auth_method'] ?? '') === 'key') ? 'selected' : '' ?>>Private key</option>
+            </select>
+        </label>
+
+        <label>
+            SSH port
+            <input type="number" name="ssh_port" min="1" max="65535" value="<?= (int) ($firewall['ssh_port'] ?? 22) ?>">
+        </label>
+
+        <label id="ssh-password-field">
+            SSH password
+            <input type="password" name="ssh_password" autocomplete="new-password" <?= $id && !empty($firewall['ssh_password_enc']) ? 'placeholder="Keep current stored password"' : '' ?>>
+        </label>
+
+        <label id="ssh-key-field" style="display:none">
+            SSH private key
+            <textarea name="ssh_private_key" autocomplete="off" spellcheck="false" placeholder="<?= $id && !empty($firewall['ssh_private_key_enc']) ? 'Keep current stored private key' : '-----BEGIN OPENSSH PRIVATE KEY-----' ?>"></textarea>
+        </label>
+
+        <?php if ($id && (!empty($firewall['ssh_password_enc']) || !empty($firewall['ssh_private_key_enc']))): ?>
+        <label class="checkbox">
+            <input type="checkbox" name="clear_ssh_credentials">
+            Remove stored WebSSH credentials
+        </label>
+        <?php endif; ?>
+    </fieldset>
 
     <label class="checkbox">
         <input type="checkbox" name="verify_tls" <?= !empty($firewall['verify_tls']) ? 'checked' : '' ?>>
@@ -188,4 +281,18 @@ require __DIR__ . '/inc/header.php';
     <p>Leave <strong>Verify TLS certificate</strong> enabled when OPNsense uses a certificate trusted by the opnSentral host. Disable it only when the firewall deliberately uses an untrusted/self-signed certificate.</p>
 </aside>
 </div>
+<script>
+(function(){
+    const method=document.getElementById('ssh-auth-method');
+    const passwordField=document.getElementById('ssh-password-field');
+    const keyField=document.getElementById('ssh-key-field');
+    function update(){
+        const useKey=method && method.value==='key';
+        if(passwordField) passwordField.style.display=useKey?'none':'block';
+        if(keyField) keyField.style.display=useKey?'block':'none';
+    }
+    method?.addEventListener('change',update);
+    update();
+})();
+</script>
 <?php require __DIR__ . '/inc/footer.php'; ?>
