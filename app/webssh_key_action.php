@@ -33,6 +33,9 @@ try {
     }
 
     if ($action === 'generate_deploy') {
+        // Fail before changing stored authentication if the remote agent cannot
+        // accept the narrow Authorized Key job yet.
+        webssh_public_key_deploy_agent($firewall);
         $pair = webssh_generate_rsa_keypair(3072, 'opnSentral-' . (string) ($firewall['name'] ?? 'firewall'));
         $privateKeyEnc = encrypt_value((string) $pair['private_key']);
         $statement = db()->prepare(
