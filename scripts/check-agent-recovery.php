@@ -56,7 +56,7 @@ recovery_require($helper, "['start', 'restart']", 'automatic recovery must suppo
 
 $worker = recovery_read($root . '/app/agent_recovery_worker.php');
 recovery_require($worker, "SELECT * FROM agents WHERE enabled = 1 AND firewall_id IS NOT NULL", 'watchdog must only recover enabled associated agents');
-recovery_require($worker, "agent_recovery_request_service($pdo, $agent, $action)", 'watchdog must request service recovery for stale agents');
+recovery_require($worker, 'agent_recovery_request_service($pdo, $agent, $action)', 'watchdog must request service recovery for stale agents');
 recovery_require($worker, 'agent_recovery_due($entry)', 'watchdog must respect recovery backoff');
 recovery_require($worker, 'sleep(AGENT_RECOVERY_LOOP_SECONDS)', 'watchdog must run continuously at the configured interval');
 
