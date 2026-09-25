@@ -4,49 +4,12 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/agent_deployment.php';
-require_once __DIR__ . '/inc/opnsense.php';
+require_once __DIR__ . '/inc/agent_recovery.php';
 require_login();
 require_csrf();
 
 $action = (string) ($_POST['action'] ?? '');
 $pdo = db();
-
-function agent_action_is_fresh(array $agent): bool
-{
-    $lastSeen = !empty($agent['last_seen_at']) ? (strtotime((string) $agent['last_seen_at']) ?: 0) : 0;
-    return $lastSeen > 0 && (time() - $lastSeen) < 300;
-}
-
-function agent_action_recover_service(PDO $pdo, array $agent): string
-{
-    $firewallId = (int) ($agent['firewall_id'] ?? 0);
-    if ($firewallId <= 0) {
-        throw new RuntimeException('The stale agent is not associated with a managed firewall.');
-    }
-
-    $statement = $pdo->prepare('SELECT * FROM firewalls WHERE id = ?');
-    $statement->execute([$firewallId]);
-    $firewall = $statement->fetch();
-    if (!$firewall) {
-        throw new RuntimeException('The associated managed firewall no longer exists.');
-    }
-
-    $response = opn_raw_request(
-        $firewall,
-        'core/service/start/opnsentral_agent',
-        'POST',
-        [],
-        20
-    );
-    $responseText = strtolower(json_encode($response, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '');
-    foreach (['unknown service', 'could not find', 'not found', 'failed', 'error'] as $failure) {
-        if ($responseText !== '' && str_contains($responseText, $failure)) {
-            throw new RuntimeException('OPNsense did not accept the opnSentral agent service start request.');
-        }
-    }
-
-    return (string) ($firewall['name'] ?? ('Firewall #' . $firewallId));
-}
 
 if ($action === 'create_registration') {
     $firewallId = (int) ($_POST['firewall_id'] ?? 0);
@@ -174,12 +137,12 @@ if ($action === 'create_registration') {
     }
     try {
         $recoveredFirewall = null;
-        if (!agent_action_is_fresh($agent)) {
-            $recoveredFirewall = agent_action_recover_service($pdo, $agent);
+        if (!agent_recovery_is_fresh($agent)) {
+            $recoveredFirewall = agent_recovery_request_service($pdo, $agent);
             sleep(3);
             $statement->execute([$id]);
             $agent = $statement->fetch() ?: $agent;
-            if (!agent_action_is_fresh($agent)) {
+            if (!agent_recovery_is_fresh($agent)) {
                 throw new RuntimeException(
                     'Agent service start was requested on ' . $recoveredFirewall .
                     ', but no heartbeat arrived yet. Refresh this page in a minute. '
@@ -228,9 +191,9 @@ if ($action === 'create_registration') {
             continue;
         }
 
-        if (!agent_action_is_fresh($agent)) {
+        if (!agent_recovery_is_fresh($agent)) {
             try {
-                agent_action_recover_service($pdo, $agent);
+                agent_recovery_request_service($pdo, $agent);
                 $recoveryRequested++;
             } catch (Throwable $exception) {
                 $queueFailed++;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/agent_deployment.php';
+require_once __DIR__ . '/inc/agent_recovery.php';
 require_login();
 
 $pdo = db();
@@ -29,7 +30,8 @@ unset($_SESSION['agent_update_result']);
 $associationResult = $_SESSION['agent_association_result'] ?? null;
 unset($_SESSION['agent_association_result']);
 $targetAgentVersion = agent_current_version();
-$agentStaleAfterSeconds = 300;
+$agentStaleAfterSeconds = AGENT_RECOVERY_STALE_SECONDS;
+$agentRecoveryState = agent_recovery_state_load();
 
 $forwardedProto = trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0] ?? '');
 $scheme = $forwardedProto !== ''
@@ -37,6 +39,11 @@ $scheme = $forwardedProto !== ''
     : (((string) ($_SERVER['HTTPS'] ?? '')) !== '' && ($_SERVER['HTTPS'] ?? 'off') !== 'off' ? 'https' : 'http');
 $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
 $publicBase = $host !== '' ? $scheme . '://' . $host : '';
+$legacyRepairCommand = agent_recovery_repair_command($publicBase);
+$staleEnabledCount = 0;
+foreach ($agents as $agent) {
+    if (!empty($agent['enabled']) && !agent_recovery_is_fresh($agent)) $staleEnabledCount++;
+}
 
 require __DIR__ . '/inc/header.php';
 ?>
@@ -64,6 +71,24 @@ require __DIR__ . '/inc/header.php';
     <div class="alert <?= !empty($associationResult['ok']) ? 'goodbox' : 'error' ?>">
         <strong>Firewall association</strong>
         <div><?= h((string) ($associationResult['message'] ?? '')) ?></div>
+    </div>
+<?php endif; ?>
+
+<?php if ($staleEnabledCount > 0): ?>
+    <div class="alert warningbox" data-presentation-exempt="true">
+        <strong>Automatic stale-agent recovery is active</strong>
+        <p>
+            opnSentral now checks stale, associated agents every <?= (int) AGENT_RECOVERY_LOOP_SECONDS ?> seconds and asks the managed OPNsense service API to start/restart the worker automatically.
+            Recovery attempts use backoff, so an unreachable firewall is not hammered continuously.
+        </p>
+        <?php if ($legacyRepairCommand !== ''): ?>
+            <p>
+                An older installation that predates the recoverable OPNsense service registration cannot be repaired after its worker has already stopped.
+                For such a firewall, run this <strong>once as root</strong>; the existing registration is preserved:
+            </p>
+            <pre id="agent-legacy-repair-command"><?= h($legacyRepairCommand) ?></pre>
+            <button type="button" class="button secondary" id="copy-agent-legacy-repair">Copy repair command</button>
+        <?php endif; ?>
     </div>
 <?php endif; ?>
 
@@ -163,7 +188,20 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
                     <td><code><?= h(substr((string) ($agent['agent_id'] ?? ''), 0, 12)) ?>…</code><br><small><?= h((string) ($agent['last_hostname'] ?? '')) ?> · v<?= h($agentVersion !== '' ? $agentVersion : 'unknown') ?></small></td>
                     <td><?= h((string) (($agent['last_seen_at'] ?? '') !== '' ? $agent['last_seen_at'] : 'Never')) ?><?php if ($age !== null): ?><br><small><?= h((string)$age) ?>s ago</small><?php endif; ?></td>
                     <td><?= h((string) (($agent['last_opnsense_version'] ?? '') !== '' ? $agent['last_opnsense_version'] : '—')) ?></td>
-                    <td><span class="badge <?= $fresh && !empty($agent['enabled']) ? 'good' : 'bad' ?>"><?= !empty($agent['enabled']) ? ($fresh ? 'Online' : 'Stale') : 'Disabled' ?></span></td>
+                    <td>
+                        <span class="badge <?= $fresh && !empty($agent['enabled']) ? 'good' : 'bad' ?>"><?= !empty($agent['enabled']) ? ($fresh ? 'Online' : 'Stale') : 'Disabled' ?></span>
+                        <?php
+                            $recovery = is_array($agentRecoveryState[(string) ($agent['id'] ?? 0)] ?? null)
+                                ? $agentRecoveryState[(string) ($agent['id'] ?? 0)]
+                                : null;
+                        ?>
+                        <?php if (!$fresh && !empty($agent['enabled']) && $recovery): ?>
+                            <br><small>
+                                Auto recovery <?= h((string) ($recovery['last_action'] ?? 'start')) ?>:
+                                <?= h((string) (($recovery['last_error'] ?? '') !== '' ? $recovery['last_error'] : ($recovery['message'] ?? 'requested'))) ?>
+                            </small>
+                        <?php endif; ?>
+                    </td>
                     <td>
                         <form method="post" action="/agents_action.php" class="management-row-actions">
                             <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="action" value="queue_job"><input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
@@ -240,6 +278,15 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
 </div>
 
 <script>
+document.getElementById('copy-agent-legacy-repair')?.addEventListener('click', async function(){
+    const command = document.getElementById('agent-legacy-repair-command')?.textContent || '';
+    if(!command) return;
+    try{
+        await navigator.clipboard.writeText(command);
+        const previous=this.textContent;this.textContent='Copied';window.setTimeout(()=>{this.textContent=previous;},1200);
+    }catch(error){window.prompt('Copy this command:',command);}
+});
+
 document.getElementById('copy-agent-registration')?.addEventListener('click', async function(){
     const command = document.getElementById('agent-registration-command')?.textContent || '';
     if(!command) return;
