@@ -51,7 +51,7 @@ recovery_require($pluginFiles, "'service_registry' => '/opt/opnsentral-agent-plu
 $helper = recovery_read($root . '/app/inc/agent_recovery.php');
 recovery_require($helper, 'AGENT_RECOVERY_STALE_SECONDS = 300', 'automatic recovery must use the same five-minute stale threshold as the UI');
 recovery_require($helper, 'agent_recovery_backoff_seconds', 'automatic recovery must use retry backoff');
-recovery_require($helper, "'core/service/' . $action . '/opnsentral_agent'", 'automatic recovery must use the standard OPNsense service API');
+recovery_require($helper, "'core/service/' . \$action . '/opnsentral_agent'", 'automatic recovery must use the standard OPNsense service API');
 recovery_require($helper, "['start', 'restart']", 'automatic recovery must support both start and restart requests');
 
 $worker = recovery_read($root . '/app/agent_recovery_worker.php');
