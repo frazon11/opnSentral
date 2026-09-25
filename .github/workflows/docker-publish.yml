@@ -1,4 +1,4 @@
-name: Build and publish Docker images
+name: Build and publish opnSentral
 
 on:
   push:
@@ -24,8 +24,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: docker-publish-${{ github.ref }}
-  cancel-in-progress: true
+  group: opnsentral-publish-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -34,7 +34,6 @@ permissions:
 jobs:
   docker:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -48,10 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(sed -n "s/^const OPNSENTRAL_VERSION = '\([^']*\)';$/\1/p" app/inc/update_check.php)
-          test -n "$VERSION" || {
-            echo "::error::Could not read OPNSENTRAL_VERSION"
-            exit 1
-          }
+          test -n "$VERSION" || { echo "::error::Could not read OPNSENTRAL_VERSION"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Verify Docker Hub secrets
@@ -60,24 +56,16 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          test -n "$DOCKERHUB_USERNAME" || {
-            echo "::error::DOCKERHUB_USERNAME is missing"
-            exit 1
-          }
-          test -n "$DOCKERHUB_TOKEN" || {
-            echo "::error::DOCKERHUB_TOKEN is missing"
-            exit 1
-          }
+          test -n "$DOCKERHUB_USERNAME" || { echo "::error::DOCKERHUB_USERNAME is missing"; exit 1; }
+          test -n "$DOCKERHUB_TOKEN" || { echo "::error::DOCKERHUB_TOKEN is missing"; exit 1; }
 
-      - name: Verify Docker build contexts
+      - name: Verify Docker build context
         shell: bash
         run: |
           test -f Dockerfile || { echo "::error::Dockerfile is missing from repository root"; exit 1; }
           test -d app || { echo "::error::app directory is missing from repository root"; exit 1; }
           test -f webssh/server.js || { echo "::error::webssh/server.js is missing"; exit 1; }
           test -f webssh/package.json || { echo "::error::webssh/package.json is missing"; exit 1; }
-          test -f telemetry-server/Dockerfile || { echo "::error::telemetry-server/Dockerfile is missing"; exit 1; }
-          test -d telemetry-server/app || { echo "::error::telemetry-server/app directory is missing"; exit 1; }
           echo "Building version: ${{ steps.version.outputs.version }}"
           echo "Building commit: $GITHUB_SHA"
           echo "Triggered by ref: $GITHUB_REF"
@@ -100,28 +88,21 @@ jobs:
 
       - name: Check admin API-key login
         run: php scripts/check-admin-api-login.php
-
       - name: Check agent runtime config isolation
         run: php scripts/check-agent-runtime-isolation.php
-
       - name: Check agent recovery
         run: php scripts/check-agent-recovery.php
-
       - name: Check feature contracts
         run: php scripts/check-feature-contracts.php
-
       - name: Check firmware UI
         run: php scripts/check-firmware-ui.php
-
       - name: Check IDS rendering
         run: php scripts/check-ids-rendering.php
-
       - name: Check WebSSH
         run: php scripts/check-webssh.php
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -132,18 +113,6 @@ jobs:
           images: |
             ghcr.io/frazon11/opnsentral
             docker.io/frazon11/opnsentral
-          tags: |
-            type=match,pattern=v(.*),group=1
-            type=raw,value=${{ steps.version.outputs.version }}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,prefix=sha-
-
-      - name: Generate telemetry image metadata
-        id: telemetry_meta
-        uses: docker/metadata-action@v6
-        with:
-          images: |
-            ghcr.io/frazon11/opnsentral-telemetry
           tags: |
             type=match,pattern=v(.*),group=1
             type=raw,value=${{ steps.version.outputs.version }}
@@ -174,17 +143,3 @@ jobs:
           no-cache: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Build and publish opnSentral telemetry
-        uses: docker/build-push-action@v7
-        with:
-          context: ./telemetry-server
-          file: ./telemetry-server/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          pull: true
-          no-cache: true
-          build-args: |
-            OPNSENTRAL_VERSION=${{ steps.version.outputs.version }}
-          tags: ${{ steps.telemetry_meta.outputs.tags }}
-          labels: ${{ steps.telemetry_meta.outputs.labels }}
