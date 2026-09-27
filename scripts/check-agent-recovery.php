@@ -66,10 +66,14 @@ recovery_require($entrypoint, "php /var/www/html/agent_recovery_worker.php", 'co
 $agentsPage = recovery_read($root . '/app/agents.php');
 recovery_require($agentsPage, 'Automatic stale-agent recovery is active', 'Agents page must explain automatic stale recovery');
 recovery_require($agentsPage, 'agent_recovery_repair_command($publicBase)', 'Agents page must provide a one-time legacy repair command');
+recovery_require($agentsPage, 'Repair stale agents', 'Agents page must offer bulk SSH repair for stale agents');
+recovery_require($agentsPage, 'Repair agent', 'Agents page must offer per-agent SSH repair');
 
 $actionsPage = recovery_read($root . '/app/agents_action.php');
 recovery_require($actionsPage, 'agent_recovery_is_fresh', 'agent update path must check heartbeat freshness');
 recovery_require($actionsPage, 'agent_recovery_request_service', 'agent update path must attempt service recovery through the shared helper');
+recovery_require($actionsPage, "repair_all_stale", 'agent actions must support bulk stale-agent repair');
+recovery_require($actionsPage, 'webssh_repair_agent_via_ssh', 'stale-agent repair must use the stored WebSSH management channel');
 recovery_require($actionsPage, 'older installation predates the recoverable-service registration', 'legacy stale agents must fail with an explicit repair explanation');
 
 fwrite(STDOUT, "Agent recovery checks passed.\n");

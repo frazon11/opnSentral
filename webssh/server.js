@@ -73,11 +73,13 @@ function decodeToken(token) {
   const firewallId = Number(payload.firewall_id || 0);
   const firewallName = String(payload.firewall_name || '').trim();
   const credentialBlob = String(payload.credential_blob || '');
+  const scope = String(payload.scope || 'terminal');
+  const serverUrl = String(payload.server_url || '').trim();
   if (!host || !Number.isInteger(port) || port < 1 || port > 65535 || !Number.isInteger(firewallId) || firewallId < 1) {
     throw new Error('Incomplete WebSSH target token.');
   }
 
-  return { host, port, firewallId, firewallName, credentialBlob };
+  return { host, port, firewallId, firewallName, credentialBlob, scope, serverUrl };
 }
 
 function readKnownHosts() {
@@ -107,9 +109,110 @@ function send(ws, payload) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(payload));
 }
 
+function shellQuote(value) {
+  return "'" + String(value).replace(/'/g, "'\\''") + "'";
+}
+
+function maintenanceConnectOptions(target, credentials) {
+  const knownKey = target.host + ':' + target.port;
+  const options = {
+    host: target.host,
+    port: target.port,
+    username: credentials.username,
+    readyTimeout: 15000,
+    keepaliveInterval: 15000,
+    keepaliveCountMax: 3,
+    hostHash: 'sha256',
+    hostVerifier: (hash) => {
+      const value = String(hash || '').toLowerCase();
+      const current = readKnownHosts();
+      const remembered = String(current[knownKey] || '').toLowerCase();
+      if (remembered) return remembered === value;
+      current[knownKey] = value;
+      saveKnownHosts(current);
+      return true;
+    },
+  };
+  if (credentials.authMethod === 'key') options.privateKey = credentials.privateKey;
+  else options.password = credentials.password;
+  return options;
+}
+
+let activeMaintenance = 0;
+
 const server = http.createServer((req, res) => {
-  res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('Not found\n');
+  if (req.method !== 'POST' || req.url !== '/maintenance/agent-repair') {
+    res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: false, error: 'Not found' }));
+    return;
+  }
+  if (activeMaintenance >= 2) {
+    res.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: false, error: 'Too many maintenance operations are already running.' }));
+    return;
+  }
+
+  let raw = '';
+  req.setEncoding('utf8');
+  req.on('data', (chunk) => {
+    raw += chunk;
+    if (Buffer.byteLength(raw, 'utf8') > 65536) req.destroy();
+  });
+  req.on('end', () => {
+    activeMaintenance += 1;
+    let replied = false;
+    let ssh = null;
+    let timer = null;
+    const finish = (status, payload) => {
+      if (replied) return;
+      replied = true;
+      if (timer) clearTimeout(timer);
+      if (ssh) { try { ssh.end(); } catch (_) {} }
+      activeMaintenance = Math.max(0, activeMaintenance - 1);
+      res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(payload));
+    };
+
+    try {
+      const body = JSON.parse(raw || '{}');
+      const target = decodeToken(body.token);
+      if (target.scope !== 'agent_repair') throw new Error('Invalid maintenance token scope.');
+      if (!target.credentialBlob) throw new Error('Stored SSH credentials are not configured.');
+
+      let repairUrl;
+      try { repairUrl = new URL(target.serverUrl); } catch (_) { throw new Error('Invalid opnSentral repair URL.'); }
+      if (repairUrl.protocol !== 'https:' || !repairUrl.hostname || repairUrl.username || repairUrl.password || target.serverUrl.length > 2048) {
+        throw new Error('Agent repair requires a public HTTPS opnSentral URL.');
+      }
+
+      const serverUrl = target.serverUrl.replace(/\/+$/, '');
+      const credentials = decryptCredentialBlob(target.credentialBlob);
+      const command = 'fetch -q -o - ' + shellQuote(serverUrl + '/agent/install-plugin.sh') + ' | sh -s -- ' + shellQuote(serverUrl);
+      ssh = new Client();
+      let stdout = '';
+      let stderr = '';
+      timer = setTimeout(() => finish(504, { ok: false, error: 'SSH agent repair timed out.' }), 75000);
+
+      ssh.on('ready', () => {
+        ssh.exec(command, (error, stream) => {
+          if (error) return finish(502, { ok: false, error: 'Could not start remote agent repair: ' + error.message });
+          stream.on('data', (data) => { if (stdout.length < 65536) stdout += data.toString('utf8'); });
+          stream.stderr.on('data', (data) => { if (stderr.length < 65536) stderr += data.toString('utf8'); });
+          stream.on('close', (code) => {
+            const exitCode = Number.isInteger(code) ? code : 1;
+            if (exitCode !== 0) {
+              return finish(502, { ok: false, error: 'Remote installer exited with code ' + exitCode + (stderr.trim() ? ': ' + stderr.trim().slice(-1000) : '') });
+            }
+            finish(200, { ok: true, message: 'Remote agent repair completed successfully.', output: stdout.trim().slice(-4000) });
+          });
+        });
+      });
+      ssh.on('error', (error) => finish(502, { ok: false, error: 'SSH connection failed: ' + error.message }));
+      ssh.connect(maintenanceConnectOptions(target, credentials));
+    } catch (error) {
+      finish(400, { ok: false, error: error.message || 'Invalid agent repair request.' });
+    }
+  });
 });
 
 const wss = new WebSocketServer({

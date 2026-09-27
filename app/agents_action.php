@@ -5,11 +5,24 @@ declare(strict_types=1);
 require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/agent_deployment.php';
 require_once __DIR__ . '/inc/agent_recovery.php';
+require_once __DIR__ . '/inc/webssh.php';
 require_login();
 require_csrf();
 
 $action = (string) ($_POST['action'] ?? '');
 $pdo = db();
+
+function agent_action_public_base_url(): string
+{
+    $forwardedProto = trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0] ?? '');
+    $scheme = $forwardedProto !== '' ? strtolower($forwardedProto)
+        : ((((string) ($_SERVER['HTTPS'] ?? '')) !== '' && ($_SERVER['HTTPS'] ?? 'off') !== 'off') ? 'https' : 'http');
+    $forwardedHost = trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? ''))[0] ?? '');
+    $host = $forwardedHost !== '' ? $forwardedHost : trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    $base = $host !== '' ? $scheme . '://' . $host : '';
+    if (!str_starts_with(strtolower($base), 'https://')) throw new RuntimeException('Open opnSentral through its public HTTPS URL before starting SSH agent repair.');
+    return rtrim($base, '/');
+}
 
 if ($action === 'create_registration') {
     $firewallId = (int) ($_POST['firewall_id'] ?? 0);
@@ -120,6 +133,45 @@ if ($action === 'create_registration') {
          VALUES(?, ?, ?, ?, ?)'
     );
     $statement->execute([$agentId, $jobType, '{}', 'queued', gmdate('c')]);
+} elseif ($action === 'repair_stale' || $action === 'repair_all_stale') {
+    require_configuration_unlocked(false);
+    try {
+        $publicBase = agent_action_public_base_url();
+        if ($action === 'repair_stale') {
+            $id = (int) ($_POST['id'] ?? 0);
+            $statement = $pdo->prepare(
+                'SELECT a.*, f.name AS firewall_name, f.base_url, f.ssh_username, f.ssh_auth_method, f.ssh_password_enc, f.ssh_private_key_enc, f.ssh_port
+                 FROM agents a JOIN firewalls f ON f.id = a.firewall_id WHERE a.id = ? AND a.enabled = 1'
+            );
+            $statement->execute([$id]);
+            $agent = $statement->fetch();
+            if (!is_array($agent)) throw new RuntimeException('Enabled associated agent not found.');
+            if (agent_recovery_is_fresh($agent)) throw new RuntimeException('Agent is already online.');
+            if (!webssh_credentials_configured($agent)) throw new RuntimeException('No stored SSH login is configured for this firewall. Configure WebSSH automatic login first.');
+            webssh_repair_agent_via_ssh($agent, $publicBase);
+            $_SESSION['agent_update_result'] = 'SSH repair completed for ' . (string) ($agent['firewall_name'] ?? $agent['last_hostname'] ?? 'agent') . '. Existing registration preserved; allow up to one minute for the heartbeat.';
+        } else {
+            $rows = $pdo->query(
+                'SELECT a.*, f.name AS firewall_name, f.base_url, f.ssh_username, f.ssh_auth_method, f.ssh_password_enc, f.ssh_private_key_enc, f.ssh_port
+                 FROM agents a JOIN firewalls f ON f.id = a.firewall_id WHERE a.enabled = 1 ORDER BY a.id'
+            )->fetchAll();
+            $repaired = 0; $online = 0; $missingSsh = 0; $failed = [];
+            foreach ($rows as $agent) {
+                if (agent_recovery_is_fresh($agent)) { $online++; continue; }
+                if (!webssh_credentials_configured($agent)) { $missingSsh++; continue; }
+                try { webssh_repair_agent_via_ssh($agent, $publicBase); $repaired++; }
+                catch (Throwable $exception) {
+                    $label = (string) ($agent['firewall_name'] ?? $agent['last_hostname'] ?? ('Agent #' . (int) $agent['id']));
+                    $failed[] = $label . ': ' . $exception->getMessage();
+                }
+            }
+            $message = sprintf('Repair stale agents: %d repaired via SSH, %d already online, %d skipped without stored SSH login, %d failed.', $repaired, $online, $missingSsh, count($failed));
+            if ($failed !== []) $message .= ' ' . implode(' | ', array_slice($failed, 0, 5));
+            $_SESSION['agent_update_result'] = $message;
+        }
+    } catch (Throwable $exception) {
+        $_SESSION['agent_update_result'] = 'Could not repair agent: ' . $exception->getMessage();
+    }
 } elseif ($action === 'self_update') {
     require_configuration_unlocked(false);
     $id = (int) ($_POST['id'] ?? 0);

@@ -47,6 +47,10 @@ $checks = [
     ['bridge', 'hostVerifier', 'bridge must verify SSH host keys'],
     ['bridge', 'webssh-known-hosts.json', 'bridge must pin SSH host keys'],
     ['bridge', "LISTEN_HOST = '127.0.0.1'", 'bridge must listen only on loopback'],
+    ['bridge', "req.url !== '/maintenance/agent-repair'", 'bridge must expose only the fixed agent-repair maintenance route'],
+    ['bridge', "target.scope !== 'agent_repair'", 'maintenance route must require an agent-repair scope'],
+    ['bridge', "serverUrl + '/agent/install-plugin.sh'", 'maintenance route must execute the fixed installer repair'],
+    ['bridge', "' | sh -s -- '", 'maintenance route must preserve the existing registration through installer repair'],
     ['bridge', 'MAX_SESSIONS', 'bridge must limit concurrent sessions'],
     ['bridge', 'IDLE_TIMEOUT_MS', 'bridge must close idle sessions'],
     ['apache', 'ws://127.0.0.1:3001/', 'Apache must proxy WebSSH only to the internal bridge'],
@@ -69,6 +73,9 @@ $checks = [
     ['helper', "OPENSSL_KEYTYPE_RSA", 'generated WebSSH keys must be RSA'],
     ['helper', "'add_access_user_authorized_key'", 'public-key deployment must use the narrow agent job'],
     ['helper', "WEBSSH_KEY_AGENT_MIN_VERSION = '0.1.17'", 'public-key deployment must require the agent version that implements the narrow job'],
+    ['helper', 'webssh_create_agent_repair_token', 'helper must create a scoped agent-repair token'],
+    ['helper', "'scope' => 'agent_repair'", 'agent-repair token must use a dedicated scope'],
+    ['helper', "curl_init('http://127.0.0.1:3001/maintenance/agent-repair')", 'agent repair must use only the loopback SSH bridge'],
     ['key_action', 'require_csrf();', 'public-key deployment action must require CSRF protection'],
     ['key_action', 'webssh_public_key_deploy_agent($firewall);', 'key generation must verify agent readiness before changing stored authentication'],
     ['key_action', "webssh_generate_rsa_keypair(3072", 'generated deployment keys must use 3072-bit RSA'],
@@ -95,6 +102,10 @@ foreach ($checks as [$file, $needle, $message]) {
 
 if (!str_contains($contents['page'], "new WebSocket(scheme+'//'+location.host+'/webssh/socket')")) {
     fwrite(STDERR, "WebSSH regression failed: browser must connect only to the same-origin WebSSH socket.\n");
+    exit(1);
+}
+if (str_contains($contents['bridge'], 'body.command') || str_contains($contents['bridge'], 'message.command')) {
+    fwrite(STDERR, "WebSSH regression failed: maintenance endpoint must not accept arbitrary remote commands.\n");
     exit(1);
 }
 if (str_contains($contents['page'], 'new WebSocket(selected.host') || str_contains($contents['page'], 'new WebSocket(target.host')) {

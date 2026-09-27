@@ -53,6 +53,13 @@ require __DIR__ . '/inc/header.php';
         <p>Native OPNsense plugin-managed agents using outbound HTTPS to opnSentral.</p>
     </div>
     <div class="management-toolbar">
+        <?php if ($staleEnabledCount > 0): ?>
+        <form method="post" action="/agents_action.php" style="display:inline">
+            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+            <input type="hidden" name="action" value="repair_all_stale">
+            <button type="submit" class="button" onclick="return confirm('Repair all stale agents that have stored SSH credentials? Existing agent registrations will be preserved.')">Repair stale agents</button>
+        </form>
+        <?php endif; ?>
         <form method="post" action="/agents_action.php" style="display:inline">
             <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
             <input type="hidden" name="action" value="self_update_all">
@@ -79,7 +86,7 @@ require __DIR__ . '/inc/header.php';
         <strong>Automatic stale-agent recovery is active</strong>
         <p>
             opnSentral now checks stale, associated agents every <?= (int) AGENT_RECOVERY_LOOP_SECONDS ?> seconds and asks the managed OPNsense service API to start/restart the worker automatically.
-            Recovery attempts use backoff, so an unreachable firewall is not hammered continuously.
+            Recovery attempts use backoff. If an older installation cannot be recovered through the service API, use <strong>Repair agent</strong> or <strong>Repair stale agents</strong>; opnSentral then uses the firewall's stored WebSSH login to run the installer repair without changing the existing agent registration.
         </p>
         <?php if ($legacyRepairCommand !== ''): ?>
             <p>
@@ -237,6 +244,9 @@ Normal use:       OPNsense ── HTTPS/443 outbound ──► opnSentral</pre>
                             <?php if (!empty($agent['firewall_id'])): ?><a class="button secondary" href="/ssh_access.php?firewall_id=<?= (int) $agent['firewall_id'] ?>">SSH access</a><?php endif; ?>
                             <form method="post" action="/agents_action.php" class="management-row-actions">
                                 <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>"><input type="hidden" name="id" value="<?= (int) ($agent['id'] ?? 0) ?>">
+                                <?php if (!$fresh && !empty($agent['enabled']) && !empty($agent['firewall_id'])): ?>
+                                <button class="button secondary" name="action" value="repair_stale" onclick="return confirm('Repair this stale agent through the stored SSH login? Existing registration will be preserved.')">Repair agent</button>
+                                <?php endif; ?>
                                 <button class="button secondary" name="action" value="self_update" <?= !$updateCapable ? 'disabled' : '' ?>><?= $needsUpdate ? 'Update agent' : 'Reinstall agent worker' ?></button>
                                 <button class="button secondary" name="action" value="toggle"><?= !empty($agent['enabled']) ? 'Disable' : 'Enable' ?></button>
                                 <button class="button danger" name="action" value="delete" onclick="return confirm('Delete this agent and its queued job history?')">Delete</button>

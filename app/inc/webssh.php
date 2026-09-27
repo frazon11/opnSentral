@@ -159,3 +159,51 @@ function webssh_queue_public_key_deploy(array $firewall, string $publicKey): int
     ]);
     return (int) db()->lastInsertId();
 }
+
+
+function webssh_create_agent_repair_token(array $firewall, string $serverUrl, int $lifetime = 120): string
+{
+    if (!webssh_credentials_configured($firewall)) {
+        throw new RuntimeException('Stored SSH credentials are required for automatic agent repair.');
+    }
+    $serverUrl = rtrim(trim($serverUrl), '/');
+    $parts = parse_url($serverUrl);
+    if (!is_array($parts) || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+        || trim((string) ($parts['host'] ?? '')) === '' || isset($parts['user']) || isset($parts['pass'])
+        || strlen($serverUrl) > 2048) {
+        throw new RuntimeException('Automatic agent repair requires the public HTTPS opnSentral URL.');
+    }
+    $payload = webssh_target_from_firewall($firewall) + [
+        'credential_blob' => webssh_credential_blob($firewall),
+        'scope' => 'agent_repair',
+        'server_url' => $serverUrl,
+        'iat' => time(),
+        'exp' => time() + max(30, min(180, $lifetime)),
+        'nonce' => bin2hex(random_bytes(12)),
+    ];
+    $json = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    $encoded = webssh_base64url($json);
+    return $encoded . '.' . hash_hmac('sha256', $encoded, crypto_key());
+}
+
+function webssh_repair_agent_via_ssh(array $firewall, string $serverUrl): array
+{
+    $handle = curl_init('http://127.0.0.1:3001/maintenance/agent-repair');
+    if (!$handle instanceof CurlHandle) throw new RuntimeException('Could not initialize internal SSH repair request.');
+    $body = json_encode(['token' => webssh_create_agent_repair_token($firewall, $serverUrl)], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    curl_setopt_array($handle, [
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_CONNECTTIMEOUT => 3, CURLOPT_TIMEOUT => 90,
+    ]);
+    $response = curl_exec($handle);
+    $error = curl_error($handle);
+    $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+    curl_close($handle);
+    if ($response === false) throw new RuntimeException('Internal SSH repair bridge failed: ' . $error);
+    $decoded = json_decode($response, true);
+    if ($status < 200 || $status >= 300 || !is_array($decoded) || empty($decoded['ok'])) {
+        $message = is_array($decoded) ? trim((string) ($decoded['error'] ?? '')) : '';
+        throw new RuntimeException('SSH agent repair failed: ' . ($message !== '' ? $message : 'HTTP ' . $status));
+    }
+    return $decoded;
+}
