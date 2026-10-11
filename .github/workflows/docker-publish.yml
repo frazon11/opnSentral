@@ -13,6 +13,7 @@ on:
       - "scripts/check-feature-contracts.php"
       - "scripts/check-firmware-ui.php"
       - "scripts/check-ids-rendering.php"
+      - "scripts/check-plugin-management.php"
       - "scripts/check-webssh.php"
       - "opnsense-plugin/opnsentral-agent/**"
       - "Dockerfile"
@@ -82,6 +83,7 @@ jobs:
           php -l scripts/check-feature-contracts.php >/dev/null
           php -l scripts/check-firmware-ui.php >/dev/null
           php -l scripts/check-ids-rendering.php >/dev/null
+          php -l scripts/check-plugin-management.php >/dev/null
           php -l scripts/check-webssh.php >/dev/null
           php -l opnsense-plugin/opnsentral-agent/src/etc/inc/plugins.inc.d/opnsentralagent.inc >/dev/null
           node --check webssh/server.js
@@ -98,6 +100,8 @@ jobs:
         run: php scripts/check-firmware-ui.php
       - name: Check IDS rendering
         run: php scripts/check-ids-rendering.php
+      - name: Check plugin management
+        run: php scripts/check-plugin-management.php
       - name: Check WebSSH
         run: php scripts/check-webssh.php
 

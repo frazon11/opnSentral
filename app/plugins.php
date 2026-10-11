@@ -42,13 +42,13 @@ require __DIR__ . '/inc/header.php';
 <div class="page-title">
     <div>
         <h1>System → Firmware → Plugins</h1>
-        <p>Compare installed OPNsense plugins across all managed firewalls and install a plugin on one or all compatible targets.</p>
+        <p>Compare installed OPNsense plugins across all managed firewalls and install or remove plugins on one or all compatible targets.</p>
     </div>
 </div>
 
 <div class="alert warningbox">
-    <strong>Plugin installation creates a pre-change backup.</strong>
-    Only OPNsense packages beginning with <code>os-</code> are managed. The <strong>Install on all</strong> action targets only firewalls where the plugin is available and not already installed.
+    <strong>Plugin installation and removal create a pre-change backup.</strong>
+    Only OPNsense packages beginning with <code>os-</code> are managed. Fleet actions target only applicable firewalls: <strong>Install on all</strong> skips installed plugins, while <strong>Remove from all</strong> targets only firewalls where the plugin is installed.
 </div>
 
 <div class="plugin-fleet-toolbar">
@@ -138,15 +138,16 @@ require __DIR__ . '/inc/header.php';
             const update = plugin.available_version && plugin.available_version !== plugin.version
                 ? '<span class="version">Available: '+escapeHtml(plugin.available_version)+'</span>'
                 : '';
-            return '<span class="badge good">Installed</span><span class="version">'+escapeHtml(version)+'</span>'+update;
+            return '<span class="badge good">Installed</span><span class="version">'+escapeHtml(version)+'</span>'+update+
+                '<button type="button" class="button danger plugin-action" data-operation="remove" data-package="'+escapeHtml(packageName)+'" data-firewall-ids="['+Number(firewall.id)+']">Remove</button>';
         }
 
-        return '<button type="button" class="button secondary plugin-install" data-package="'+escapeHtml(packageName)+'" data-firewall-ids="['+Number(firewall.id)+']">Install</button>' +
+        return '<button type="button" class="button secondary plugin-action" data-operation="install" data-package="'+escapeHtml(packageName)+'" data-firewall-ids="['+Number(firewall.id)+']">Install</button>' +
             (plugin.available_version ? '<span class="version">'+escapeHtml(plugin.available_version)+'</span>' : '');
     }
 
     function allMarkup(packageName){
-        const targets = inventory
+        const installTargets = inventory
             .filter(fw => fw.ok === true)
             .filter(fw => {
                 const plugin = pluginFor(fw, packageName);
@@ -154,11 +155,22 @@ require __DIR__ . '/inc/header.php';
             })
             .map(fw => Number(fw.id));
 
-        if(!targets.length){
-            return '<span class="badge good">Installed / N/A</span>';
-        }
+        const removeTargets = inventory
+            .filter(fw => fw.ok === true)
+            .filter(fw => {
+                const plugin = pluginFor(fw, packageName);
+                return plugin && plugin.installed;
+            })
+            .map(fw => Number(fw.id));
 
-        return '<button type="button" class="button plugin-install" data-package="'+escapeHtml(packageName)+'" data-firewall-ids="'+escapeHtml(JSON.stringify(targets))+'">Install on all ('+targets.length+')</button>';
+        const actions = [];
+        if(installTargets.length){
+            actions.push('<button type="button" class="button plugin-action" data-operation="install" data-package="'+escapeHtml(packageName)+'" data-firewall-ids="'+escapeHtml(JSON.stringify(installTargets))+'">Install on all ('+installTargets.length+')</button>');
+        }
+        if(removeTargets.length){
+            actions.push('<button type="button" class="button danger plugin-action" data-operation="remove" data-package="'+escapeHtml(packageName)+'" data-firewall-ids="'+escapeHtml(JSON.stringify(removeTargets))+'">Remove from all ('+removeTargets.length+')</button>');
+        }
+        return actions.length ? actions.join(' ') : '<span class="badge neutral">N/A</span>';
     }
 
     function render(){
@@ -205,8 +217,8 @@ require __DIR__ . '/inc/header.php';
                 '</tr>';
         }).join('');
 
-        body.querySelectorAll('.plugin-install').forEach(button => {
-            button.addEventListener('click', () => installPlugin(button));
+        body.querySelectorAll('.plugin-action').forEach(button => {
+            button.addEventListener('click', () => runPluginAction(button));
         });
     }
 
@@ -241,8 +253,9 @@ require __DIR__ . '/inc/header.php';
         }
     }
 
-    async function installPlugin(button){
+    async function runPluginAction(button){
         const packageName = button.dataset.package || '';
+        const operation = button.dataset.operation === 'remove' ? 'remove' : 'install';
         let firewallIds = [];
         try{firewallIds = JSON.parse(button.dataset.firewallIds || '[]');}catch(error){}
         firewallIds = firewallIds.map(Number).filter(id => id > 0);
@@ -250,18 +263,22 @@ require __DIR__ . '/inc/header.php';
 
         const names = firewallIds.map(id => firewallOrder.find(fw => Number(fw.id)===id)?.name || ('#'+id));
         const targetText = firewallIds.length === 1 ? names[0] : firewallIds.length+' firewalls';
-        if(!confirm('Install '+packageName+' on '+targetText+'?\n\nA configuration backup will be created on every target first.')) return;
+        const verb = operation === 'remove' ? 'Remove' : 'Install';
+        const preposition = operation === 'remove' ? ' from ' : ' on ';
+        if(!confirm(verb+' '+packageName+preposition+targetText+'?\n\nA configuration backup will be created on every target first.')) return;
 
         button.disabled = true;
         result.classList.remove('hidden');
         resultSummary.className = 'alert warningbox';
-        resultSummary.textContent = 'Creating backups and starting plugin installation…';
+        resultSummary.textContent = operation === 'remove'
+            ? 'Creating backups and starting plugin removal…'
+            : 'Creating backups and starting plugin installation…';
         resultGrid.innerHTML = '';
 
         const form = new URLSearchParams();
         form.set('csrf', csrf);
         form.set('package', packageName);
-        form.set('operation', 'install');
+        form.set('operation', operation);
         form.set('firewall_ids', JSON.stringify(firewallIds));
 
         try{
@@ -271,7 +288,9 @@ require __DIR__ . '/inc/header.php';
                 body:form
             });
             const data = await readJson(response);
-            if(!response.ok || data.ok !== true) throw new Error(data.error || 'Plugin installation failed.');
+            if(!response.ok || data.ok !== true){
+                throw new Error(data.error || (operation === 'remove' ? 'Plugin removal failed.' : 'Plugin installation failed.'));
+            }
 
             const rows = Array.isArray(data.results) ? data.results : [];
             rows.forEach(item => {
@@ -279,12 +298,12 @@ require __DIR__ . '/inc/header.php';
                 node.className = 'plugin-result-item '+(item.ok ? 'good' : 'bad');
                 node.innerHTML = '<strong>'+escapeHtml(item.firewall_name || ('#'+item.firewall_id))+'</strong> '+
                     '<span class="badge '+(item.ok?'good':'bad')+'">'+(item.ok?'Started':'Failed')+'</span><br>'+
-                    escapeHtml(item.ok ? (item.message || 'Installation started.') : (item.error || 'Installation failed.'));
+                    escapeHtml(item.ok ? (item.message || (operation === 'remove' ? 'Removal started.' : 'Installation started.')) : (item.error || 'Plugin action failed.'));
                 resultGrid.appendChild(node);
             });
 
             resultSummary.className = data.failure_count ? 'alert warningbox' : 'alert goodbox';
-            resultSummary.textContent = data.message || 'Plugin installation submitted.';
+            resultSummary.textContent = data.message || (operation === 'remove' ? 'Plugin removal submitted.' : 'Plugin installation submitted.');
             window.setTimeout(()=>load(true),2500);
         }catch(error){
             resultSummary.className = 'alert error';
