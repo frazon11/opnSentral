@@ -9,7 +9,10 @@ $checks = [
     ["function sortedConnections(connections)", 'WireGuard overview must sort managed connections.'],
     ["aPrimary - bPrimary", 'Kryszon connections must sort before all other pairs.'],
     ['class="wg-link-line"', 'WireGuard overview must show a simple visual link between firewalls.'],
-    ['class="wg-link-status"', 'WireGuard overview must show configuration status as plain text.'],
+    ['class="button secondary wg-state-action"', 'WireGuard state must be an actionable button in the compact row.'],
+    ['>${escapeHtml(connection.status)}</button>', 'WireGuard state button must display enabled/disabled/partial directly.'],
+    ['>Details ▸</button>', 'Details control must be visually obvious as a button.'],
+    ['button.textContent = expanded ? \'Details ▸\' : \'Hide details ▾\';', 'Details button must expose its expanded state.'],
     ["connections.length + ' existing managed tunnel'", 'Summary must describe only existing managed tunnels.'],
     ["data.connections.filter(function(connection)", 'Overview must filter out non-existing/incomplete tunnel records.'],
     ["String(connection.local.client_uuid || '') !== ''", 'Existing tunnel filter must require the local managed peer.'],
@@ -23,7 +26,7 @@ foreach ($checks as [$needle,$message]) {
     }
 }
 
-foreach (['connectionStateClass','enabledCount + \' / \' + totalCount'] as $forbidden) {
+foreach (['connectionStateClass','enabledCount + \' / \' + totalCount','class="wg-link-status"','Enable both sides</button>','Disable both sides</button>'] as $forbidden) {
     if (str_contains($page, $forbidden)) {
         fwrite(STDERR, "WireGuard overview check failed: old color/count summary remains: {$forbidden}\n");
         exit(1);

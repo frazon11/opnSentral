@@ -35,14 +35,17 @@ require __DIR__ . '/inc/header.php';
 <style>
 .wg-link-list{display:grid;gap:10px}
 .wg-link-card{padding:0}
-.wg-link-main{display:grid;grid-template-columns:minmax(140px,1fr) minmax(70px,160px) minmax(140px,1fr) 100px auto;gap:14px;align-items:center;padding:14px 16px}
-.wg-link-name{font-weight:700}
-.wg-link-line{height:1px;background:var(--border);position:relative}
+.wg-link-main{display:flex;align-items:center;gap:10px;padding:11px 14px;flex-wrap:wrap}
+.wg-link-name{font-weight:700;min-width:110px;max-width:220px}
+.wg-link-name:first-child{text-align:right}
+.wg-link-line{width:84px;height:1px;background:var(--border);position:relative;flex:0 0 84px}
 .wg-link-line::before,.wg-link-line::after{content:"";position:absolute;top:-2px;width:5px;height:5px;border-radius:50%;background:var(--muted)}
 .wg-link-line::before{left:0}.wg-link-line::after{right:0}
-.wg-link-status{text-transform:lowercase;font-weight:600}
-.wg-link-details{padding:0 16px 14px}
-@media(max-width:760px){.wg-link-main{grid-template-columns:1fr auto 1fr;gap:8px}.wg-link-status{grid-column:1 / span 2}.wg-link-main .button{grid-column:3;grid-row:2}.wg-link-line{min-width:50px}}
+.wg-link-actions{display:flex;gap:8px;align-items:center;margin-left:6px}
+.wg-state-action{min-width:92px;text-transform:lowercase}
+.wg-details-toggle{min-width:92px}
+.wg-link-details{padding:0 14px 12px}
+@media(max-width:760px){.wg-link-name{min-width:auto}.wg-link-name:first-child{text-align:left}.wg-link-line{width:52px;flex-basis:52px}.wg-link-actions{width:100%;margin-left:0}}
 </style>
 
 <div id="wg-overview-error" class="alert error hidden"></div>
@@ -244,13 +247,20 @@ require __DIR__ . '/inc/header.php';
                             <div class="wg-link-name">${escapeHtml(left.firewall_name)}</div>
                             <div class="wg-link-line" aria-hidden="true"></div>
                             <div class="wg-link-name">${escapeHtml(right.firewall_name)}</div>
-                            <div class="wg-link-status">${escapeHtml(connection.status)}</div>
-                            <button
-                                type="button"
-                                class="button secondary wg-details-toggle"
-                                data-connection="${index}"
-                                aria-expanded="false"
-                            >Details</button>
+                            <div class="wg-link-actions">
+                                <button
+                                    type="button"
+                                    class="button secondary wg-state-action"
+                                    data-connection="${index}"
+                                    title="${enable ? 'Enable both sides' : 'Disable both sides'}"
+                                >${escapeHtml(connection.status)}</button>
+                                <button
+                                    type="button"
+                                    class="button secondary wg-details-toggle"
+                                    data-connection="${index}"
+                                    aria-expanded="false"
+                                >Details ▸</button>
+                            </div>
                         </div>
 
                         <div class="wg-link-details" hidden>
@@ -280,13 +290,6 @@ require __DIR__ . '/inc/header.php';
                                     </tbody>
                                 </table>
                             </div>
-                            <div style="margin-top:10px">
-                                <button
-                                    type="button"
-                                    class="${enable ? 'button secondary' : 'button warning'} wg-state-action"
-                                    data-connection="${index}"
-                                >${enable ? 'Enable both sides' : 'Disable both sides'}</button>
-                            </div>
                         </div>
                     </section>
                 `;
@@ -299,7 +302,7 @@ require __DIR__ . '/inc/header.php';
                 const panel = card.querySelector('.wg-link-details');
                 const expanded = button.getAttribute('aria-expanded') === 'true';
                 button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-                button.textContent = expanded ? 'Details' : 'Hide details';
+                button.textContent = expanded ? 'Details ▸' : 'Hide details ▾';
                 panel.hidden = expanded;
             });
         });
