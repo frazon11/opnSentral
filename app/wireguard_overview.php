@@ -11,7 +11,7 @@ require __DIR__ . '/inc/header.php';
 <div class="page-title management-page-title">
     <div>
         <h1>Managed WireGuard</h1>
-        <p>WireGuard status grouped by managed OPNsense firewall.</p>
+        <p>Managed WireGuard connections between OPNsense firewalls.</p>
     </div>
     <div class="management-toolbar">
         <a class="button" href="/wireguard_create.php">
@@ -32,9 +32,22 @@ require __DIR__ . '/inc/header.php';
     </div>
 </div>
 
+<style>
+.wg-link-list{display:grid;gap:10px}
+.wg-link-card{padding:0}
+.wg-link-main{display:grid;grid-template-columns:minmax(140px,1fr) minmax(70px,160px) minmax(140px,1fr) 100px auto;gap:14px;align-items:center;padding:14px 16px}
+.wg-link-name{font-weight:700}
+.wg-link-line{height:1px;background:var(--border);position:relative}
+.wg-link-line::before,.wg-link-line::after{content:"";position:absolute;top:-2px;width:5px;height:5px;border-radius:50%;background:var(--muted)}
+.wg-link-line::before{left:0}.wg-link-line::after{right:0}
+.wg-link-status{text-transform:lowercase;font-weight:600}
+.wg-link-details{padding:0 16px 14px}
+@media(max-width:760px){.wg-link-main{grid-template-columns:1fr auto 1fr;gap:8px}.wg-link-status{grid-column:1 / span 2}.wg-link-main .button{grid-column:3;grid-row:2}.wg-link-line{min-width:50px}}
+</style>
+
 <div id="wg-overview-error" class="alert error hidden"></div>
 
-<div id="wg-overview-list" class="vpn-summary-list">
+<div id="wg-overview-list" class="wg-link-list">
     <section class="card vpn-summary-card">
         <p class="muted">Loading…</p>
     </section>
@@ -80,48 +93,50 @@ require __DIR__ . '/inc/header.php';
         return '<span class="badge bad">Partial</span>';
     }
 
-    function firewallGroups(connections){
-        const groups = new Map();
+    function normalizedConnection(connection){
+        const local = connection.local;
+        const remote = connection.remote;
+        const localName = String(local.firewall_name || '');
+        const remoteName = String(remote.firewall_name || '');
+        const localIsPrimary = localName.toLowerCase() === 'kryszon';
+        const remoteIsPrimary = remoteName.toLowerCase() === 'kryszon';
 
-        configuredFirewalls.forEach(function(firewall){
-            groups.set(Number(firewall.id), {
-                firewall,
-                connections: []
+        if(remoteIsPrimary && !localIsPrimary){
+            return {connection, left: remote, right: local};
+        }
+        if(localIsPrimary && !remoteIsPrimary){
+            return {connection, left: local, right: remote};
+        }
+
+        return localName.localeCompare(
+            remoteName,
+            undefined,
+            {numeric:true,sensitivity:'base'}
+        ) <= 0
+            ? {connection, left: local, right: remote}
+            : {connection, left: remote, right: local};
+    }
+
+    function sortedConnections(connections){
+        return connections
+            .map(normalizedConnection)
+            .sort(function(a,b){
+                const aPrimary = String(a.left.firewall_name || '').toLowerCase() === 'kryszon' ? 0 : 1;
+                const bPrimary = String(b.left.firewall_name || '').toLowerCase() === 'kryszon' ? 0 : 1;
+                if(aPrimary !== bPrimary) return aPrimary - bPrimary;
+
+                const leftCompare = String(a.left.firewall_name || '').localeCompare(
+                    String(b.left.firewall_name || ''),
+                    undefined,
+                    {numeric:true,sensitivity:'base'}
+                );
+                if(leftCompare !== 0) return leftCompare;
+                return String(a.right.firewall_name || '').localeCompare(
+                    String(b.right.firewall_name || ''),
+                    undefined,
+                    {numeric:true,sensitivity:'base'}
+                );
             });
-        });
-
-        connections.forEach(function(connection){
-            [connection.local, connection.remote].forEach(function(side){
-                const firewallId = Number(side.firewall_id);
-
-                if(!groups.has(firewallId)){
-                    groups.set(firewallId, {
-                        firewall: {
-                            id: firewallId,
-                            name: side.firewall_name,
-                            base_url: ''
-                        },
-                        connections: []
-                    });
-                }
-
-                groups.get(firewallId).connections.push({
-                    connection,
-                    side:
-                        Number(connection.local.firewall_id) === firewallId
-                            ? 'local'
-                            : 'remote'
-                });
-            });
-        });
-
-        return Array.from(groups.values()).sort(function(a, b){
-            return String(a.firewall.name).localeCompare(
-                String(b.firewall.name),
-                undefined,
-                {numeric: true, sensitivity: 'base'}
-            );
-        });
     }
 
     async function changeState(connection, enable, button){
@@ -198,240 +213,102 @@ require __DIR__ . '/inc/header.php';
         }
     }
 
-    function connectionRow(item, index){
-        const connection = item.connection;
-        const own = connection[item.side];
-        const other = item.side === 'local'
-            ? connection.remote
-            : connection.local;
-        const enable = connection.status !== 'enabled';
-
-        return `
-            <tr>
-                <td>
-                    <strong>${escapeHtml(
-                        own.client_name || 'peer'
-                    )}</strong>
-                    <br>
-                    <small>
-                        to ${escapeHtml(other.firewall_name)}
-                    </small>
-                </td>
-                <td>${escapeHtml(
-                    other.client_name || 'peer'
-                )}</td>
-                <td>${statusBadge(connection.status)}</td>
-                <td>
-                    <code>${escapeHtml(
-                        own.client_uuid || '—'
-                    )}</code>
-                </td>
-                <td>
-                    <button
-                        type="button"
-                        class="${
-                            enable
-                                ? 'button secondary'
-                                : 'button warning'
-                        } wg-state-action"
-                        data-connection="${index}"
-                    >
-                        ${
-                            enable
-                                ? 'Enable both sides'
-                                : 'Disable both sides'
-                        }
-                    </button>
-                </td>
-            </tr>
-        `;
-    }
-
     function render(data){
         const connections = Array.isArray(data.connections)
             ? data.connections
             : [];
-        const groups = firewallGroups(connections);
+        const rows = sortedConnections(connections);
 
-        const enabled = connections.filter(
-            connection => connection.status === 'enabled'
-        ).length;
-        const disabled = connections.filter(
-            connection => connection.status === 'disabled'
-        ).length;
-        const partial = connections.filter(
-            connection => connection.status === 'partial'
-        ).length;
-
-        summary.innerHTML =
+        summary.textContent =
             configuredFirewalls.length + ' firewalls · ' +
-            '<span class="badge good">' +
-                enabled + ' enabled connections</span> ' +
-            '<span class="badge neutral">' +
-                disabled + ' disabled</span> ' +
-            '<span class="badge bad">' +
-                partial + ' partial</span>';
+            connections.length + ' managed connection' +
+            (connections.length === 1 ? '' : 's');
 
-        list.innerHTML = groups.length
-            ? groups.map(function(group, groupIndex){
-                const enabledCount = group.connections.filter(
-                    item => item.connection.status === 'enabled'
-                ).length;
-                const totalCount = group.connections.length;
-                const connectionStateClass =
-                    totalCount === 0
-                        ? 'neutral'
-                        : enabledCount === totalCount
-                            ? 'good'
-                            : enabledCount === 0
-                                ? 'bad'
-                                : 'warning';
+        list.innerHTML = rows.length
+            ? rows.map(function(item,index){
+                const connection = item.connection;
+                const left = item.left;
+                const right = item.right;
+                const enable = connection.status !== 'enabled';
 
                 return `
-                    <section class="card vpn-summary-card">
-                        <div class="vpn-summary-main">
-                            <div class="vpn-summary-identity">
-                                <h2>${escapeHtml(
-                                    group.firewall.name
-                                )}</h2>
-                                ${
-                                    group.firewall.base_url
-                                        ? `<a
-                                            class="muted"
-                                            href="${escapeHtml(
-                                                group.firewall.base_url
-                                            )}"
-                                            target="_blank"
-                                            rel="noopener"
-                                        >${escapeHtml(
-                                            group.firewall.base_url
-                                        )}</a>`
-                                        : ''
-                                }
-                            </div>
-
-                            <div class="vpn-summary-metric">
-                                <span class="vpn-summary-label">
-                                    Connections
-                                </span>
-                                <span class="badge ${connectionStateClass}">
-                                    ${enabledCount} / ${totalCount}
-                                </span>
-                            </div>
-
-                            <div class="vpn-summary-actions">
-                                <button
-                                    type="button"
-                                    class="button secondary vpn-details-toggle"
-                                    aria-expanded="false"
-                                >
-                                    Details
-                                </button>
-                            </div>
+                    <section class="card wg-link-card">
+                        <div class="wg-link-main">
+                            <div class="wg-link-name">${escapeHtml(left.firewall_name)}</div>
+                            <div class="wg-link-line" aria-hidden="true"></div>
+                            <div class="wg-link-name">${escapeHtml(right.firewall_name)}</div>
+                            <div class="wg-link-status">${escapeHtml(connection.status)}</div>
+                            <button
+                                type="button"
+                                class="button secondary wg-details-toggle"
+                                data-connection="${index}"
+                                aria-expanded="false"
+                            >Details</button>
                         </div>
 
-                        <div class="vpn-details-panel" hidden>
-                            <div class="vpn-details-header">
-                                <div>
-                                    <strong>WireGuard connections</strong>
-                                    <div class="muted">
-                                        ${escapeHtml(
-                                            group.firewall.name
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
+                        <div class="wg-link-details" hidden>
                             <div class="table-scroll management-table-wrap">
                                 <table class="management-table">
                                     <thead>
                                         <tr>
-                                            <th>Local peer</th>
-                                            <th>Remote peer</th>
-                                            <th>Status</th>
+                                            <th>Firewall</th>
+                                            <th>Peer</th>
+                                            <th>Configured</th>
                                             <th>Client UUID</th>
-                                            <th>Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        ${
-                                            group.connections.length
-                                                ? group.connections.map(
-                                                    function(item, itemIndex){
-                                                        item.globalIndex =
-                                                            groupIndex * 10000 +
-                                                            itemIndex;
-                                                        return connectionRow(
-                                                            item,
-                                                            item.globalIndex
-                                                        );
-                                                    }
-                                                ).join('')
-                                                : `<tr>
-                                                    <td colspan="5">
-                                                        No managed connections.
-                                                    </td>
-                                                </tr>`
-                                        }
+                                        <tr>
+                                            <td>${escapeHtml(left.firewall_name)}</td>
+                                            <td>${escapeHtml(left.client_name || 'peer')}</td>
+                                            <td>${left.enabled ? 'enabled' : 'disabled'}</td>
+                                            <td><code>${escapeHtml(left.client_uuid || '—')}</code></td>
+                                        </tr>
+                                        <tr>
+                                            <td>${escapeHtml(right.firewall_name)}</td>
+                                            <td>${escapeHtml(right.client_name || 'peer')}</td>
+                                            <td>${right.enabled ? 'enabled' : 'disabled'}</td>
+                                            <td><code>${escapeHtml(right.client_uuid || '—')}</code></td>
+                                        </tr>
                                     </tbody>
                                 </table>
+                            </div>
+                            <div style="margin-top:10px">
+                                <button
+                                    type="button"
+                                    class="${enable ? 'button secondary' : 'button warning'} wg-state-action"
+                                    data-connection="${index}"
+                                >${enable ? 'Enable both sides' : 'Disable both sides'}</button>
                             </div>
                         </div>
                     </section>
                 `;
             }).join('')
-            : '<section class="card vpn-summary-card">' +
-                '<p class="muted">No firewalls configured.</p>' +
-              '</section>';
+            : '<section class="card vpn-summary-card"><p class="muted">No managed WireGuard connections found.</p></section>';
 
-        const indexedConnections = new Map();
-        groups.forEach(function(group, groupIndex){
-            group.connections.forEach(function(item, itemIndex){
-                indexedConnections.set(
-                    groupIndex * 10000 + itemIndex,
-                    item.connection
-                );
+        list.querySelectorAll('.wg-details-toggle').forEach(function(button){
+            button.addEventListener('click',function(){
+                const card = button.closest('.wg-link-card');
+                const panel = card.querySelector('.wg-link-details');
+                const expanded = button.getAttribute('aria-expanded') === 'true';
+                button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+                button.textContent = expanded ? 'Details' : 'Hide details';
+                panel.hidden = expanded;
             });
         });
 
-        list.querySelectorAll('.vpn-details-toggle').forEach(
-            function(button){
-                button.addEventListener('click', function(){
-                    const card = button.closest('.vpn-summary-card');
-                    const panel = card.querySelector(
-                        '.vpn-details-panel'
-                    );
-                    const expanded =
-                        button.getAttribute('aria-expanded') === 'true';
-
-                    button.setAttribute(
-                        'aria-expanded',
-                        expanded ? 'false' : 'true'
-                    );
-                    button.textContent = expanded
-                        ? 'Details'
-                        : 'Hide details';
-                    panel.hidden = expanded;
-                    card.classList.toggle(
-                        'vpn-summary-expanded',
-                        !expanded
-                    );
-                });
-            }
-        );
-
-        list.querySelectorAll('.wg-state-action').forEach(
-            function(button){
-                button.addEventListener('click', function(){
-                    const connection = indexedConnections.get(
-                        Number(button.dataset.connection)
-                    );
-                    const enable =
-                        connection.status !== 'enabled';
-                    changeState(connection, enable, button);
-                });
-            }
-        );
+        list.querySelectorAll('.wg-state-action').forEach(function(button){
+            button.addEventListener('click',function(){
+                const item = rows[Number(button.dataset.connection)];
+                if(!item) return;
+                const connection = item.connection;
+                changeState(
+                    connection,
+                    connection.status !== 'enabled',
+                    button
+                );
+            });
+        });
     }
 
     let hasRendered = false;
