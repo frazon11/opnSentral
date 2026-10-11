@@ -215,13 +215,20 @@ require __DIR__ . '/inc/header.php';
 
     function render(data){
         const connections = Array.isArray(data.connections)
-            ? data.connections
+            ? data.connections.filter(function(connection){
+                return connection
+                    && connection.local
+                    && connection.remote
+                    && Number(connection.local.firewall_id) > 0
+                    && Number(connection.remote.firewall_id) > 0
+                    && String(connection.local.client_uuid || '') !== ''
+                    && String(connection.remote.client_uuid || '') !== '';
+            })
             : [];
         const rows = sortedConnections(connections);
 
         summary.textContent =
-            configuredFirewalls.length + ' firewalls · ' +
-            connections.length + ' managed connection' +
+            connections.length + ' existing managed tunnel' +
             (connections.length === 1 ? '' : 's');
 
         list.innerHTML = rows.length
@@ -284,7 +291,7 @@ require __DIR__ . '/inc/header.php';
                     </section>
                 `;
             }).join('')
-            : '<section class="card vpn-summary-card"><p class="muted">No managed WireGuard connections found.</p></section>';
+            : '<section class="card vpn-summary-card"><p class="muted">No existing managed WireGuard tunnels found.</p></section>';
 
         list.querySelectorAll('.wg-details-toggle').forEach(function(button){
             button.addEventListener('click',function(){
