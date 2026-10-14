@@ -17,7 +17,7 @@ $checks = [
     [$page, "Auto-discovered", 'Empty HTTP-01 IP lists must be explained when auto-discovery is active.'],
     [$page, "Not explicitly set", 'Empty HTTP-01 interfaces must be explained instead of rendered as a dash.'],
     [$page, "'acmeclient/validations/search'", 'ACME page must load the validation catalog for reliable relation resolution.'],
-    [$page, "$validationByName", 'ACME page must support validation relation lookup by display name.'],
+    [$page, '$validationByName', 'ACME page must support validation relation lookup by display name.'],
     [$page, 'Last ACME status', 'ACME page must show the last ACME status.'],
     [$page, 'statusLastUpdate', 'ACME page must show the last ACME run timestamp.'],
     [$page, 'Issue / renew now', 'ACME page must expose a run action.'],
