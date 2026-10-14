@@ -16,6 +16,8 @@ $checks = [
     [$page, 'acme_relation_uuid($certificateConfig[\'validationMethod\']', 'Certificate validation relation must be resolved to its UUID.'],
     [$page, "Auto-discovered", 'Empty HTTP-01 IP lists must be explained when auto-discovery is active.'],
     [$page, "Not explicitly set", 'Empty HTTP-01 interfaces must be explained instead of rendered as a dash.'],
+    [$page, "'acmeclient/validations/search'", 'ACME page must load the validation catalog for reliable relation resolution.'],
+    [$page, "$validationByName", 'ACME page must support validation relation lookup by display name.'],
     [$page, 'Last ACME status', 'ACME page must show the last ACME status.'],
     [$page, 'statusLastUpdate', 'ACME page must show the last ACME run timestamp.'],
     [$page, 'Issue / renew now', 'ACME page must expose a run action.'],
@@ -30,6 +32,13 @@ $checks = [
 foreach ($checks as [$content,$needle,$message]) {
     if (!str_contains($content,$needle)) {
         fwrite(STDERR, "ACME overview check failed: {$message}\n");
+        exit(1);
+    }
+}
+
+foreach (['HTTP-01 challenge port','TLS-ALPN challenge port','Restart timeout','HAProxy integration','Validation data unavailable'] as $forbidden) {
+    if (str_contains($page, $forbidden)) {
+        fwrite(STDERR, "ACME overview check failed: low-value/noisy field remains: {$forbidden}\n");
         exit(1);
     }
 }

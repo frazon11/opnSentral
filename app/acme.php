@@ -145,13 +145,13 @@ function acme_validation_label(array $validation): string
         'http01' => 'HTTP-01',
         'dns01' => 'DNS-01',
         'tlsalpn01' => 'TLS-ALPN-01',
-        default => 'Validation data unavailable',
+        default => 'Unavailable',
     };
 }
 
 function acme_http_validation_state(array $validation): string
 {
-    if ($validation === []) return 'Validation data unavailable';
+    if ($validation === []) return 'Unavailable';
     if (acme_scalar($validation['method'] ?? '') !== 'http01') {
         return 'Not used (' . acme_validation_label($validation) . ')';
     }
@@ -163,7 +163,7 @@ function acme_http_validation_state(array $validation): string
 
 function acme_http_interface_text(array $validation): string
 {
-    if ($validation === []) return 'Validation data unavailable';
+    if ($validation === []) return 'Unavailable';
     if (acme_scalar($validation['method'] ?? '') !== 'http01') {
         return 'Not used (' . acme_validation_label($validation) . ')';
     }
@@ -176,7 +176,7 @@ function acme_http_interface_text(array $validation): string
 
 function acme_http_ip_text(array $validation): string
 {
-    if ($validation === []) return 'Validation data unavailable';
+    if ($validation === []) return 'Unavailable';
     if (acme_scalar($validation['method'] ?? '') !== 'http01') {
         return 'Not used (' . acme_validation_label($validation) . ')';
     }
@@ -222,6 +222,23 @@ foreach ($firewalls as $firewallRow) {
             25
         );
 
+        $validationSearch = opn_request(
+            $firewall,
+            'acmeclient/validations/search',
+            'POST',
+            ['current' => 1, 'rowCount' => 500, 'searchPhrase' => ''],
+            25
+        );
+        $validationRows = is_array($validationSearch['rows'] ?? null) ? $validationSearch['rows'] : [];
+        $validationByUuid = [];
+        $validationByName = [];
+        foreach ($validationRows as $validationRow) {
+            $validationRowUuid = acme_scalar($validationRow['uuid'] ?? '');
+            $validationRowName = acme_scalar($validationRow['name'] ?? '');
+            if ($validationRowUuid !== '') $validationByUuid[$validationRowUuid] = $validationRow;
+            if ($validationRowName !== '') $validationByName[strtolower($validationRowName)] = $validationRowUuid;
+        }
+
         $column['settings'] = $settings;
         $column['certificates'] = is_array($certResponse['rows'] ?? null) ? $certResponse['rows'] : [];
 
@@ -247,7 +264,14 @@ foreach ($firewalls as $firewallRow) {
                     $detail['certificate'] = array_merge($certificate, $certificateConfig);
                 }
 
-                $validationUuid = acme_relation_uuid($certificateConfig['validationMethod'] ?? '');
+                $validationRelation = $certificateConfig['validationMethod'] ?? '';
+                $validationUuid = acme_relation_uuid($validationRelation);
+                if ($validationUuid === '') {
+                    $validationName = strtolower(acme_scalar($validationRelation));
+                    if ($validationName !== '' && isset($validationByName[$validationName])) {
+                        $validationUuid = $validationByName[$validationName];
+                    }
+                }
                 if ($validationUuid !== '') {
                     $validationResponse = opn_request(
                         $firewall,
@@ -257,6 +281,9 @@ foreach ($firewalls as $firewallRow) {
                         20
                     );
                     $detail['validation'] = acme_response_item($validationResponse, 'validation');
+                    if ($detail['validation'] === [] && isset($validationByUuid[$validationUuid])) {
+                        $detail['validation'] = $validationByUuid[$validationUuid];
+                    }
                 }
             } catch (Throwable $ignored) {
                 // Keep the certificate overview usable if one optional detail call fails.
@@ -336,35 +363,24 @@ require __DIR__ . '/inc/header.php';
             <?php foreach ($columns as $column): ?><td><?= $column['ok'] ? h(acme_setting($column, 'environment')) : '—' ?></td><?php endforeach; ?>
         </tr>
         <tr>
-            <td class="setting-col">HTTP-01 challenge port</td>
-            <?php foreach ($columns as $column): ?><td><?= $column['ok'] ? h(acme_setting($column, 'challengePort')) : '—' ?></td><?php endforeach; ?>
-        </tr>
-        <tr>
-            <td class="setting-col">TLS-ALPN challenge port</td>
-            <?php foreach ($columns as $column): ?><td><?= $column['ok'] ? h(acme_setting($column, 'TLSchallengePort')) : '—' ?></td><?php endforeach; ?>
-        </tr>
-        <tr>
-            <td class="setting-col">Restart timeout</td>
-            <?php foreach ($columns as $column): ?><td><?= $column['ok'] ? h(acme_setting($column, 'restartTimeout')) . ' s' : '—' ?></td><?php endforeach; ?>
-        </tr>
-        <tr>
-            <td class="setting-col">HAProxy integration</td>
-            <?php foreach ($columns as $column): ?><td><?= $column['ok'] ? (acme_bool($column['settings']['haproxyIntegration'] ?? false) ? 'Enabled' : 'Disabled') : '—' ?></td><?php endforeach; ?>
-        </tr>
-        <tr>
             <td class="setting-col">IP Auto-Discovery</td>
             <?php foreach ($columns as $column): ?>
                 <td>
                     <?php if (!$column['ok']): ?>—
                     <?php elseif ($column['certificate_details'] === []): ?><span class="muted">No certificates</span>
                     <?php else: ?>
-                        <?php foreach ($column['certificate_details'] as $detail): ?>
-                            <?php $cert = $detail['certificate']; $validation = $detail['validation']; ?>
-                            <div class="acme-cert-row">
-                                <strong><?= h(acme_scalar($cert['name'] ?? '') ?: 'Certificate') ?></strong><br>
-                                <?= h(acme_http_validation_state($validation)) ?>
-                            </div>
-                        <?php endforeach; ?>
+                        <?php
+                            $values = [];
+                            foreach ($column['certificate_details'] as $detail) {
+                                $name = acme_scalar($detail['certificate']['name'] ?? '') ?: 'Certificate';
+                                $values[$name] = acme_http_validation_state($detail['validation']);
+                            }
+                            $unique = array_values(array_unique(array_values($values)));
+                        ?>
+                        <?php if (count($unique) === 1): ?><?= h($unique[0]) ?>
+                        <?php else: foreach ($values as $name => $value): ?>
+                            <div class="acme-cert-row"><strong><?= h($name) ?></strong><br><?= h($value) ?></div>
+                        <?php endforeach; endif; ?>
                     <?php endif; ?>
                 </td>
             <?php endforeach; ?>
@@ -376,13 +392,18 @@ require __DIR__ . '/inc/header.php';
                     <?php if (!$column['ok']): ?>—
                     <?php elseif ($column['certificate_details'] === []): ?><span class="muted">No certificates</span>
                     <?php else: ?>
-                        <?php foreach ($column['certificate_details'] as $detail): ?>
-                            <?php $cert = $detail['certificate']; $validation = $detail['validation']; ?>
-                            <div class="acme-cert-row">
-                                <strong><?= h(acme_scalar($cert['name'] ?? '') ?: 'Certificate') ?></strong><br>
-                                <?= h(acme_http_interface_text($validation)) ?>
-                            </div>
-                        <?php endforeach; ?>
+                        <?php
+                            $values = [];
+                            foreach ($column['certificate_details'] as $detail) {
+                                $name = acme_scalar($detail['certificate']['name'] ?? '') ?: 'Certificate';
+                                $values[$name] = acme_http_interface_text($detail['validation']);
+                            }
+                            $unique = array_values(array_unique(array_values($values)));
+                        ?>
+                        <?php if (count($unique) === 1): ?><?= h($unique[0]) ?>
+                        <?php else: foreach ($values as $name => $value): ?>
+                            <div class="acme-cert-row"><strong><?= h($name) ?></strong><br><?= h($value) ?></div>
+                        <?php endforeach; endif; ?>
                     <?php endif; ?>
                 </td>
             <?php endforeach; ?>
@@ -394,13 +415,18 @@ require __DIR__ . '/inc/header.php';
                     <?php if (!$column['ok']): ?>—
                     <?php elseif ($column['certificate_details'] === []): ?><span class="muted">No certificates</span>
                     <?php else: ?>
-                        <?php foreach ($column['certificate_details'] as $detail): ?>
-                            <?php $cert = $detail['certificate']; $validation = $detail['validation']; ?>
-                            <div class="acme-cert-row">
-                                <strong><?= h(acme_scalar($cert['name'] ?? '') ?: 'Certificate') ?></strong><br>
-                                <?= h(acme_http_ip_text($validation)) ?>
-                            </div>
-                        <?php endforeach; ?>
+                        <?php
+                            $values = [];
+                            foreach ($column['certificate_details'] as $detail) {
+                                $name = acme_scalar($detail['certificate']['name'] ?? '') ?: 'Certificate';
+                                $values[$name] = acme_http_ip_text($detail['validation']);
+                            }
+                            $unique = array_values(array_unique(array_values($values)));
+                        ?>
+                        <?php if (count($unique) === 1): ?><?= h($unique[0]) ?>
+                        <?php else: foreach ($values as $name => $value): ?>
+                            <div class="acme-cert-row"><strong><?= h($name) ?></strong><br><?= h($value) ?></div>
+                        <?php endforeach; endif; ?>
                     <?php endif; ?>
                 </td>
             <?php endforeach; ?>
