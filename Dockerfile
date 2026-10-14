@@ -38,7 +38,7 @@ RUN set -eux; \
     php -r 'if (!class_exists("ZipArchive")) { fwrite(STDERR, "ZipArchive lost after cleanup\\n"); exit(1); }'; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-COPY webssh/ /opt/opnsentral-webssh/
+COPY webssh/package.json /opt/opnsentral-webssh/package.json
 RUN set -eux; \
     cd /opt/opnsentral-webssh; \
     npm install --omit=dev --omit=optional; \
@@ -46,6 +46,7 @@ RUN set -eux; \
     test -f node_modules/xterm-addon-fit/lib/xterm-addon-fit.js; \
     test -f node_modules/xterm/css/xterm.css
 
+COPY webssh/ /opt/opnsentral-webssh/
 COPY app/ /var/www/html/
 COPY opnsense-plugin/opnsentral-agent/src/ /opt/opnsentral-agent-plugin/
 COPY apache.conf /etc/apache2/conf-available/opnsentral.conf

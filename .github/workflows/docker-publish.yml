@@ -8,6 +8,7 @@ on:
       - "app/**"
       - "webssh/**"
       - "scripts/check-acme-overview.php"
+      - "scripts/check-docker-build-cache.sh"
       - "scripts/check-admin-api-login.php"
       - "scripts/check-agent-runtime-isolation.php"
       - "scripts/check-agent-recovery.php"
@@ -25,6 +26,12 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      clean_build:
+        description: "Ignore Docker layer cache for this manual build"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: opnsentral-publish-${{ github.ref }}
@@ -43,6 +50,9 @@ jobs:
 
       - name: Check merge-conflict markers
         run: sh scripts/check-merge-markers.sh
+
+      - name: Check Docker build cache configuration
+        run: sh scripts/check-docker-build-cache.sh
 
       - name: Read application version
         id: version
@@ -152,6 +162,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           pull: true
-          no-cache: true
+          no-cache: ${{ github.event_name == 'workflow_dispatch' && inputs.clean_build }}
+          cache-from: type=gha,scope=opnsentral-docker
+          cache-to: type=gha,mode=max,scope=opnsentral-docker
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
