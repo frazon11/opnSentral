@@ -61,6 +61,65 @@ function acme_setting(array $column, string $key, string $fallback = '—'): str
     return $value !== '' ? $value : $fallback;
 }
 
+function acme_list_text(mixed $value, string $fallback = '—'): string
+{
+    if ($value === null || $value === '') return $fallback;
+    if (!is_array($value)) {
+        $text = trim((string) $value);
+        return $text !== '' ? $text : $fallback;
+    }
+
+    $values = [];
+    foreach ($value as $key => $item) {
+        if (is_array($item)) {
+            if (array_key_exists('selected', $item) && !acme_bool($item['selected'])) continue;
+            $candidate = acme_scalar($item);
+            if ($candidate !== '') $values[] = $candidate;
+            elseif (is_string($key) && $key !== '') $values[] = $key;
+            continue;
+        }
+        $text = trim((string) $item);
+        if ($text !== '') $values[] = $text;
+    }
+    $values = array_values(array_unique($values));
+    return $values !== [] ? implode(', ', $values) : $fallback;
+}
+
+function acme_timestamp(mixed $value, string $fallback = 'Never / unknown'): string
+{
+    $raw = acme_scalar($value);
+    if ($raw === '' || !ctype_digit($raw) || (int) $raw <= 0) return $fallback;
+    return gmdate('Y-m-d H:i:s', (int) $raw) . ' UTC';
+}
+
+function acme_status_label(array $certificate): string
+{
+    $raw = acme_scalar($certificate['statusCode'] ?? '');
+    if ($raw === '') {
+        return acme_scalar($certificate['lastUpdate'] ?? '') !== '' ? 'OK' : 'Unknown';
+    }
+    return match ((int) $raw) {
+        100 => 'Unknown',
+        200 => 'OK',
+        250 => 'Certificate revoked',
+        300 => 'Configuration error',
+        400 => 'Validation failed',
+        500 => 'Internal error',
+        default => 'Unknown (' . $raw . ')',
+    };
+}
+
+function acme_response_item(array $response, string $key): array
+{
+    if (is_array($response[$key] ?? null)) return $response[$key];
+    if (is_array($response['acmeclient'][$key] ?? null)) return $response['acmeclient'][$key];
+    foreach ($response as $item) {
+        if (!is_array($item)) continue;
+        if (is_array($item[$key] ?? null)) return $item[$key];
+    }
+    return [];
+}
+
 foreach ($firewalls as $firewallRow) {
     $id = (int) $firewallRow['id'];
     if (!isset($installedLookup[$id])) continue;
@@ -73,6 +132,7 @@ foreach ($firewalls as $firewallRow) {
         'error' => null,
         'settings' => [],
         'certificates' => [],
+        'certificate_details' => [],
     ];
 
     try {
@@ -95,6 +155,47 @@ foreach ($firewalls as $firewallRow) {
 
         $column['settings'] = $settings;
         $column['certificates'] = is_array($certResponse['rows'] ?? null) ? $certResponse['rows'] : [];
+
+        foreach ($column['certificates'] as $certificate) {
+            $uuid = acme_scalar($certificate['uuid'] ?? '');
+            if ($uuid === '') continue;
+
+            $detail = [
+                'certificate' => $certificate,
+                'validation' => [],
+            ];
+
+            try {
+                $certificateResponse = opn_request(
+                    $firewall,
+                    'acmeclient/certificates/get/' . rawurlencode($uuid),
+                    'GET',
+                    [],
+                    20
+                );
+                $certificateConfig = acme_response_item($certificateResponse, 'certificate');
+                if ($certificateConfig !== []) {
+                    $detail['certificate'] = array_merge($certificate, $certificateConfig);
+                }
+
+                $validationUuid = acme_scalar($certificateConfig['validationMethod'] ?? '');
+                if ($validationUuid !== '') {
+                    $validationResponse = opn_request(
+                        $firewall,
+                        'acmeclient/validations/get/' . rawurlencode($validationUuid),
+                        'GET',
+                        [],
+                        20
+                    );
+                    $detail['validation'] = acme_response_item($validationResponse, 'validation');
+                }
+            } catch (Throwable $ignored) {
+                // Keep the certificate overview usable if one optional detail call fails.
+            }
+
+            $column['certificate_details'][$uuid] = $detail;
+        }
+
         $column['ok'] = true;
     } catch (Throwable $exception) {
         $column['error'] = $exception->getMessage();
@@ -114,7 +215,7 @@ require __DIR__ . '/inc/header.php';
 .acme-matrix thead th{position:sticky;top:0;z-index:3;background:var(--table-head);text-align:center;min-width:210px}
 .acme-matrix .setting-col{position:sticky;left:0;z-index:2;background:var(--card);min-width:210px;font-weight:700}
 .acme-matrix thead .setting-col{z-index:4;background:var(--table-head);text-align:left}
-.acme-fw small{display:block;margin-top:3px;color:var(--muted);font-weight:400}.acme-cert{padding:7px 0;border-bottom:1px solid var(--border)}.acme-cert:last-child{border-bottom:0}.acme-cert small{display:block;color:var(--muted);margin-top:3px}.acme-error{color:#b3261e}
+.acme-fw small{display:block;margin-top:3px;color:var(--muted);font-weight:400}.acme-cert{padding:7px 0;border-bottom:1px solid var(--border)}.acme-cert:last-child{border-bottom:0}.acme-cert small{display:block;color:var(--muted);margin-top:3px}.acme-error{color:#b3261e}.acme-cert-row{padding:5px 0;border-bottom:1px solid var(--border)}.acme-cert-row:last-child{border-bottom:0}.acme-run-result{margin-bottom:12px}
 </style>
 
 <div class="page-title">
@@ -182,6 +283,126 @@ require __DIR__ . '/inc/header.php';
             <?php foreach ($columns as $column): ?><td><?= $column['ok'] ? (acme_bool($column['settings']['haproxyIntegration'] ?? false) ? 'Enabled' : 'Disabled') : '—' ?></td><?php endforeach; ?>
         </tr>
         <tr>
+            <td class="setting-col">IP Auto-Discovery</td>
+            <?php foreach ($columns as $column): ?>
+                <td>
+                    <?php if (!$column['ok']): ?>—
+                    <?php elseif ($column['certificate_details'] === []): ?><span class="muted">No certificates</span>
+                    <?php else: ?>
+                        <?php foreach ($column['certificate_details'] as $detail): ?>
+                            <?php $cert = $detail['certificate']; $validation = $detail['validation']; ?>
+                            <div class="acme-cert-row">
+                                <strong><?= h(acme_scalar($cert['name'] ?? '') ?: 'Certificate') ?></strong><br>
+                                <?= acme_scalar($validation['method'] ?? '') === 'http01'
+                                    ? (acme_bool($validation['http_opn_autodiscovery'] ?? false) ? 'Enabled' : 'Disabled')
+                                    : 'N/A (' . h(acme_scalar($validation['method'] ?? '') ?: 'unknown validation') . ')' ?>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </td>
+            <?php endforeach; ?>
+        </tr>
+        <tr>
+            <td class="setting-col">HTTP-01 interface</td>
+            <?php foreach ($columns as $column): ?>
+                <td>
+                    <?php if (!$column['ok']): ?>—
+                    <?php elseif ($column['certificate_details'] === []): ?><span class="muted">No certificates</span>
+                    <?php else: ?>
+                        <?php foreach ($column['certificate_details'] as $detail): ?>
+                            <?php $cert = $detail['certificate']; $validation = $detail['validation']; ?>
+                            <div class="acme-cert-row">
+                                <strong><?= h(acme_scalar($cert['name'] ?? '') ?: 'Certificate') ?></strong><br>
+                                <?= acme_scalar($validation['method'] ?? '') === 'http01'
+                                    ? h(acme_scalar($validation['http_opn_interface'] ?? '') ?: '—')
+                                    : '—' ?>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </td>
+            <?php endforeach; ?>
+        </tr>
+        <tr>
+            <td class="setting-col">HTTP-01 IP addresses</td>
+            <?php foreach ($columns as $column): ?>
+                <td>
+                    <?php if (!$column['ok']): ?>—
+                    <?php elseif ($column['certificate_details'] === []): ?><span class="muted">No certificates</span>
+                    <?php else: ?>
+                        <?php foreach ($column['certificate_details'] as $detail): ?>
+                            <?php $cert = $detail['certificate']; $validation = $detail['validation']; ?>
+                            <div class="acme-cert-row">
+                                <strong><?= h(acme_scalar($cert['name'] ?? '') ?: 'Certificate') ?></strong><br>
+                                <?= acme_scalar($validation['method'] ?? '') === 'http01'
+                                    ? h(acme_list_text($validation['http_opn_ipaddresses'] ?? ''))
+                                    : '—' ?>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </td>
+            <?php endforeach; ?>
+        </tr>
+        <tr>
+            <td class="setting-col">Last ACME status</td>
+            <?php foreach ($columns as $column): ?>
+                <td>
+                    <?php if (!$column['ok']): ?>—
+                    <?php elseif ($column['certificate_details'] === []): ?><span class="muted">No certificates</span>
+                    <?php else: ?>
+                        <?php foreach ($column['certificate_details'] as $detail): ?>
+                            <?php $cert = $detail['certificate']; ?>
+                            <div class="acme-cert-row">
+                                <strong><?= h(acme_scalar($cert['name'] ?? '') ?: 'Certificate') ?></strong><br>
+                                <?= h(acme_status_label($cert)) ?>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </td>
+            <?php endforeach; ?>
+        </tr>
+        <tr>
+            <td class="setting-col">Last ACME run</td>
+            <?php foreach ($columns as $column): ?>
+                <td>
+                    <?php if (!$column['ok']): ?>—
+                    <?php elseif ($column['certificate_details'] === []): ?><span class="muted">No certificates</span>
+                    <?php else: ?>
+                        <?php foreach ($column['certificate_details'] as $detail): ?>
+                            <?php $cert = $detail['certificate']; ?>
+                            <div class="acme-cert-row">
+                                <strong><?= h(acme_scalar($cert['name'] ?? '') ?: 'Certificate') ?></strong><br>
+                                <?= h(acme_timestamp($cert['statusLastUpdate'] ?? ($cert['lastUpdate'] ?? ''))) ?>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </td>
+            <?php endforeach; ?>
+        </tr>
+        <tr>
+            <td class="setting-col">Run ACME</td>
+            <?php foreach ($columns as $column): ?>
+                <td>
+                    <?php if (!$column['ok']): ?>—
+                    <?php elseif ($column['certificate_details'] === []): ?><span class="muted">No certificates</span>
+                    <?php else: ?>
+                        <?php foreach ($column['certificate_details'] as $uuid => $detail): ?>
+                            <?php $cert = $detail['certificate']; ?>
+                            <div class="acme-cert-row">
+                                <strong><?= h(acme_scalar($cert['name'] ?? '') ?: 'Certificate') ?></strong><br>
+                                <button
+                                    type="button"
+                                    class="button secondary acme-run"
+                                    data-firewall-id="<?= (int) $column['id'] ?>"
+                                    data-certificate-uuid="<?= h((string) $uuid) ?>"
+                                    data-certificate-name="<?= h(acme_scalar($cert['name'] ?? '') ?: 'certificate') ?>"
+                                >Issue / renew now</button>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </td>
+            <?php endforeach; ?>
+        </tr>
+        <tr>
             <td class="setting-col">Certificates</td>
             <?php foreach ($columns as $column): ?>
                 <td>
@@ -192,11 +413,11 @@ require __DIR__ . '/inc/header.php';
                             <?php
                                 $certificateName = acme_scalar($certificate['name'] ?? '');
                                 $certificateName = $certificateName !== '' ? $certificateName : 'Unnamed certificate';
-                                $lastUpdate = acme_scalar($certificate['lastUpdate'] ?? '');
+                                $lastUpdate = acme_timestamp($certificate['lastUpdate'] ?? '');
                             ?>
                             <div class="acme-cert">
                                 <strong><?= h($certificateName) ?></strong>
-                                <small><?= acme_bool($certificate['enabled'] ?? false) ? 'Enabled' : 'Disabled' ?><?= $lastUpdate !== '' ? ' · Last update: ' . h($lastUpdate) : '' ?></small>
+                                <small><?= acme_bool($certificate['enabled'] ?? false) ? 'Enabled' : 'Disabled' ?> · Last update: <?= h($lastUpdate) ?></small>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -213,5 +434,52 @@ require __DIR__ . '/inc/header.php';
 </table>
 </div>
 <?php endif; ?>
+
+<div id="acme-run-result" class="alert hidden acme-run-result"></div>
+<script>
+(function(){
+    const result = document.getElementById('acme-run-result');
+    document.querySelectorAll('.acme-run').forEach(function(button){
+        button.addEventListener('click', async function(){
+            const name = button.dataset.certificateName || 'certificate';
+            if(!confirm('Issue or renew ' + name + ' now?\n\nA pre-change backup will be created first.')) return;
+
+            const original = button.textContent;
+            button.disabled = true;
+            button.textContent = 'Running…';
+            result.className = 'alert warningbox acme-run-result';
+            result.textContent = 'Running ACME for ' + name + '…';
+
+            const form = new URLSearchParams({
+                csrf: <?= json_encode(csrf_token(), JSON_UNESCAPED_SLASHES) ?>,
+                firewall_id: button.dataset.firewallId || '',
+                certificate_uuid: button.dataset.certificateUuid || ''
+            });
+
+            try{
+                const response = await fetch('/acme_action.php',{
+                    method:'POST',
+                    credentials:'same-origin',
+                    cache:'no-store',
+                    headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+                    body:form
+                });
+                const raw = await response.text();
+                let data;
+                try{data=JSON.parse(raw);}catch(error){throw new Error('Invalid server response: '+raw.slice(0,500));}
+                if(!response.ok || data.ok !== true) throw new Error(data.error || 'ACME run failed.');
+                result.className = 'alert goodbox acme-run-result';
+                result.textContent = data.message || 'ACME run completed.';
+                window.setTimeout(()=>window.location.reload(),1500);
+            }catch(error){
+                result.className = 'alert error acme-run-result';
+                result.textContent = error.message;
+                button.disabled = false;
+                button.textContent = original;
+            }
+        });
+    });
+})();
+</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>
