@@ -12,6 +12,10 @@ $checks = [
     [$page, "http_opn_interface", 'ACME page must read the HTTP-01 interface field.'],
     [$page, 'HTTP-01 IP addresses', 'ACME page must show manually configured HTTP-01 IP addresses.'],
     [$page, "http_opn_ipaddresses", 'ACME page must read HTTP-01 IP addresses.'],
+    [$page, "function acme_relation_uuid", 'ACME page must resolve ModelRelationField UUID keys instead of display labels.'],
+    [$page, "acme_relation_uuid($certificateConfig['validationMethod']", 'Certificate validation relation must be resolved to its UUID.'],
+    [$page, "Auto-discovered", 'Empty HTTP-01 IP lists must be explained when auto-discovery is active.'],
+    [$page, "Not explicitly set", 'Empty HTTP-01 interfaces must be explained instead of rendered as a dash.'],
     [$page, 'Last ACME status', 'ACME page must show the last ACME status.'],
     [$page, 'statusLastUpdate', 'ACME page must show the last ACME run timestamp.'],
     [$page, 'Issue / renew now', 'ACME page must expose a run action.'],
@@ -28,6 +32,11 @@ foreach ($checks as [$content,$needle,$message]) {
         fwrite(STDERR, "ACME overview check failed: {$message}\n");
         exit(1);
     }
+}
+
+if (str_contains($page, 'N/A (') || str_contains($page, 'unknown validation')) {
+    fwrite(STDERR, "ACME overview check failed: ambiguous validation placeholders must not be rendered.\n");
+    exit(1);
 }
 
 if (str_contains($action, '$_POST[\'path\']') || str_contains($action, '$_POST["path"]')) {
