@@ -13,7 +13,7 @@ $checks = [
     [$page, 'HTTP-01 IP addresses', 'ACME page must show manually configured HTTP-01 IP addresses.'],
     [$page, "http_opn_ipaddresses", 'ACME page must read HTTP-01 IP addresses.'],
     [$page, "function acme_relation_uuid", 'ACME page must resolve ModelRelationField UUID keys instead of display labels.'],
-    [$page, 'acme_relation_uuid($certificateConfig[\'validationMethod\']', 'Certificate validation relation must be resolved to its UUID.'],
+    [$page, 'acme_relation_uuid($validationRelation)', 'Certificate validation relation must be resolved to its UUID.'],
     [$page, "Auto-discovered", 'Empty HTTP-01 IP lists must be explained when auto-discovery is active.'],
     [$page, "Not explicitly set", 'Empty HTTP-01 interfaces must be explained instead of rendered as a dash.'],
     [$page, "'acmeclient/validations/search'", 'ACME page must load the validation catalog for reliable relation resolution.'],
