@@ -120,6 +120,75 @@ function acme_response_item(array $response, string $key): array
     return [];
 }
 
+function acme_relation_uuid(mixed $value): string
+{
+    if (is_string($value) && preg_match('/^[A-Fa-f0-9-]{8,64}$/', $value)) {
+        return $value;
+    }
+    if (!is_array($value)) return '';
+
+    foreach ($value as $key => $item) {
+        if (!is_string($key) || !preg_match('/^[A-Fa-f0-9-]{8,64}$/', $key)) continue;
+        if (!is_array($item) || acme_bool($item['selected'] ?? false)) return $key;
+    }
+
+    foreach (['uuid','id'] as $key) {
+        $candidate = trim((string) ($value[$key] ?? ''));
+        if (preg_match('/^[A-Fa-f0-9-]{8,64}$/', $candidate)) return $candidate;
+    }
+    return '';
+}
+
+function acme_validation_label(array $validation): string
+{
+    return match (acme_scalar($validation['method'] ?? '')) {
+        'http01' => 'HTTP-01',
+        'dns01' => 'DNS-01',
+        'tlsalpn01' => 'TLS-ALPN-01',
+        default => 'Validation data unavailable',
+    };
+}
+
+function acme_http_validation_state(array $validation): string
+{
+    if ($validation === []) return 'Validation data unavailable';
+    if (acme_scalar($validation['method'] ?? '') !== 'http01') {
+        return 'Not used (' . acme_validation_label($validation) . ')';
+    }
+    if (acme_scalar($validation['http_service'] ?? 'opnsense') !== 'opnsense') {
+        return 'Not used (HAProxy)';
+    }
+    return acme_bool($validation['http_opn_autodiscovery'] ?? false) ? 'Enabled' : 'Disabled';
+}
+
+function acme_http_interface_text(array $validation): string
+{
+    if ($validation === []) return 'Validation data unavailable';
+    if (acme_scalar($validation['method'] ?? '') !== 'http01') {
+        return 'Not used (' . acme_validation_label($validation) . ')';
+    }
+    if (acme_scalar($validation['http_service'] ?? 'opnsense') !== 'opnsense') {
+        return 'Not used (HAProxy)';
+    }
+    $interface = acme_scalar($validation['http_opn_interface'] ?? '');
+    return $interface !== '' ? $interface : 'Not explicitly set';
+}
+
+function acme_http_ip_text(array $validation): string
+{
+    if ($validation === []) return 'Validation data unavailable';
+    if (acme_scalar($validation['method'] ?? '') !== 'http01') {
+        return 'Not used (' . acme_validation_label($validation) . ')';
+    }
+    if (acme_scalar($validation['http_service'] ?? 'opnsense') !== 'opnsense') {
+        return 'Not used (HAProxy)';
+    }
+    $ips = acme_list_text($validation['http_opn_ipaddresses'] ?? '', '');
+    if ($ips !== '') return $ips;
+    if (acme_bool($validation['http_opn_autodiscovery'] ?? false)) return 'Auto-discovered';
+    return 'None configured';
+}
+
 foreach ($firewalls as $firewallRow) {
     $id = (int) $firewallRow['id'];
     if (!isset($installedLookup[$id])) continue;
@@ -178,7 +247,7 @@ foreach ($firewalls as $firewallRow) {
                     $detail['certificate'] = array_merge($certificate, $certificateConfig);
                 }
 
-                $validationUuid = acme_scalar($certificateConfig['validationMethod'] ?? '');
+                $validationUuid = acme_relation_uuid($certificateConfig['validationMethod'] ?? '');
                 if ($validationUuid !== '') {
                     $validationResponse = opn_request(
                         $firewall,
@@ -293,9 +362,7 @@ require __DIR__ . '/inc/header.php';
                             <?php $cert = $detail['certificate']; $validation = $detail['validation']; ?>
                             <div class="acme-cert-row">
                                 <strong><?= h(acme_scalar($cert['name'] ?? '') ?: 'Certificate') ?></strong><br>
-                                <?= acme_scalar($validation['method'] ?? '') === 'http01'
-                                    ? (acme_bool($validation['http_opn_autodiscovery'] ?? false) ? 'Enabled' : 'Disabled')
-                                    : 'N/A (' . h(acme_scalar($validation['method'] ?? '') ?: 'unknown validation') . ')' ?>
+                                <?= h(acme_http_validation_state($validation)) ?>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -313,9 +380,7 @@ require __DIR__ . '/inc/header.php';
                             <?php $cert = $detail['certificate']; $validation = $detail['validation']; ?>
                             <div class="acme-cert-row">
                                 <strong><?= h(acme_scalar($cert['name'] ?? '') ?: 'Certificate') ?></strong><br>
-                                <?= acme_scalar($validation['method'] ?? '') === 'http01'
-                                    ? h(acme_scalar($validation['http_opn_interface'] ?? '') ?: '—')
-                                    : '—' ?>
+                                <?= h(acme_http_interface_text($validation)) ?>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
@@ -333,9 +398,7 @@ require __DIR__ . '/inc/header.php';
                             <?php $cert = $detail['certificate']; $validation = $detail['validation']; ?>
                             <div class="acme-cert-row">
                                 <strong><?= h(acme_scalar($cert['name'] ?? '') ?: 'Certificate') ?></strong><br>
-                                <?= acme_scalar($validation['method'] ?? '') === 'http01'
-                                    ? h(acme_list_text($validation['http_opn_ipaddresses'] ?? ''))
-                                    : '—' ?>
+                                <?= h(acme_http_ip_text($validation)) ?>
                             </div>
                         <?php endforeach; ?>
                     <?php endif; ?>
