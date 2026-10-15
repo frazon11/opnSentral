@@ -70,10 +70,21 @@ function ids_action_list(mixed $value): array
     return array_values(array_unique($result));
 }
 
+function ids_action_interface_keys(mixed $value): array
+{
+    if (!is_array($value)) return [];
+    $keys=[];
+    foreach ($value as $key=>$item) {
+        if (is_string($key) && trim($key)!=='') $keys[]=$key;
+    }
+    return array_values(array_unique($keys));
+}
+
 function ids_action_normalize_homenet(string $value): string
 {
     $parts=array_values(array_filter(array_map('trim', explode(',', $value)), static fn(string $v): bool => $v !== ''));
     foreach ($parts as $part) {
+        if (preg_match('/^__[A-Za-z0-9_]+$/',$part)===1) continue;
         if (filter_var($part,FILTER_VALIDATE_IP)) continue;
         if (preg_match('/^([^\/]+)\/(\d{1,3})$/',$part,$match)!==1 || !filter_var($match[1],FILTER_VALIDATE_IP)) {
             throw new RuntimeException('Invalid Home network: '.$part);
@@ -138,8 +149,8 @@ try {
     $interfaces=array_values(array_unique(array_filter(array_map('trim',(array)($_POST['interfaces'] ?? [])),static fn(string $v):bool=>$v!=='')));
     if ($interfaces===[]) throw new RuntimeException('Select at least one IDS interface.');
 
-    $available=opn_raw_request($firewall,'diagnostics/interface/get_interface_names','GET',null,15);
-    $availableNames=array_keys($available);
+    $availableNames=ids_action_interface_keys($general['interfaces'] ?? []);
+    if ($availableNames===[]) throw new RuntimeException('OPNsense did not return logical IDS interface choices.');
     foreach ($interfaces as $interface) {
         if (!in_array($interface,$availableNames,true)) throw new RuntimeException('Unknown IDS interface: '.$interface);
     }
