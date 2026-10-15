@@ -72,7 +72,7 @@ foreach ($contracts as [$source,$needle,$message]) {
     }
 }
 
-if (str_contains($action, "'interfaces'=>$interfaces")) {
+if (str_contains($action, "'interfaces'=>\$interfaces")) {
     fwrite(STDERR, "IDS rendering regression: InterfaceField Multiple must not be sent as a JSON array.\n");
     exit(1);
 }
