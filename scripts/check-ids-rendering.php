@@ -72,6 +72,11 @@ foreach ($contracts as [$source,$needle,$message]) {
     }
 }
 
+if (str_contains($action, "'interfaces'=>$interfaces")) {
+    fwrite(STDERR, "IDS rendering regression: InterfaceField Multiple must not be sent as a JSON array.\n");
+    exit(1);
+}
+
 if (str_contains($content, "columnFilters[enabledColumn]='enabled'")) {
     fwrite(STDERR, "IDS rendering regression: administration must not hide disabled firewalls by default.\n");
     exit(1);
