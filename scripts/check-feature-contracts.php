@@ -46,8 +46,14 @@ require_not_contains($ssh, "'ensure_ssh_access'", 'Managed SSH repair must not q
 require_not_contains($ssh, "'ssh_access_status'", 'legacy SSH status must not queue unsupported ssh_access_status jobs');
 
 $ids = read_required($root . '/app/intrusion_detection_action.php');
-require_contains($ids, 'http_response_code(503)', 'unverified IDS writes must remain fail-closed');
-require_not_contains($ids, 'opn_raw_request(', 'disabled IDS action endpoint must not call OPNsense write APIs');
+require_contains($ids, 'require_csrf();', 'IDS writes must require CSRF protection');
+require_contains($ids, 'require_configuration_unlocked();', 'IDS writes must require configuration unlock');
+require_contains($ids, 'backup_before_change(', 'IDS writes must create a pre-change backup');
+require_contains($ids, "'ids/settings/get'", 'IDS writes must read current state before and after changes');
+require_contains($ids, "'ids/settings/set'", 'IDS writes must use the official IDS settings endpoint');
+require_contains($ids, "'ids/service/reconfigure'", 'IDS writes must reconfigure IDS after changing state');
+require_contains($ids, 'Verification failed: OPNsense did not confirm the requested IDS state.', 'IDS writes must use read-back verification');
+require_contains($ids, "if ((string)(\$_POST['action'] ?? '') !== 'set_enabled')", 'IDS write endpoint must accept only the narrow set_enabled action');
 
 $firmware = read_required($root . '/app/firewall_action.php');
 require_contains(
