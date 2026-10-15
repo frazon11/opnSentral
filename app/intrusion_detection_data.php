@@ -43,6 +43,49 @@ $views = [
     ]],
 ];
 
+function ids_scalar(mixed $value): string
+{
+    if ($value === null) return '';
+    if (is_bool($value)) return $value ? '1' : '0';
+    if (is_string($value) || is_int($value) || is_float($value)) return trim((string)$value);
+    if (!is_array($value)) return '';
+
+    foreach ($value as $key=>$item) {
+        if (is_array($item) && ids_bool($item['selected'] ?? false)) {
+            if (is_string($key) && $key !== '') return $key;
+            foreach (['value','name','id'] as $field) {
+                if (isset($item[$field]) && !is_array($item[$field])) return trim((string)$item[$field]);
+            }
+        }
+    }
+    foreach (['value','selected','name','id'] as $field) {
+        if (isset($value[$field]) && !is_array($value[$field])) {
+            $text=trim((string)$value[$field]);
+            if ($text !== '') return $text;
+        }
+    }
+    return '';
+}
+
+function ids_bool(mixed $value): bool
+{
+    if (is_bool($value)) return $value;
+    if (is_int($value) || is_float($value)) return $value !== 0;
+    if (is_array($value)) $value=ids_scalar($value);
+    return in_array(strtolower(trim((string)$value)), ['1','true','yes','on','enabled','selected'], true);
+}
+
+function ids_list_text(mixed $value): string
+{
+    if (!is_array($value)) return ids_scalar($value);
+    $items=[];
+    foreach ($value as $key=>$item) {
+        if (is_array($item) && ids_bool($item['selected'] ?? false) && is_string($key)) $items[]=$key;
+        elseif (!is_array($item) && trim((string)$item)!=='') $items[]=trim((string)$item);
+    }
+    return implode(', ', array_values(array_unique($items)));
+}
+
 function ids_rows(array $value): array
 {
     if (isset($value['rows']) && is_array($value['rows'])) {
@@ -87,6 +130,9 @@ try {
             'ok'=>false,
             'endpoint'=>null,
             'rows'=>[],
+            'ids_enabled'=>null,
+            'ids_mode'=>'',
+            'ids_interfaces'=>'',
             'error'=>null,
         ];
         $errors = [];
@@ -103,6 +149,12 @@ try {
                 $entry['ok'] = true;
                 $entry['endpoint'] = $request['path'];
                 $entry['rows'] = ids_rows($value);
+                if ($view === 'administration') {
+                    $general = is_array($value['ids']['general'] ?? null) ? $value['ids']['general'] : [];
+                    $entry['ids_enabled'] = ids_bool($general['enabled'] ?? false);
+                    $entry['ids_mode'] = ids_scalar($general['mode'] ?? '');
+                    $entry['ids_interfaces'] = ids_list_text($general['interfaces'] ?? '');
+                }
                 break;
             } catch (Throwable $exception) {
                 $errors[] = $request['path'] . ': ' . $exception->getMessage();

@@ -23,7 +23,7 @@ $title = $allowed[$view];
 <div class="page-title management-page-title">
     <div>
         <h1>Intrusion Detection · <?= h($title) ?></h1>
-        <p>Read-only IDS/IPS information across all managed OPNsense firewalls.</p>
+        <p>Central IDS/IPS status and administration across all managed OPNsense firewalls.</p>
     </div>
     <div class="management-toolbar">
         <input id="ids-search" type="search" placeholder="Filter table…" style="width:240px;margin:0">
@@ -47,7 +47,6 @@ $title = $allowed[$view];
     let lastData=null;
     let renderedRows=[];
     let renderedColumns=[];
-    let enabledDefaultApplied=false;
 
     function esc(value){
         const node=document.createElement('div');
@@ -173,9 +172,72 @@ $title = $allowed[$view];
         });
     }
 
+    function renderAdministration(data,firewalls){
+        const reachable=firewalls.filter(item=>item.ok).length;
+        const enabled=firewalls.filter(item=>item.ok&&item.ids_enabled===true).length;
+        summary.innerHTML='<div><strong>Administration</strong><div class="management-summary">'+reachable+' of '+firewalls.length+' firewalls returned IDS data · '+enabled+' enabled</div></div>';
+
+        renderedRows=[];
+        renderedColumns=[];
+        content.innerHTML=
+            '<div class="table-wrap"><table class="management-table"><thead><tr>'+
+            '<th>Firewall</th><th>IDS/IPS</th><th>Mode</th><th>Interfaces</th><th>Action</th>'+
+            '</tr></thead><tbody>'+
+            firewalls.map(function(fw){
+                const status=!fw.ok
+                    ? '<span class="badge bad">Unavailable</span>'
+                    : (fw.ids_enabled===true?'<span class="badge good">Enabled</span>':'<span class="badge neutral">Disabled</span>');
+                const actionButton=!fw.ok
+                    ? '—'
+                    : '<button type="button" class="button secondary ids-state-action" data-firewall-id="'+esc(fw.id)+'" data-enable="'+(fw.ids_enabled===true?'0':'1')+'">'+(fw.ids_enabled===true?'Disable':'Enable')+'</button>';
+                return '<tr><td><strong>'+esc(fw.name)+'</strong></td><td>'+status+'</td><td>'+esc(display(fw.ids_mode))+'</td><td>'+esc(display(fw.ids_interfaces))+'</td><td>'+actionButton+'</td></tr>';
+            }).join('')+
+            '</tbody></table></div>';
+
+        content.querySelectorAll('.ids-state-action').forEach(function(button){
+            button.addEventListener('click',async function(){
+                const enable=button.dataset.enable==='1';
+                const verb=enable?'enable':'disable';
+                if(!confirm('Really '+verb+' IDS/IPS on this firewall?')) return;
+                const original=button.textContent;
+                button.disabled=true;
+                button.textContent=enable?'Enabling…':'Disabling…';
+                try{
+                    const form=new URLSearchParams({
+                        csrf:<?= json_encode(csrf_token(), JSON_UNESCAPED_SLASHES) ?>,
+                        firewall_id:button.dataset.firewallId||'',
+                        action:'set_enabled',
+                        enabled:enable?'1':'0'
+                    });
+                    const response=await fetch('/intrusion_detection_action.php',{
+                        method:'POST',
+                        credentials:'same-origin',
+                        cache:'no-store',
+                        headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},
+                        body:form
+                    });
+                    const raw=await response.text();
+                    let result;
+                    try{result=JSON.parse(raw);}catch(e){throw new Error('Invalid server response: '+raw.slice(0,400));}
+                    if(!response.ok||result.ok!==true) throw new Error(result.error||'IDS/IPS change failed.');
+                    await load();
+                }catch(error){
+                    errorBox.textContent=error.message;
+                    errorBox.classList.remove('hidden');
+                    button.disabled=false;
+                    button.textContent=original;
+                }
+            });
+        });
+    }
+
     function render(data){
         lastData=data;
         const firewalls=Array.isArray(data.firewalls)?data.firewalls:[];
+        if(view==='administration'){
+            renderAdministration(data,firewalls);
+            return;
+        }
         const reachable=firewalls.filter(item=>item.ok).length;
         summary.innerHTML='<div><strong>'+esc(data.title)+'</strong><div class="management-summary">'+reachable+' of '+firewalls.length+' firewalls returned IDS data</div></div>';
 
@@ -213,14 +275,6 @@ $title = $allowed[$view];
             renderedColumns=[];
             content.innerHTML='<p class="muted" style="padding:16px">No rows returned.</p>';
             return;
-        }
-
-        if(!enabledDefaultApplied){
-            const enabledColumn=columns.find(isEnabledColumn);
-            if(enabledColumn&&columnFilters[enabledColumn]===undefined){
-                columnFilters[enabledColumn]='enabled';
-            }
-            enabledDefaultApplied=true;
         }
 
         renderedRows=flattened;
