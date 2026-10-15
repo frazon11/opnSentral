@@ -181,7 +181,7 @@ $title = $allowed[$view];
         renderedColumns=[];
         content.innerHTML=
             '<div class="table-wrap"><table class="management-table"><thead><tr>'+
-            '<th>Firewall</th><th>IDS/IPS</th><th>Mode</th><th>Interfaces</th><th>Action</th>'+
+            '<th>Firewall</th><th>IDS/IPS</th><th>Mode</th><th>Interfaces</th><th>Promisc</th><th>Detection profile</th><th>Action</th>'+
             '</tr></thead><tbody>'+
             firewalls.map(function(fw){
                 const status=!fw.ok
@@ -189,10 +189,84 @@ $title = $allowed[$view];
                     : (fw.ids_enabled===true?'<span class="badge good">Enabled</span>':'<span class="badge neutral">Disabled</span>');
                 const actionButton=!fw.ok
                     ? '—'
-                    : '<button type="button" class="button secondary ids-state-action" data-firewall-id="'+esc(fw.id)+'" data-enable="'+(fw.ids_enabled===true?'0':'1')+'">'+(fw.ids_enabled===true?'Disable':'Enable')+'</button>';
-                return '<tr><td><strong>'+esc(fw.name)+'</strong></td><td>'+status+'</td><td>'+esc(display(fw.ids_mode))+'</td><td>'+esc(display(fw.ids_interfaces))+'</td><td>'+actionButton+'</td></tr>';
+                    : '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+                      '<button type="button" class="button secondary ids-edit-action" data-firewall-id="'+esc(fw.id)+'">Edit</button>'+
+                      '<button type="button" class="button secondary ids-state-action" data-firewall-id="'+esc(fw.id)+'" data-enable="'+(fw.ids_enabled===true?'0':'1')+'">'+(fw.ids_enabled===true?'Disable':'Enable')+'</button>'+
+                      '</div>';
+                const promisc=fw.ids_promisc===true?'Yes':'No';
+                const profile=String(fw.ids_detection_profile||'').trim()||'Default';
+                return '<tr><td><strong>'+esc(fw.name)+'</strong></td><td>'+status+'</td><td>'+esc(display(fw.ids_mode))+'</td><td>'+esc(display(fw.ids_interfaces))+'</td><td>'+esc(promisc)+'</td><td>'+esc(profile)+'</td><td>'+actionButton+'</td></tr>'+
+                    (!fw.ok?'':'<tr class="ids-edit-row hidden" data-edit-firewall-id="'+esc(fw.id)+'"><td colspan="7">'+
+                    '<div class="card" style="padding:14px;margin:4px 0">'+
+                    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">'+
+                    '<label>Mode<select class="ids-edit-mode">'+
+                    ['pcap','netmap','divert'].map(v=>'<option value="'+v+'"'+(fw.ids_mode===v?' selected':'')+'>'+v+'</option>').join('')+
+                    '</select></label>'+
+                    '<label>Interfaces<select class="ids-edit-interfaces" multiple size="4">'+
+                    (Array.isArray(fw.interface_options)?fw.interface_options:[]).map(opt=>'<option value="'+esc(opt.value)+'"'+(String(fw.ids_interfaces||'').split(',').map(x=>x.trim()).includes(opt.value)?' selected':'')+'>'+esc(opt.label)+' ('+esc(opt.value)+')</option>').join('')+
+                    '</select></label>'+
+                    '<label>Promiscuous mode<select class="ids-edit-promisc"><option value="0"'+(fw.ids_promisc===true?'':' selected')+'>Disabled</option><option value="1"'+(fw.ids_promisc===true?' selected':'')+'>Enabled</option></select></label>'+
+                    '<label>Detection profile<select class="ids-edit-profile">'+
+                    [['','Default'],['low','Low'],['medium','Medium'],['high','High'],['custom','Custom']].map(opt=>'<option value="'+opt[0]+'"'+((fw.ids_detection_profile||'')===opt[0]?' selected':'')+'>'+opt[1]+'</option>').join('')+
+                    '</select></label>'+
+                    '</div>'+
+                    '<label style="display:block;margin-top:12px">Home networks<input class="ids-edit-homenet" type="text" value="'+esc(fw.ids_homenet||'')+'" placeholder="192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"></label>'+
+                    '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="button ids-save-settings">Save settings</button><button type="button" class="button secondary ids-cancel-edit">Cancel</button></div>'+
+                    '</div></td></tr>');
             }).join('')+
             '</tbody></table></div>';
+
+        content.querySelectorAll('.ids-edit-action').forEach(function(button){
+            button.addEventListener('click',function(){
+                const row=content.querySelector('[data-edit-firewall-id="'+button.dataset.firewallId+'"]');
+                if(row) row.classList.toggle('hidden');
+            });
+        });
+
+        content.querySelectorAll('.ids-cancel-edit').forEach(function(button){
+            button.addEventListener('click',function(){
+                const row=button.closest('.ids-edit-row');
+                if(row) row.classList.add('hidden');
+            });
+        });
+
+        content.querySelectorAll('.ids-save-settings').forEach(function(button){
+            button.addEventListener('click',async function(){
+                const row=button.closest('.ids-edit-row');
+                if(!row) return;
+                const firewallId=row.dataset.editFirewallId||'';
+                const interfaces=Array.from(row.querySelector('.ids-edit-interfaces').selectedOptions).map(opt=>opt.value);
+                if(!interfaces.length){errorBox.textContent='Select at least one IDS interface.';errorBox.classList.remove('hidden');return;}
+                const original=button.textContent;
+                button.disabled=true;
+                button.textContent='Saving…';
+                try{
+                    const form=new URLSearchParams();
+                    form.set('csrf',<?= json_encode(csrf_token(), JSON_UNESCAPED_SLASHES) ?>);
+                    form.set('firewall_id',firewallId);
+                    form.set('action','set_settings');
+                    form.set('mode',row.querySelector('.ids-edit-mode').value);
+                    interfaces.forEach(value=>form.append('interfaces[]',value));
+                    form.set('promisc',row.querySelector('.ids-edit-promisc').value);
+                    form.set('detection_profile',row.querySelector('.ids-edit-profile').value);
+                    form.set('homenet',row.querySelector('.ids-edit-homenet').value.trim());
+                    const response=await fetch('/intrusion_detection_action.php',{
+                        method:'POST',credentials:'same-origin',cache:'no-store',
+                        headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:form
+                    });
+                    const raw=await response.text();
+                    let result;
+                    try{result=JSON.parse(raw);}catch(e){throw new Error('Invalid server response: '+raw.slice(0,400));}
+                    if(!response.ok||result.ok!==true) throw new Error(result.error||'IDS/IPS settings update failed.');
+                    await load();
+                }catch(error){
+                    errorBox.textContent=error.message;
+                    errorBox.classList.remove('hidden');
+                    button.disabled=false;
+                    button.textContent=original;
+                }
+            });
+        });
 
         content.querySelectorAll('.ids-state-action').forEach(function(button){
             button.addEventListener('click',async function(){

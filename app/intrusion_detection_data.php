@@ -133,6 +133,10 @@ try {
             'ids_enabled'=>null,
             'ids_mode'=>'',
             'ids_interfaces'=>'',
+            'ids_promisc'=>null,
+            'ids_homenet'=>'',
+            'ids_detection_profile'=>'',
+            'interface_options'=>[],
             'error'=>null,
         ];
         $errors = [];
@@ -154,6 +158,30 @@ try {
                     $entry['ids_enabled'] = ids_bool($general['enabled'] ?? false);
                     $entry['ids_mode'] = ids_scalar($general['mode'] ?? '');
                     $entry['ids_interfaces'] = ids_list_text($general['interfaces'] ?? '');
+                    $entry['ids_promisc'] = ids_bool($general['promisc'] ?? false);
+                    $entry['ids_homenet'] = ids_list_text($general['homenet'] ?? '');
+                    $entry['ids_detection_profile'] = ids_scalar($general['detect']['Profile'] ?? '');
+                    try {
+                        $interfaceMap = opn_raw_request(
+                            $firewall,
+                            'diagnostics/interface/get_interface_names',
+                            'GET',
+                            null,
+                            15
+                        );
+                        foreach ($interfaceMap as $ifName=>$ifDescription) {
+                            if (!is_string($ifName) || $ifName === '') continue;
+                            if (is_array($ifDescription)) {
+                                $ifDescription = ids_scalar($ifDescription);
+                            }
+                            $entry['interface_options'][] = [
+                                'value'=>$ifName,
+                                'label'=>trim((string)$ifDescription) !== '' ? trim((string)$ifDescription) : $ifName,
+                            ];
+                        }
+                    } catch (Throwable $ignored) {
+                        // Existing selections remain editable even if interface-name lookup is unavailable.
+                    }
                 }
                 break;
             } catch (Throwable $exception) {

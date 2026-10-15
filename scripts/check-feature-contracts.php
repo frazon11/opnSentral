@@ -53,7 +53,11 @@ require_contains($ids, "'ids/settings/get'", 'IDS writes must read current state
 require_contains($ids, "'ids/settings/set'", 'IDS writes must use the official IDS settings endpoint');
 require_contains($ids, "'ids/service/reconfigure'", 'IDS writes must reconfigure IDS after changing state');
 require_contains($ids, 'Verification failed: OPNsense did not confirm the requested IDS state.', 'IDS writes must use read-back verification');
-require_contains($ids, "if ((string)(\$_POST['action'] ?? '') !== 'set_enabled')", 'IDS write endpoint must accept only the narrow set_enabled action');
+require_contains($ids, "in_array(\$action,['set_enabled','set_settings'],true)", 'IDS write endpoint must accept only the two narrow supported IDS actions');
+require_contains($ids, "['pcap','netmap','divert']", 'IDS settings writes must restrict mode to supported OPNsense modes');
+require_contains($ids, "'diagnostics/interface/get_interface_names'", 'IDS settings writes must validate interface selections');
+require_contains($ids, 'ids_action_normalize_homenet', 'IDS settings writes must validate home networks');
+require_contains($ids, 'Verification failed: OPNsense did not confirm the requested IDS settings.', 'IDS settings writes must use read-back verification');
 
 $firmware = read_required($root . '/app/firewall_action.php');
 require_contains(
