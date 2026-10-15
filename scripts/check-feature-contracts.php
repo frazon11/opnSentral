@@ -55,7 +55,8 @@ require_contains($ids, "'ids/service/reconfigure'", 'IDS writes must reconfigure
 require_contains($ids, 'Verification failed: OPNsense did not confirm the requested IDS state.', 'IDS writes must use read-back verification');
 require_contains($ids, "in_array(\$action,['set_enabled','set_settings'],true)", 'IDS write endpoint must accept only the two narrow supported IDS actions');
 require_contains($ids, "['pcap','netmap','divert']", 'IDS settings writes must restrict mode to supported OPNsense modes');
-require_contains($ids, "'diagnostics/interface/get_interface_names'", 'IDS settings writes must validate interface selections');
+require_contains($ids, "ids_action_interface_keys(\$general['interfaces'] ?? [])", 'IDS settings writes must validate logical interface selections from the IDS model');
+require_contains($ids, "preg_match('/^__[A-Za-z0-9_]+$/',\$part)===1", 'IDS settings writes must accept OPNsense HOME_NET macros');
 require_contains($ids, 'ids_action_normalize_homenet', 'IDS settings writes must validate home networks');
 require_contains($ids, 'Verification failed: OPNsense did not confirm the requested IDS settings.', 'IDS settings writes must use read-back verification');
 
