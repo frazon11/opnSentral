@@ -118,8 +118,6 @@ try {
         if (!ids_action_success($apply)) {
             throw new RuntimeException('OPNsense rejected IDS reconfigure: '.json_encode($apply,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE));
         }
-    }
-
         }
 
         $after=opn_raw_request($firewall,'ids/settings/get','GET',null,20);
