@@ -86,6 +86,34 @@ function ids_list_text(mixed $value): string
     return implode(', ', array_values(array_unique($items)));
 }
 
+function ids_interface_options(mixed $value): array
+{
+    if (!is_array($value)) return [];
+
+    $options=[];
+    foreach ($value as $key=>$item) {
+        if (!is_string($key) || trim($key)==='') continue;
+        $label=$key;
+        $selected=false;
+
+        if (is_array($item)) {
+            $candidate=ids_scalar($item['value'] ?? $item['name'] ?? $item['label'] ?? '');
+            if ($candidate!=='') $label=$candidate;
+            $selected=ids_bool($item['selected'] ?? false);
+        } elseif (!is_array($item) && trim((string)$item)!=='') {
+            $label=trim((string)$item);
+        }
+
+        $options[]=[
+            'value'=>$key,
+            'label'=>$label,
+            'selected'=>$selected,
+        ];
+    }
+
+    return $options;
+}
+
 function ids_rows(array $value): array
 {
     if (isset($value['rows']) && is_array($value['rows'])) {
@@ -161,27 +189,7 @@ try {
                     $entry['ids_promisc'] = ids_bool($general['promisc'] ?? false);
                     $entry['ids_homenet'] = ids_list_text($general['homenet'] ?? '');
                     $entry['ids_detection_profile'] = ids_scalar($general['detect']['Profile'] ?? '');
-                    try {
-                        $interfaceMap = opn_raw_request(
-                            $firewall,
-                            'diagnostics/interface/get_interface_names',
-                            'GET',
-                            null,
-                            15
-                        );
-                        foreach ($interfaceMap as $ifName=>$ifDescription) {
-                            if (!is_string($ifName) || $ifName === '') continue;
-                            if (is_array($ifDescription)) {
-                                $ifDescription = ids_scalar($ifDescription);
-                            }
-                            $entry['interface_options'][] = [
-                                'value'=>$ifName,
-                                'label'=>trim((string)$ifDescription) !== '' ? trim((string)$ifDescription) : $ifName,
-                            ];
-                        }
-                    } catch (Throwable $ignored) {
-                        // Existing selections remain editable even if interface-name lookup is unavailable.
-                    }
+                    $entry['interface_options'] = ids_interface_options($general['interfaces'] ?? []);
                 }
                 break;
             } catch (Throwable $exception) {
