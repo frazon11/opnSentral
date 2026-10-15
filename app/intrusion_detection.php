@@ -203,14 +203,14 @@ $title = $allowed[$view];
                     ['pcap','netmap','divert'].map(v=>'<option value="'+v+'"'+(fw.ids_mode===v?' selected':'')+'>'+v+'</option>').join('')+
                     '</select></label>'+
                     '<label>Interfaces<select class="ids-edit-interfaces" multiple size="4">'+
-                    (Array.isArray(fw.interface_options)?fw.interface_options:[]).map(opt=>'<option value="'+esc(opt.value)+'"'+(String(fw.ids_interfaces||'').split(',').map(x=>x.trim()).includes(opt.value)?' selected':'')+'>'+esc(opt.label)+' ('+esc(opt.value)+')</option>').join('')+
+                    (Array.isArray(fw.interface_options)?fw.interface_options:[]).map(opt=>'<option value="'+esc(opt.value)+'"'+((opt.selected===true||String(fw.ids_interfaces||'').split(',').map(x=>x.trim()).includes(opt.value))?' selected':'')+'>'+esc(opt.label)+' ('+esc(opt.value)+')</option>').join('')+
                     '</select></label>'+
                     '<label>Promiscuous mode<select class="ids-edit-promisc"><option value="0"'+(fw.ids_promisc===true?'':' selected')+'>Disabled</option><option value="1"'+(fw.ids_promisc===true?' selected':'')+'>Enabled</option></select></label>'+
                     '<label>Detection profile<select class="ids-edit-profile">'+
                     [['','Default'],['low','Low'],['medium','Medium'],['high','High'],['custom','Custom']].map(opt=>'<option value="'+opt[0]+'"'+((fw.ids_detection_profile||'')===opt[0]?' selected':'')+'>'+opt[1]+'</option>').join('')+
                     '</select></label>'+
                     '</div>'+
-                    '<label style="display:block;margin-top:12px">Home networks<input class="ids-edit-homenet" type="text" value="'+esc(fw.ids_homenet||'')+'" placeholder="192.168.0.0/16,10.0.0.0/8,172.16.0.0/12"></label>'+
+                    '<label style="display:block;margin-top:12px">Home networks<input class="ids-edit-homenet" type="text" value="'+esc(fw.ids_homenet||'')+'" placeholder="__lan_network or comma-separated IP/CIDR networks"><small class="muted">OPNsense network macros such as __lan_network are supported.</small></label>'+
                     '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="button ids-save-settings">Save settings</button><button type="button" class="button secondary ids-cancel-edit">Cancel</button></div>'+
                     '</div></td></tr>');
             }).join('')+
