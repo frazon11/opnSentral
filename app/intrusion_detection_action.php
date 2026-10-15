@@ -166,7 +166,7 @@ try {
         'ids'=>[
             'general'=>[
                 'mode'=>$mode,
-                'interfaces'=>$interfaces,
+                'interfaces'=>implode(',', $interfaces),
                 'promisc'=>$promisc?'1':'0',
                 'homenet'=>$homenet,
                 'detect'=>['Profile'=>$profile],
