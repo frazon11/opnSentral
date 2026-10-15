@@ -57,7 +57,7 @@ $contracts = [
     [$action, "['pcap','netmap','divert']", 'IDS action must restrict mode to OPNsense supported modes.'],
     [$action, "'diagnostics/interface/get_interface_names'", 'IDS action must validate interface selections against OPNsense.'],
     [$action, "ids_action_normalize_homenet", 'IDS action must validate home networks.'],
-    [$action, "'detect'=>['Profile'=>$profile]", 'IDS action must write detection profile through the official model.'],
+    [$action, '\'detect\'=>[\'Profile\'=>$profile]', 'IDS action must write detection profile through the official model.'],
     [$action, "Verification failed: OPNsense did not confirm the requested IDS settings.", 'IDS settings changes must use read-back verification.'],
 ];
 
