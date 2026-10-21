@@ -1,4 +1,4 @@
-FROM php:8.5-apache-trixie
+FROM php:8.5.12-apache-trixie
 
 LABEL org.opencontainers.image.title="opnSentral"
 LABEL org.opencontainers.image.description="Central manager for multiple OPNsense firewalls"
@@ -8,6 +8,7 @@ LABEL org.opencontainers.image.licenses="MIT"
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN set -eux; \
+    php -r 'if (version_compare(PHP_VERSION, "8.5.12", "<")) { fwrite(STDERR, "PHP 8.5.12 or newer required\\n"); exit(1); }'; \
     apt-get update; \
     apt-get upgrade -y; \
     apt-get install -y --no-install-recommends \
