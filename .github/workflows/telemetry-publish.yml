@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "telemetry-server/**"
+      - "app/inc/update_check.php"
       - ".github/workflows/telemetry-publish.yml"
   workflow_dispatch:
 
