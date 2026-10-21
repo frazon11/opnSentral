@@ -1,10 +1,11 @@
-FROM php:8.5-apache-trixie
+FROM php:8.5.12-apache-trixie
 
 ARG OPNSENTRAL_VERSION=unknown
 ENV DEBIAN_FRONTEND=noninteractive \
     TELEMETRY_SERVER_VERSION=${OPNSENTRAL_VERSION}
 
 RUN set -eux; \
+    php -r 'if (version_compare(PHP_VERSION, "8.5.12", "<")) { fwrite(STDERR, "PHP 8.5.12 or newer required\\n"); exit(1); }'; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         libsqlite3-dev \
