@@ -12,6 +12,7 @@ on:
       - "scripts/check-admin-api-login.php"
       - "scripts/check-agent-runtime-isolation.php"
       - "scripts/check-agent-recovery.php"
+      - "scripts/check-agents-disabled.php"
       - "scripts/check-feature-contracts.php"
       - "scripts/check-firmware-ui.php"
       - "scripts/check-ids-rendering.php"
@@ -93,6 +94,7 @@ jobs:
           php -l scripts/check-acme-overview.php >/dev/null
           php -l scripts/check-admin-api-login.php >/dev/null
           php -l scripts/check-agent-recovery.php >/dev/null
+          php -l scripts/check-agents-disabled.php >/dev/null
           php -l scripts/check-feature-contracts.php >/dev/null
           php -l scripts/check-firmware-ui.php >/dev/null
           php -l scripts/check-ids-rendering.php >/dev/null
@@ -110,6 +112,8 @@ jobs:
         run: php scripts/check-agent-runtime-isolation.php
       - name: Check agent recovery
         run: php scripts/check-agent-recovery.php
+      - name: Check Agents disabled state
+        run: php scripts/check-agents-disabled.php
       - name: Check feature contracts
         run: php scripts/check-feature-contracts.php
       - name: Check firmware UI
