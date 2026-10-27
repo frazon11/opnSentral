@@ -99,6 +99,8 @@ function nav_active_query(string $path, string $key, string $value): string {
                 <span class="menu-level2">Access</span>
                 <a class="menu-link<?= nav_active(['/system_access_users.php','/system_access_user_edit.php']) ?>" href="/system_access_users.php"><span>Users</span></a>
                 <a class="menu-link<?= nav_active(['/system_access_groups.php']) ?>" href="/system_access_groups.php"><span>Groups</span></a>
+                <a class="menu-link<?= nav_active(['/system_access_settings.php']) ?>" href="/system_access_settings.php"><span>Settings</span></a>
+                <a class="menu-link<?= nav_active(['/system_access_servers.php','/system_access_server_edit.php']) ?>" href="/system_access_servers.php"><span>Servers</span></a>
 
                 <span class="menu-level2">Configuration</span>
                 <a class="menu-link<?= nav_active(['/backups.php']) ?>" href="/backups.php"><span>Backups</span></a>
