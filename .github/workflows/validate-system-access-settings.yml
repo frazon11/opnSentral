@@ -1,0 +1,97 @@
+name: Validate System Access settings branch
+
+on:
+  push:
+    branches:
+      - feature/system-access-settings
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check merge-conflict markers
+        run: sh scripts/check-merge-markers.sh
+
+      - name: Check Docker build cache configuration
+        run: sh scripts/check-docker-build-cache.sh
+
+      - name: Verify Docker build context
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Dockerfile
+          test -d app
+          test -f app/system_access_servers.php
+          test -f app/system_access_settings_action.php
+          test -f app/system-access-bridge-install.sh
+          test -f opnsense-plugin/opnsentral-agent/src/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php
+
+      - name: Lint PHP, shell and JavaScript sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            php -l "$file" >/dev/null
+          done < <(find app -type f \( -name '*.php' -o -path 'app/agent/opnsentral-agent' \) -print0)
+          php -l scripts/check-acme-overview.php >/dev/null
+          php -l scripts/check-admin-api-login.php >/dev/null
+          php -l scripts/check-agent-recovery.php >/dev/null
+          php -l scripts/check-agents-disabled.php >/dev/null
+          php -l scripts/check-feature-contracts.php >/dev/null
+          php -l scripts/check-firmware-ui.php >/dev/null
+          php -l scripts/check-ids-rendering.php >/dev/null
+          php -l scripts/check-plugin-management.php >/dev/null
+          php -l scripts/check-system-access-settings.php >/dev/null
+          php -l scripts/check-wireguard-overview.php >/dev/null
+          php -l scripts/check-webssh.php >/dev/null
+          php -l opnsense-plugin/opnsentral-agent/src/etc/inc/plugins.inc.d/opnsentralagent.inc >/dev/null
+          php -l opnsense-plugin/opnsentral-agent/src/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php >/dev/null
+          sh -n app/system-access-bridge-install.sh
+          sh -n app/agent/install-plugin.sh
+          node --check webssh/server.js
+
+      - name: Check ACME overview
+        run: php scripts/check-acme-overview.php
+      - name: Check admin API-key login
+        run: php scripts/check-admin-api-login.php
+      - name: Check agent runtime config isolation
+        run: php scripts/check-agent-runtime-isolation.php
+      - name: Check agent recovery
+        run: php scripts/check-agent-recovery.php
+      - name: Check Agents disabled state
+        run: php scripts/check-agents-disabled.php
+      - name: Check feature contracts
+        run: php scripts/check-feature-contracts.php
+      - name: Check firmware UI
+        run: php scripts/check-firmware-ui.php
+      - name: Check IDS rendering
+        run: php scripts/check-ids-rendering.php
+      - name: Check plugin management
+        run: php scripts/check-plugin-management.php
+      - name: Check System Access settings
+        run: php scripts/check-system-access-settings.php
+      - name: Check WireGuard overview
+        run: php scripts/check-wireguard-overview.php
+      - name: Check WebSSH
+        run: php scripts/check-webssh.php
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build multi-architecture image without publishing
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+          pull: true
+          cache-from: type=gha,scope=opnsentral-docker
