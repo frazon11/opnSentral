@@ -17,6 +17,7 @@ on:
       - "scripts/check-firmware-ui.php"
       - "scripts/check-ids-rendering.php"
       - "scripts/check-plugin-management.php"
+      - "scripts/check-system-access-management.php"
       - "scripts/check-wireguard-overview.php"
       - "scripts/check-webssh.php"
       - "opnsense-plugin/opnsentral-agent/**"
@@ -99,6 +100,8 @@ jobs:
           php -l scripts/check-firmware-ui.php >/dev/null
           php -l scripts/check-ids-rendering.php >/dev/null
           php -l scripts/check-plugin-management.php >/dev/null
+          php -l scripts/check-system-access-management.php >/dev/null
+          php -l opnsense-plugin/opnsentral-agent/src/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php >/dev/null
           php -l scripts/check-wireguard-overview.php >/dev/null
           php -l scripts/check-webssh.php >/dev/null
           php -l opnsense-plugin/opnsentral-agent/src/etc/inc/plugins.inc.d/opnsentralagent.inc >/dev/null
@@ -122,6 +125,8 @@ jobs:
         run: php scripts/check-ids-rendering.php
       - name: Check plugin management
         run: php scripts/check-plugin-management.php
+      - name: Check System Access management
+        run: php scripts/check-system-access-management.php
       - name: Check WireGuard overview
         run: php scripts/check-wireguard-overview.php
       - name: Check WebSSH
