@@ -40,6 +40,42 @@ function access_action_list(mixed $value): array
     return array_values(array_unique(array_filter(array_map(static fn($v): string => trim((string) $v), $value), static fn(string $v): bool => $v !== '')));
 }
 
+function access_action_csv(string $value): array
+{
+    if (trim($value) === '') return [];
+    $result = array_values(array_unique(array_filter(array_map('trim', explode(',', $value)), static fn(string $v): bool => $v !== '')));
+    sort($result, SORT_STRING);
+    return $result;
+}
+
+function access_action_expect_scalar(array $actual, array $expected, array $fields, string $context): void
+{
+    foreach ($fields as $field) {
+        if (trim((string)($actual[$field] ?? '')) !== trim((string)($expected[$field] ?? ''))) {
+            throw new RuntimeException('Read-back verification failed for ' . $context . ' ' . $field . '.');
+        }
+    }
+}
+
+function access_action_expect_bool(array $actual, array $expected, array $fields, string $context): void
+{
+    foreach ($fields as $field) {
+        $actualBool = filter_var($actual[$field] ?? false, FILTER_VALIDATE_BOOL);
+        if ($actualBool !== (bool)($expected[$field] ?? false)) {
+            throw new RuntimeException('Read-back verification failed for ' . $context . ' ' . $field . '.');
+        }
+    }
+}
+
+function access_action_expect_csv(array $actual, array $expected, array $fields, string $context): void
+{
+    foreach ($fields as $field) {
+        if (access_action_csv((string)($actual[$field] ?? '')) !== access_action_csv((string)($expected[$field] ?? ''))) {
+            throw new RuntimeException('Read-back verification failed for ' . $context . ' ' . $field . '.');
+        }
+    }
+}
+
 try {
     if ($action === 'set_administration') {
         $payload = [
@@ -137,30 +173,73 @@ try {
     }
 
     if ($index === 'local') {
-        foreach (['password_policy_duration','password_policy_length'] as $field) {
-            if (trim((string) ($found[$field] ?? '')) !== $payload[$field]) {
-                throw new RuntimeException('Read-back verification failed for Local Database ' . $field . '.');
-            }
-        }
-        foreach (['enable_password_policy_constraints','password_policy_complexity','password_policy_compliance'] as $field) {
-            if ((bool) ($found[$field] ?? false) !== (bool) $payload[$field]) {
-                throw new RuntimeException('Read-back verification failed for Local Database ' . $field . '.');
-            }
-        }
+        access_action_expect_scalar(
+            $found,
+            $payload,
+            ['password_policy_duration','password_policy_length'],
+            'Local Database'
+        );
+        access_action_expect_bool(
+            $found,
+            $payload,
+            ['enable_password_policy_constraints','password_policy_complexity','password_policy_compliance'],
+            'Local Database'
+        );
     } else {
-        if (trim((string) ($found['name'] ?? '')) !== $payload['name']) {
-            throw new RuntimeException('Read-back verification failed for authentication server name.');
-        }
-        $type = trim((string) ($found['type'] ?? ''));
+        access_action_expect_scalar($found, $payload, ['name'], 'authentication server');
+        $type = trim((string)($found['type'] ?? ''));
+
         if ($type === 'totp' || $type === 'ldap-totp') {
-            foreach (['otpLength','timeWindow','graceperiod'] as $field) {
-                if (trim((string) ($found[$field] ?? '')) !== $payload[$field]) {
-                    throw new RuntimeException('Read-back verification failed for TOTP ' . $field . '.');
-                }
+            access_action_expect_scalar($found, $payload, ['otpLength','timeWindow','graceperiod'], 'TOTP');
+            access_action_expect_bool($found, $payload, ['passwordFirst'], 'TOTP');
+        }
+
+        if ($type === 'ldap' || $type === 'ldap-totp') {
+            access_action_expect_scalar(
+                $found,
+                $payload,
+                ['host','ldap_port','ldap_urltype','ldap_protver','ldap_scope','ldap_basedn','ldap_authcn','ldap_extended_query','ldap_attr_user','ldap_binddn','ldap_attr_memberof'],
+                'LDAP'
+            );
+            access_action_expect_bool(
+                $found,
+                $payload,
+                ['ldap_read_properties','ldap_sync_memberof','ldap_sync_memberof_constraint','ldap_sync_create_local_users'],
+                'LDAP'
+            );
+            access_action_expect_csv(
+                $found,
+                $payload,
+                ['ldap_sync_memberof_groups','ldap_sync_default_groups'],
+                'LDAP'
+            );
+            if ($payload['ldap_bindpw'] !== '' && empty($found['has_ldap_bindpw'])) {
+                throw new RuntimeException('Read-back verification failed for LDAP bind password presence.');
             }
         }
-        if (in_array($type, ['ldap','ldap-totp','radius'], true) && trim((string) ($found['host'] ?? '')) !== $payload['host']) {
-            throw new RuntimeException('Read-back verification failed for authentication server host.');
+
+        if ($type === 'radius') {
+            access_action_expect_scalar(
+                $found,
+                $payload,
+                ['host','radius_auth_port','radius_acct_port','radius_timeout','radius_stationid'],
+                'RADIUS'
+            );
+            access_action_expect_bool(
+                $found,
+                $payload,
+                ['sync_memberof','sync_create_local_users'],
+                'RADIUS'
+            );
+            access_action_expect_csv(
+                $found,
+                $payload,
+                ['sync_memberof_groups','sync_default_groups'],
+                'RADIUS'
+            );
+            if ($payload['radius_secret'] !== '' && empty($found['has_radius_secret'])) {
+                throw new RuntimeException('Read-back verification failed for RADIUS shared secret presence.');
+            }
         }
     }
 
