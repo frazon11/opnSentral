@@ -61,6 +61,29 @@ require_contains($ids, "preg_match('/^__[A-Za-z0-9_]+$/',\$part)===1", 'IDS sett
 require_contains($ids, 'ids_action_normalize_homenet', 'IDS settings writes must validate home networks');
 require_contains($ids, 'Verification failed: OPNsense did not confirm the requested IDS settings.', 'IDS settings writes must use read-back verification');
 
+$systemAccess = read_required($root . '/app/system_access_settings_action.php');
+require_contains($systemAccess, 'require_csrf();', 'System Access writes must require CSRF protection');
+require_contains($systemAccess, 'require_configuration_unlocked();', 'System Access writes must require configuration unlock');
+require_contains($systemAccess, 'backup_before_change(', 'System Access writes must create pre-change backups');
+require_contains($systemAccess, "'opnsentralagent/access/setAdministration'", 'Administration writes must use the narrow OPNsense bridge');
+require_contains($systemAccess, "'opnsentralagent/access/setServer/'", 'authentication server writes must use the narrow OPNsense bridge');
+require_contains($systemAccess, 'Read-back verification failed', 'System Access writes must use read-back verification');
+require_not_contains($systemAccess, 'INSERT INTO agent_jobs', 'System Access writes must not use the disabled agent job path');
+
+$systemAccessBridge = read_required($root . '/opnsense-plugin/opnsentral-agent/src/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php');
+require_contains($systemAccessBridge, 'Config::getInstance()->lock();', 'System Access bridge writes must lock OPNsense configuration');
+require_contains($systemAccessBridge, '$this->throwReadOnly();', 'System Access bridge writes must honor OPNsense read-only credentials');
+require_contains($systemAccessBridge, 'Config::getInstance()->save();', 'System Access bridge writes must use the OPNsense Config API');
+require_contains($systemAccessBridge, "'has_ldap_bindpw'", 'System Access bridge must redact LDAP bind passwords');
+require_contains($systemAccessBridge, "'has_radius_secret'", 'System Access bridge must redact RADIUS shared secrets');
+require_not_contains($systemAccessBridge, "'ldap_bindpw' =>", 'System Access snapshot must never return LDAP bind passwords');
+require_not_contains($systemAccessBridge, "'radius_secret' =>", 'System Access snapshot must never return RADIUS shared secrets');
+
+$systemAccessInstaller = read_required($root . '/app/system-access-bridge-install.sh');
+require_contains($systemAccessInstaller, 'access_controller', 'standalone System Access bridge installer must deploy the controller');
+require_not_contains($systemAccessInstaller, 'register', 'standalone System Access bridge installer must not register an agent');
+require_not_contains($systemAccessInstaller, 'opnsentral_agent start', 'standalone System Access bridge installer must not start the agent worker');
+
 $firmware = read_required($root . '/app/firewall_action.php');
 require_contains(
     $firmware,
