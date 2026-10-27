@@ -54,7 +54,7 @@ $checks = [
     ['bridge', "' | sh -s -- '", 'agent maintenance route must preserve the existing registration through installer repair'],
     ['bridge', "serverUrl + '/agent/plugin_file.php?file=access_controller'", 'System Access maintenance route must fetch only the fixed Access controller artifact'],
     ['bridge', "'[ \"$(id -u)\" -eq 0 ]'", 'System Access controller install must require root SSH privileges'],
-    ['bridge', "'install -m 0644 \"$tmp\" '", 'System Access controller install must use a fixed destination install command'],
+    ['bridge', '\'install -m 0644 "$tmp" \'', 'System Access controller install must use a fixed destination install command'],
     ['bridge', 'MAX_SESSIONS', 'bridge must limit concurrent sessions'],
     ['bridge', 'IDLE_TIMEOUT_MS', 'bridge must close idle sessions'],
     ['apache', 'ws://127.0.0.1:3001/', 'Apache must proxy WebSSH only to the internal bridge'],
