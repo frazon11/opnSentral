@@ -121,7 +121,7 @@ require_contains($accessServerAction, "'opnsentralagent/access/delete_server'", 
 $accessController = read_required($root . '/opnsense-plugin/opnsentral-agent/src/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php');
 require_contains($accessController, '$this->throwReadOnly()', 'System Access plugin writes must respect OPNsense read-only API credentials');
 require_contains($accessController, "['ldap_bindpw', 'radius_secret']", 'System Access API must redact stored authentication secrets');
-require_contains($accessController, "$node->addChild('refid'", 'authentication-server writes must preserve/create OPNsense refid values');
+require_contains($accessController, '$node->addChild(\'refid\'', 'authentication-server writes must preserve/create OPNsense refid values');
 require_contains($accessController, "configdRun('service restart login')", 'System Access settings writes must reconfigure login service');
 
 $installer = read_required($root . '/app/agent/install-plugin.sh');
