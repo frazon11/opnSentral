@@ -155,6 +155,7 @@ class AccessController extends ApiControllerBase
         $name = trim((string)$this->request->getPost('name'));
         $type = trim((string)$this->request->getPost('type'));
         if ($name === '' || strlen($name) > 128) throw new \RuntimeException('Server name is required.');
+        if (preg_match('/^[a-z0-9_+\\-.\\s]+$/i', $name) !== 1) throw new \RuntimeException('Invalid authentication server name.');
         if (!in_array($type, ['totp', 'ldap', 'ldap-totp', 'radius'], true)) throw new \RuntimeException('Unsupported authentication server type.');
 
         $cnf = $this->config();
@@ -167,6 +168,15 @@ class AccessController extends ApiControllerBase
             $editing = $index !== null && isset($nodes[$index]);
             $node = $editing ? $nodes[$index] : $system->addChild('authserver');
 
+            $existingName = $editing ? trim((string)($node->name ?? '')) : '';
+            $existingType = $editing ? trim((string)($node->type ?? '')) : '';
+            $refid = $editing ? trim((string)($node->refid ?? '')) : '';
+            if ($editing) {
+                $name = $existingName;
+                $type = $existingType;
+            }
+            if ($refid === '') $refid = uniqid();
+
             foreach ($this->servers($system) as $server) {
                 if (!empty($server['builtin'])) continue;
                 if ((string)($server['name'] ?? '') === $name && (!$editing || (int)$server['index'] !== $index)) {
@@ -177,7 +187,6 @@ class AccessController extends ApiControllerBase
             $preserveLdapPassword = $editing ? trim((string)($node->ldap_bindpw ?? '')) : '';
             $preserveRadiusSecret = $editing ? trim((string)($node->radius_secret ?? '')) : '';
 
-            foreach (array_keys((array)$node) as $_unused) { break; }
             while ($node->children()->count() > 0) {
                 $children = $node->children();
                 $first = $children[0];
@@ -186,6 +195,7 @@ class AccessController extends ApiControllerBase
                 $dom->parentNode->removeChild($dom);
             }
 
+            $node->addChild('refid', htmlspecialchars($refid, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
             $node->addChild('name', htmlspecialchars($name, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
             $node->addChild('type', htmlspecialchars($type, ENT_XML1 | ENT_COMPAT, 'UTF-8'));
 
