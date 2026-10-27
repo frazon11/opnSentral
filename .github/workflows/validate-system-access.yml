@@ -1,0 +1,77 @@
+name: Validate System Access management
+
+on:
+  push:
+    branches:
+      - feature/system-access-settings-servers
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check merge-conflict markers
+        run: sh scripts/check-merge-markers.sh
+
+      - name: Check Docker build cache configuration
+        run: sh scripts/check-docker-build-cache.sh
+
+      - name: Verify Docker build context
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Dockerfile
+          test -d app
+          test -f webssh/server.js
+          test -f webssh/package.json
+          test -f opnsense-plugin/opnsentral-agent/src/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php
+
+      - name: Lint PHP and JavaScript sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            php -l "$file" >/dev/null
+          done < <(find app -type f \( -name '*.php' -o -path 'app/agent/opnsentral-agent' \) -print0)
+          for file in scripts/check-*.php; do php -l "$file" >/dev/null; done
+          php -l opnsense-plugin/opnsentral-agent/src/etc/inc/plugins.inc.d/opnsentralagent.inc >/dev/null
+          php -l opnsense-plugin/opnsentral-agent/src/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php >/dev/null
+          node --check webssh/server.js
+
+      - name: Run regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          php scripts/check-acme-overview.php
+          php scripts/check-admin-api-login.php
+          php scripts/check-agent-runtime-isolation.php
+          php scripts/check-agent-recovery.php
+          php scripts/check-agents-disabled.php
+          php scripts/check-feature-contracts.php
+          php scripts/check-firmware-ui.php
+          php scripts/check-ids-rendering.php
+          php scripts/check-plugin-management.php
+          php scripts/check-system-access-management.php
+          php scripts/check-wireguard-overview.php
+          php scripts/check-webssh.php
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build multi-architecture image without publishing
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+          pull: true
+          cache-from: type=gha,scope=opnsentral-docker
