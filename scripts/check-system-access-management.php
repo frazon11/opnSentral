@@ -48,6 +48,21 @@ foreach(['Local + TOTP','LDAP + TOTP','RADIUS','StartTLS','Stored — leave blan
 access_check_not($editor,'value="<?= h((string)($s[\'ldap_bindpw\']','LDAP bind password must never be rendered');
 access_check_not($editor,'value="<?= h((string)($s[\'radius_secret\']','RADIUS secret must never be rendered');
 
+$supportAction=access_check_read($root.'/app/system_access_support_action.php');
+access_check_has($supportAction,'require_csrf();','System Access support installation must require CSRF');
+access_check_has($supportAction,'require_configuration_unlocked(false);','System Access support installation must require configuration unlock');
+access_check_has($supportAction,'webssh_credentials_configured($firewall)','System Access support installation must require configured stored SSH credentials');
+access_check_has($supportAction,'webssh_install_access_controller($firewall,$publicBase);','System Access support installation must use the narrow SSH deployment helper');
+access_check_has($supportAction,"'opnsentralagent/access/get'",'System Access support installation must use API read-back verification');
+
+$bridge=access_check_read($root.'/webssh/server.js');
+access_check_has($bridge,"req.url === '/maintenance/access-controller-install'",'SSH bridge must expose the fixed System Access installer route');
+access_check_has($bridge,"expectedScope = isAccessControllerInstall ? 'access_controller_install' : 'agent_repair'",'SSH bridge must bind System Access installation to its dedicated token scope');
+access_check_has($bridge,"serverUrl + '/agent/plugin_file.php?file=access_controller'",'SSH bridge must fetch only the fixed Access controller artifact');
+access_check_has($bridge,'[ "$(id -u)" -eq 0 ]','remote System Access installation must require root');
+access_check_not($bridge,'body.command','System Access maintenance must not accept arbitrary command input');
+access_check_not($bridge,'message.command','System Access maintenance must not accept arbitrary WebSocket command input');
+
 $helper=access_check_read($root.'/app/inc/system_access_management.php');
 access_check_has($helper,"'opnsentralagent/access/get'",'management reads must prefer narrow OPNsense Access API');
 access_check_has($helper,'OPNsense backup API (read-only)','management reads must retain safe backup fallback');
