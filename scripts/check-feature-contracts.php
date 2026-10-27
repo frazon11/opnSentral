@@ -108,6 +108,22 @@ if ($toolsPos === false || $settingsPos === false || $notificationsPos === false
     exit(1);
 }
 
+$accessSettings = read_required($root . '/app/system_access_settings_action.php');
+require_contains($accessSettings, 'require_csrf();', 'System Access settings writes must require CSRF protection');
+require_contains($accessSettings, 'require_configuration_unlocked(false);', 'System Access settings writes must require configuration unlock');
+require_contains($accessSettings, "'opnsentralagent/access/settings'", 'System Access settings writes must use the narrow OPNsense plugin API');
+
+$accessServerAction = read_required($root . '/app/system_access_server_action.php');
+require_contains($accessServerAction, 'require_csrf();', 'authentication-server writes must require CSRF protection');
+require_contains($accessServerAction, "'opnsentralagent/access/server'", 'authentication-server saves must use the narrow OPNsense plugin API');
+require_contains($accessServerAction, "'opnsentralagent/access/delete_server'", 'authentication-server deletes must use the narrow OPNsense plugin API');
+
+$accessController = read_required($root . '/opnsense-plugin/opnsentral-agent/src/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php');
+require_contains($accessController, '$this->throwReadOnly()', 'System Access plugin writes must respect OPNsense read-only API credentials');
+require_contains($accessController, "['ldap_bindpw', 'radius_secret']", 'System Access API must redact stored authentication secrets');
+require_contains($accessController, "$node->addChild('refid'", 'authentication-server writes must preserve/create OPNsense refid values');
+require_contains($accessController, "configdRun('service restart login')", 'System Access settings writes must reconfigure login service');
+
 $installer = read_required($root . '/app/agent/install-plugin.sh');
 require_contains($installer, 'fetch_plugin_file syshook', 'agent installer must deploy the OPNsense startup recovery hook');
 require_contains($installer, '/usr/local/etc/rc.syshook.d/start/50-opnsentral-agent', 'agent installer must verify the startup recovery hook');
@@ -115,6 +131,7 @@ require_not_contains($installer, 'fetch_plugin_file hardware_controller', 'agent
 require_not_contains($installer, '/api/opnsentralagent/hardware/get', 'agent installer must not advertise a custom hardware API endpoint');
 require_contains($installer, 'fetch_plugin_file lockout_script', 'agent installer must deploy the narrow sshlockout helper');
 require_contains($installer, 'fetch_plugin_file lockout_controller', 'agent installer must deploy the narrow sshlockout API');
+require_contains($installer, 'fetch_plugin_file access_controller', 'agent installer must deploy the narrow System Access API');
 require_contains($installer, 'fetch_plugin_file actions', 'agent installer must deploy sshlockout configd actions');
 require_contains($installer, 'fetch_plugin_file lockout_guard_rc', 'agent installer must deploy the trusted-host guard service');
 require_contains($installer, 'fetch_plugin_file lockout_guard', 'agent installer must deploy the trusted-host guard worker');
@@ -126,6 +143,7 @@ $pluginFiles = read_required($root . '/app/agent/plugin_file.php');
 require_not_contains($pluginFiles, "'hardware_controller'", 'plugin file server must not ship a custom hardware API controller');
 require_contains($pluginFiles, "'lockout_script'", 'plugin file server must ship the sshlockout helper');
 require_contains($pluginFiles, "'lockout_controller'", 'plugin file server must ship the sshlockout controller');
+require_contains($pluginFiles, "'access_controller'", 'plugin file server must ship the System Access controller');
 require_contains($pluginFiles, "'actions'", 'plugin file server must ship sshlockout configd actions');
 require_contains($pluginFiles, "'lockout_guard_rc'", 'plugin file server must ship the trusted-host guard service');
 require_contains($pluginFiles, "'lockout_guard'", 'plugin file server must ship the trusted-host guard worker');
