@@ -39,7 +39,16 @@ require __DIR__ . '/inc/header.php';
     <?php if(!$state['ok']): ?>
       <div class="alert error"><?= h((string)$state['error']) ?></div>
     <?php else: ?>
-      <?php if(!$state['writable'] && $state['error']!==''): ?><div class="alert warningbox"><strong>Read-only fallback.</strong><div><?= h((string)$state['error']) ?></div></div><?php endif; ?>
+      <?php if(!$state['writable'] && $state['error']!==''): ?>
+        <div class="alert warningbox">
+          <strong>Read-only fallback.</strong><div><?= h((string)$state['error']) ?></div>
+          <form method="post" action="/system_access_support_action.php" style="margin-top:8px">
+            <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+            <input type="hidden" name="firewall_id" value="<?= $fid ?>">
+            <button class="button" type="submit">Install / update editing support</button>
+          </form>
+        </div>
+      <?php endif; ?>
       <form method="post" action="/system_access_settings_action.php" class="access-form">
         <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
         <input type="hidden" name="firewall_id" value="<?= $fid ?>">
