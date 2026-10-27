@@ -15,6 +15,19 @@ $firewall = $id > 0 ? firewall_by_id($id) : null;
 $error = '';
 $sections = [];
 $rawXml = '';
+$bridgeReady = false;
+$bridgeError = '';
+$adminEditable = [
+    'autologout' => '',
+    'authmode' => [],
+    'sudo_allow_wheel' => '',
+    'sudo_allow_group' => '',
+    'user_allow_gen_token' => [],
+];
+$authServerOptions = ['Local Database'];
+$groupOptions = [];
+$result = $_SESSION['system_access_result'] ?? null;
+unset($_SESSION['system_access_result']);
 
 function admin_value(
     SimpleXMLElement $xml,
@@ -77,6 +90,59 @@ if ($firewall !== null) {
             '/opnsense/system/webgui/port',
             $protocol === 'https' ? '443' : '80'
         );
+
+        $storedAuthmode = admin_value($xml, '/opnsense/system/webgui/authmode', '');
+        $adminEditable = [
+            'autologout' => admin_value($xml, '/opnsense/system/autologout', ''),
+            'authmode' => $storedAuthmode === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $storedAuthmode)))),
+            'sudo_allow_wheel' => admin_value($xml, '/opnsense/system/sudo_allow_wheel', ''),
+            'sudo_allow_group' => admin_value($xml, '/opnsense/system/sudo_allow_group', ''),
+            'user_allow_gen_token' => (($otpGroups = admin_value($xml, '/opnsense/system/user_allow_gen_token', '')) === '')
+                ? []
+                : array_values(array_filter(array_map('trim', explode(',', $otpGroups)))),
+        ];
+
+        foreach ($xml->system->authserver as $authNode) {
+            $name = trim((string)($authNode->name ?? ''));
+            if ($name !== '') $authServerOptions[] = $name;
+        }
+        $authServerOptions = array_values(array_unique($authServerOptions));
+        natcasesort($authServerOptions);
+        $authServerOptions = array_values($authServerOptions);
+
+        foreach ($xml->system->group as $groupNode) {
+            $name = trim((string)($groupNode->name ?? ''));
+            if ($name !== '') $groupOptions[] = $name;
+        }
+        $groupOptions = array_values(array_unique($groupOptions));
+        natcasesort($groupOptions);
+        $groupOptions = array_values($groupOptions);
+
+        try {
+            $snapshot = opn_raw_request($firewall, 'opnsentralagent/access/snapshot', 'GET', null, 10);
+            $bridgeReady = ($snapshot['status'] ?? '') === 'ok';
+            if ($bridgeReady) {
+                if (is_array($snapshot['groups'] ?? null)) {
+                    $groupOptions = array_values(array_unique(array_map('strval', $snapshot['groups'])));
+                    natcasesort($groupOptions);
+                    $groupOptions = array_values($groupOptions);
+                }
+                if (is_array($snapshot['servers'] ?? null)) {
+                    $authServerOptions = [];
+                    foreach ($snapshot['servers'] as $server) {
+                        $name = trim((string)($server['name'] ?? ''));
+                        if ($name !== '') $authServerOptions[] = $name;
+                    }
+                    $authServerOptions = array_values(array_unique($authServerOptions));
+                    natcasesort($authServerOptions);
+                    $authServerOptions = array_values($authServerOptions);
+                }
+            } else {
+                $bridgeError = 'System Access API bridge is not available on this firewall.';
+            }
+        } catch (Throwable $exception) {
+            $bridgeError = $exception->getMessage();
+        }
 
         $sections = [
             'Web GUI' => [
@@ -478,7 +544,11 @@ require __DIR__ . '/inc/header.php';
         <section class="opn-admin-shell">
             <div class="opn-admin-title">
                 <h2>Administration</h2>
-                <span class="badge neutral">Read-only</span>
+                <?php if ($firewall !== null && $bridgeReady): ?>
+                    <span class="badge good">Authentication settings editable</span>
+                <?php else: ?>
+                    <span class="badge neutral">Read-only</span>
+                <?php endif; ?>
             </div>
 
             <form method="get" class="opn-admin-toolbar">
@@ -495,32 +565,115 @@ require __DIR__ . '/inc/header.php';
                 </select>
             </form>
 
+            <?php if (is_array($result)): ?>
+                <div class="alert <?= !empty($result['ok']) ? 'goodbox' : 'error' ?>"><?= h((string)($result['message'] ?? '')) ?></div>
+            <?php endif; ?>
             <?php if ($error !== ''): ?>
                 <div class="alert error"><?= h($error) ?></div>
             <?php elseif ($firewall === null): ?>
                 <div class="empty">Select an OPNsense firewall.</div>
             <?php else: ?>
+                <?php if (!$bridgeReady): ?>
+                    <div class="alert warningbox" style="margin:12px">
+                        <strong>Authentication settings are read-only on this firewall.</strong>
+                        Values are read through the official OPNsense backup API. Editing becomes available when the System Access API bridge is installed.
+                        <?php if ($bridgeError !== ''): ?><div class="muted" style="margin-top:5px"><?= h($bridgeError) ?></div><?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
                 <?php foreach ($sections as $section => $fields): ?>
-                    <details class="opn-admin-section" open>
-                        <summary><?= h($section) ?></summary>
-                        <?php foreach ($fields as $field): ?>
-                            <?php $enabled = $field['value'] === 'Enabled'; ?>
-                            <div class="opn-admin-row">
-                                <div class="opn-admin-label">
-                                    <span class="opn-admin-info">i</span>
-                                    <?= h($field['label']) ?>
+                    <?php if ($section === 'Authentication'): ?>
+                        <details class="opn-admin-section" open>
+                            <summary>Shell / Authentication</summary>
+                            <form method="post" action="/system_access_settings_action.php">
+                                <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="set_administration">
+                                <input type="hidden" name="firewall_id" value="<?= $id ?>">
+
+                                <div class="opn-admin-row">
+                                    <div class="opn-admin-label"><span class="opn-admin-info">i</span>Inactivity timeout</div>
+                                    <div class="opn-admin-value"><input class="opn-admin-control" type="number" min="1" name="autologout" value="<?= h((string)$adminEditable['autologout']) ?>" placeholder="Disabled" <?= $bridgeReady ? '' : 'disabled' ?>></div>
                                 </div>
-                                <div class="opn-admin-value">
-                                    <div class="opn-admin-control">
-                                        <?php if ($field['type'] === 'boolean'): ?>
-                                            <span class="opn-admin-checkbox <?= $enabled ? 'enabled' : '' ?>"></span>
-                                        <?php endif; ?>
-                                        <span><?= h($field['value']) ?></span>
+
+                                <div class="opn-admin-row">
+                                    <div class="opn-admin-label"><span class="opn-admin-info">i</span>Server</div>
+                                    <div class="opn-admin-value" style="display:block">
+                                        <select class="opn-admin-control" name="authmode[]" multiple size="<?= max(2, min(6, count($authServerOptions))) ?>" <?= $bridgeReady ? '' : 'disabled' ?>>
+                                            <?php foreach ($authServerOptions as $serverName):
+                                                $selected = $adminEditable['authmode'] === []
+                                                    ? $serverName === 'Local Database'
+                                                    : in_array($serverName, $adminEditable['authmode'], true);
+                                            ?>
+                                                <option value="<?= h($serverName) ?>" <?= $selected ? 'selected' : '' ?>><?= h($serverName) ?><?= $adminEditable['authmode'] === [] && $serverName === 'Local Database' ? ' (default)' : '' ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <a class="button secondary" style="margin-top:7px" href="/system_access_servers.php?firewall_id=<?= $id ?>">System → Access → Servers</a>
                                     </div>
                                 </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </details>
+
+                                <div class="opn-admin-row">
+                                    <div class="opn-admin-label"><span class="opn-admin-info">i</span>Sudo</div>
+                                    <div class="opn-admin-value">
+                                        <select class="opn-admin-control" name="sudo_allow_wheel" <?= $bridgeReady ? '' : 'disabled' ?>>
+                                            <option value="" <?= $adminEditable['sudo_allow_wheel'] === '' ? 'selected' : '' ?>>Disallow</option>
+                                            <option value="1" <?= $adminEditable['sudo_allow_wheel'] !== '' ? 'selected' : '' ?>>Allow</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="opn-admin-row">
+                                    <div class="opn-admin-label"><span class="opn-admin-info">i</span>Sudo group</div>
+                                    <div class="opn-admin-value">
+                                        <select class="opn-admin-control" name="sudo_allow_group" <?= $bridgeReady ? '' : 'disabled' ?>>
+                                            <option value="">Wheel only / none additional</option>
+                                            <?php foreach ($groupOptions as $group): ?>
+                                                <option value="<?= h($group) ?>" <?= $adminEditable['sudo_allow_group'] === $group ? 'selected' : '' ?>><?= h($group) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="opn-admin-row">
+                                    <div class="opn-admin-label"><span class="opn-admin-info">i</span>User OTP seed</div>
+                                    <div class="opn-admin-value">
+                                        <select class="opn-admin-control" name="user_allow_gen_token[]" multiple size="<?= max(2, min(6, count($groupOptions))) ?>" <?= $bridgeReady ? '' : 'disabled' ?>>
+                                            <?php foreach ($groupOptions as $group): ?>
+                                                <option value="<?= h($group) ?>" <?= in_array($group, $adminEditable['user_allow_gen_token'], true) ? 'selected' : '' ?>><?= h($group) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <?php if ($bridgeReady): ?>
+                                <div class="opn-admin-row">
+                                    <div class="opn-admin-label"></div>
+                                    <div class="opn-admin-value"><button class="button" type="submit">Save authentication settings</button></div>
+                                </div>
+                                <?php endif; ?>
+                            </form>
+                        </details>
+                    <?php else: ?>
+                        <details class="opn-admin-section" open>
+                            <summary><?= h($section) ?></summary>
+                            <?php foreach ($fields as $field): ?>
+                                <?php $enabled = $field['value'] === 'Enabled'; ?>
+                                <div class="opn-admin-row">
+                                    <div class="opn-admin-label">
+                                        <span class="opn-admin-info">i</span>
+                                        <?= h($field['label']) ?>
+                                    </div>
+                                    <div class="opn-admin-value">
+                                        <div class="opn-admin-control">
+                                            <?php if ($field['type'] === 'boolean'): ?>
+                                                <span class="opn-admin-checkbox <?= $enabled ? 'enabled' : '' ?>"></span>
+                                            <?php endif; ?>
+                                            <span><?= h($field['value']) ?></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </details>
+                    <?php endif; ?>
                 <?php endforeach; ?>
 
                 <details class="opn-admin-section">
