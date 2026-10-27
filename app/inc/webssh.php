@@ -161,6 +161,61 @@ function webssh_queue_public_key_deploy(array $firewall, string $publicKey): int
 }
 
 
+
+function webssh_create_access_controller_install_token(array $firewall, string $serverUrl, int $lifetime = 120): string
+{
+    if (!webssh_credentials_configured($firewall)) {
+        throw new RuntimeException('Stored SSH credentials are required to install System Access editing support.');
+    }
+    $serverUrl = rtrim(trim($serverUrl), '/');
+    $parts = parse_url($serverUrl);
+    if (!is_array($parts) || strtolower((string)($parts['scheme'] ?? '')) !== 'https'
+        || trim((string)($parts['host'] ?? '')) === '' || isset($parts['user']) || isset($parts['pass'])
+        || strlen($serverUrl) > 2048) {
+        throw new RuntimeException('System Access support installation requires the public HTTPS opnSentral URL.');
+    }
+    $payload = webssh_target_from_firewall($firewall) + [
+        'credential_blob' => webssh_credential_blob($firewall),
+        'scope' => 'access_controller_install',
+        'server_url' => $serverUrl,
+        'iat' => time(),
+        'exp' => time() + max(30, min(180, $lifetime)),
+        'nonce' => bin2hex(random_bytes(12)),
+    ];
+    $json = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $encoded = webssh_base64url($json);
+    return $encoded . '.' . hash_hmac('sha256', $encoded, crypto_key());
+}
+
+function webssh_install_access_controller(array $firewall, string $serverUrl): array
+{
+    $handle = curl_init('http://127.0.0.1:3001/maintenance/access-controller-install');
+    if (!$handle instanceof CurlHandle) throw new RuntimeException('Could not initialize internal System Access installation request.');
+    $body = json_encode(
+        ['token' => webssh_create_access_controller_install_token($firewall, $serverUrl)],
+        JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+    );
+    curl_setopt_array($handle, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $body,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_CONNECTTIMEOUT => 3,
+        CURLOPT_TIMEOUT => 45,
+    ]);
+    $response = curl_exec($handle);
+    $error = curl_error($handle);
+    $status = (int)curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
+    curl_close($handle);
+    if ($response === false) throw new RuntimeException('Internal System Access SSH bridge failed: ' . $error);
+    $decoded = json_decode($response, true);
+    if ($status < 200 || $status >= 300 || !is_array($decoded) || empty($decoded['ok'])) {
+        $message = is_array($decoded) ? trim((string)($decoded['error'] ?? '')) : '';
+        throw new RuntimeException('System Access support installation failed: ' . ($message !== '' ? $message : 'HTTP ' . $status));
+    }
+    return $decoded;
+}
+
 function webssh_create_agent_repair_token(array $firewall, string $serverUrl, int $lifetime = 120): string
 {
     if (!webssh_credentials_configured($firewall)) {
