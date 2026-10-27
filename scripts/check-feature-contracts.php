@@ -118,6 +118,22 @@ require_contains($accessServerAction, 'require_csrf();', 'authentication-server 
 require_contains($accessServerAction, "'opnsentralagent/access/server'", 'authentication-server saves must use the narrow OPNsense plugin API');
 require_contains($accessServerAction, "'opnsentralagent/access/delete_server'", 'authentication-server deletes must use the narrow OPNsense plugin API');
 
+$accessSupport = read_required($root . '/app/system_access_support_action.php');
+require_contains($accessSupport, 'require_csrf();', 'System Access support deployment must require CSRF protection');
+require_contains($accessSupport, 'require_configuration_unlocked(false);', 'System Access support deployment must require configuration unlock');
+require_contains($accessSupport, 'webssh_install_access_controller($firewall,$publicBase);', 'System Access support deployment must use the narrow SSH installer');
+require_contains($accessSupport, "'opnsentralagent/access/get'", 'System Access support deployment must verify the new API by read-back');
+
+$websshHelperForAccess = read_required($root . '/app/inc/webssh.php');
+require_contains($websshHelperForAccess, "'scope' => 'access_controller_install'", 'System Access SSH deployment must use a dedicated signed token scope');
+require_contains($websshHelperForAccess, "curl_init('http://127.0.0.1:3001/maintenance/access-controller-install')", 'System Access deployment must use only the loopback maintenance bridge');
+
+$websshBridgeForAccess = read_required($root . '/webssh/server.js');
+require_contains($websshBridgeForAccess, "req.url === '/maintenance/access-controller-install'", 'WebSSH bridge must expose only the fixed System Access maintenance path');
+require_contains($websshBridgeForAccess, "serverUrl + '/agent/plugin_file.php?file=access_controller'", 'System Access deployment must fetch only the fixed controller artifact');
+require_contains($websshBridgeForAccess, "'[ \"$(id -u)\" -eq 0 ]'", 'System Access deployment must require root on OPNsense');
+require_not_contains($websshBridgeForAccess, 'body.command', 'maintenance bridge must not accept arbitrary remote commands');
+
 $accessController = read_required($root . '/opnsense-plugin/opnsentral-agent/src/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php');
 require_contains($accessController, '$this->throwReadOnly()', 'System Access plugin writes must respect OPNsense read-only API credentials');
 require_contains($accessController, "['ldap_bindpw', 'radius_secret']", 'System Access API must redact stored authentication secrets');
