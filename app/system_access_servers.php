@@ -14,6 +14,14 @@ $servers = [];
 $bridgeReady = false;
 $bridgeError = '';
 $result = $_SESSION['system_access_result'] ?? null;
+$forwardedProto = trim(explode(',', (string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0] ?? '');
+$scheme = $forwardedProto !== '' ? strtolower($forwardedProto) : ((((string)($_SERVER['HTTPS'] ?? '')) !== '' && ($_SERVER['HTTPS'] ?? 'off') !== 'off') ? 'https' : 'http');
+$forwardedHost = trim(explode(',', (string)($_SERVER['HTTP_X_FORWARDED_HOST'] ?? ''))[0] ?? '');
+$host = $forwardedHost !== '' ? $forwardedHost : trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+$publicBase = $host !== '' && $scheme === 'https' ? 'https://' . $host : '';
+$bridgeInstallCommand = $publicBase !== ''
+    ? 'fetch -o - ' . escapeshellarg($publicBase . '/system-access-bridge-install.sh') . ' | sh -s -- ' . escapeshellarg($publicBase)
+    : '';
 unset($_SESSION['system_access_result']);
 
 function access_servers_text(SimpleXMLElement $node, string $name): string
@@ -167,6 +175,13 @@ require __DIR__ . '/inc/header.php';
             <strong>Read-only on this firewall.</strong>
             Current values are read through the OPNsense backup API. Editing is enabled only when the opnSentral System Access API bridge is installed on this firewall.
             <?php if ($bridgeError !== ''): ?><div class="muted" style="margin-top:5px"><?= h($bridgeError) ?></div><?php endif; ?>
+            <?php if ($bridgeInstallCommand !== ''): ?>
+                <div style="margin-top:8px">
+                    <strong>Install / update the bridge once on this OPNsense:</strong>
+                    <pre><?= h($bridgeInstallCommand) ?></pre>
+                    <small>No agent registration or agent service is started by this installer.</small>
+                </div>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 
