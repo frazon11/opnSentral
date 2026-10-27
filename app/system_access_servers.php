@@ -45,9 +45,8 @@ foreach ($firewalls as $firewall) {
                 'refid' => trim((string)($node->refid ?? '')),
             ];
         }
-        // Local Database is a built-in option, not necessarily an authserver XML node.
-        $entry['servers'][] = ['name' => 'Local Database', 'type' => 'local',
-            'host' => '', 'port' => '', 'refid' => ''];
+        // Only show configured entries actually present in this firewall's XML.
+        // The built-in local database is not assumed to be an authserver node.
     } catch (Throwable $e) {
         $entry['error'] = $e->getMessage();
     }
@@ -76,6 +75,9 @@ require __DIR__ . '/inc/header.php';
       <table>
         <thead><tr><th>Name</th><th>Type</th><th>Host</th><th>Authentication port</th><th>Ref ID</th></tr></thead>
         <tbody>
+        <?php if ($entry['servers'] === []): ?>
+          <tr><td colspan="5">No explicit authentication-server entries found in the configuration.</td></tr>
+        <?php endif; ?>
         <?php foreach ($entry['servers'] as $server): ?>
           <tr>
             <td><?= h($server['name']) ?></td>
