@@ -67,14 +67,14 @@ foreach([
     "'sudo_allow_group'",
     "'user_allow_gen_token'",
     "['totp', 'ldap', 'ldap-totp', 'radius']",
-    "$node->addChild('refid'",
+    '$node->addChild(\'refid\'',
     "['ldap_bindpw', 'radius_secret']",
     "configdRun('service restart login')"
 ] as $needle){
     access_check_has($controller,$needle,'Access controller missing safety/contract marker: '.$needle);
 }
-access_check_has($controller,"$row[$key . '_set']", 'Access API must expose only secret-presence state');
-access_check_not($controller,"$row[$key] = (string)$value;",'Access API must not return LDAP/RADIUS secrets');
+access_check_has($controller,'$row[$key . \'_set\']', 'Access API must expose only secret-presence state');
+access_check_not($controller,'$row[$key] = (string)$value;','Access API must not return LDAP/RADIUS secrets');
 
 $installer=access_check_read($root.'/app/agent/install-plugin.sh');
 access_check_has($installer,'fetch_plugin_file access_controller','plugin installer must deploy Access controller');
