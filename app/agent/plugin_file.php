@@ -15,6 +15,7 @@ $files = [
     'lockout_guard' => '/opt/opnsentral-agent-plugin/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout_guard.sh',
     'controller' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/IndexController.php',
     'lockout_controller' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/LockoutController.php',
+    'access_controller' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php',
     'actions' => '/opt/opnsentral-agent-plugin/opnsense/service/conf/actions.d/actions_opnsentralagent.conf',
     'acl' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/models/OPNsense/OpnSentralAgent/ACL/ACL.xml',
     'menu' => '/opt/opnsentral-agent-plugin/opnsense/mvc/app/models/OPNsense/OpnSentralAgent/Menu/Menu.xml',
