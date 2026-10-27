@@ -44,8 +44,12 @@ class AccessController extends ApiControllerBase
             }
             $item = ['index' => (string)$index];
             foreach ($node->children() as $key => $value) {
-                if (in_array($key, ['ldap_bindpw', 'radius_secret'], true)) {
-                    $item['has_' . $key] = trim((string)$value) !== '';
+                if ($key === 'ldap_bindpw') {
+                    $item['has_ldap_bindpw'] = trim((string)$value) !== '';
+                    continue;
+                }
+                if ($key === 'radius_secret') {
+                    $item['has_radius_secret'] = trim((string)$value) !== '';
                     continue;
                 }
                 $item[$key] = (string)$value;
