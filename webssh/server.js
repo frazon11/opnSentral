@@ -141,7 +141,9 @@ function maintenanceConnectOptions(target, credentials) {
 let activeMaintenance = 0;
 
 const server = http.createServer((req, res) => {
-  if (req.method !== 'POST' || req.url !== '/maintenance/agent-repair') {
+  const isAgentRepair = req.method === 'POST' && req.url === '/maintenance/agent-repair';
+  const isAccessControllerInstall = req.method === 'POST' && req.url === '/maintenance/access-controller-install';
+  if (!isAgentRepair && !isAccessControllerInstall) {
     res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ ok: false, error: 'Not found' }));
     return;
@@ -176,26 +178,41 @@ const server = http.createServer((req, res) => {
     try {
       const body = JSON.parse(raw || '{}');
       const target = decodeToken(body.token);
-      if (target.scope !== 'agent_repair') throw new Error('Invalid maintenance token scope.');
+      const expectedScope = isAccessControllerInstall ? 'access_controller_install' : 'agent_repair';
+      if (target.scope !== expectedScope) throw new Error('Invalid maintenance token scope.');
       if (!target.credentialBlob) throw new Error('Stored SSH credentials are not configured.');
 
-      let repairUrl;
-      try { repairUrl = new URL(target.serverUrl); } catch (_) { throw new Error('Invalid opnSentral repair URL.'); }
-      if (repairUrl.protocol !== 'https:' || !repairUrl.hostname || repairUrl.username || repairUrl.password || target.serverUrl.length > 2048) {
-        throw new Error('Agent repair requires a public HTTPS opnSentral URL.');
+      let maintenanceUrl;
+      try { maintenanceUrl = new URL(target.serverUrl); } catch (_) { throw new Error('Invalid opnSentral maintenance URL.'); }
+      if (maintenanceUrl.protocol !== 'https:' || !maintenanceUrl.hostname || maintenanceUrl.username || maintenanceUrl.password || target.serverUrl.length > 2048) {
+        throw new Error('Maintenance requires a public HTTPS opnSentral URL.');
       }
 
       const serverUrl = target.serverUrl.replace(/\/+$/, '');
       const credentials = decryptCredentialBlob(target.credentialBlob);
-      const command = 'fetch -q -o - ' + shellQuote(serverUrl + '/agent/install-plugin.sh') + ' | sh -s -- ' + shellQuote(serverUrl);
+      const accessControllerTarget = '/usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php';
+      const command = isAccessControllerInstall
+        ? [
+            'set -eu',
+            '[ "$(id -u)" -eq 0 ]',
+            'tmp=$(mktemp /tmp/opnsentral-access.XXXXXX)',
+            'trap \'rm -f "$tmp"\' EXIT INT TERM',
+            'fetch -q -o "$tmp" ' + shellQuote(serverUrl + '/agent/plugin_file.php?file=access_controller'),
+            '/usr/local/bin/php -l "$tmp" >/dev/null',
+            'mkdir -p ' + shellQuote('/usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api'),
+            'install -m 0644 "$tmp" ' + shellQuote(accessControllerTarget),
+            '/usr/local/bin/php -l ' + shellQuote(accessControllerTarget) + ' >/dev/null',
+          ].join('; ')
+        : 'fetch -q -o - ' + shellQuote(serverUrl + '/agent/install-plugin.sh') + ' | sh -s -- ' + shellQuote(serverUrl);
       ssh = new Client();
       let stdout = '';
       let stderr = '';
-      timer = setTimeout(() => finish(504, { ok: false, error: 'SSH agent repair timed out.' }), 75000);
+      const maintenanceLabel = isAccessControllerInstall ? 'System Access support installation' : 'SSH agent repair';
+      timer = setTimeout(() => finish(504, { ok: false, error: maintenanceLabel + ' timed out.' }), 75000);
 
       ssh.on('ready', () => {
         ssh.exec(command, (error, stream) => {
-          if (error) return finish(502, { ok: false, error: 'Could not start remote agent repair: ' + error.message });
+          if (error) return finish(502, { ok: false, error: 'Could not start remote ' + maintenanceLabel + ': ' + error.message });
           stream.on('data', (data) => { if (stdout.length < 65536) stdout += data.toString('utf8'); });
           stream.stderr.on('data', (data) => { if (stderr.length < 65536) stderr += data.toString('utf8'); });
           stream.on('close', (code) => {
@@ -203,7 +220,13 @@ const server = http.createServer((req, res) => {
             if (exitCode !== 0) {
               return finish(502, { ok: false, error: 'Remote installer exited with code ' + exitCode + (stderr.trim() ? ': ' + stderr.trim().slice(-1000) : '') });
             }
-            finish(200, { ok: true, message: 'Remote agent repair completed successfully.', output: stdout.trim().slice(-4000) });
+            finish(200, {
+              ok: true,
+              message: isAccessControllerInstall
+                ? 'System Access editing support installed successfully.'
+                : 'Remote agent repair completed successfully.',
+              output: stdout.trim().slice(-4000),
+            });
           });
         });
       });
