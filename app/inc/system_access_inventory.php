@@ -89,6 +89,44 @@ function access_decode_authorized_keys(SimpleXMLElement $node): string
     return trim(str_replace(["\r\n","\r"],"\n",$decoded));
 }
 
+
+function access_parse_settings(SimpleXMLElement $xml): array
+{
+    $systemNodes=$xml->xpath('/opnsense/system');
+    if (!is_array($systemNodes) || !isset($systemNodes[0]) || !$systemNodes[0] instanceof SimpleXMLElement) return [];
+    $system=$systemNodes[0];
+    $webguiNodes=access_xml_children_named($system,'webgui');
+    $webgui=$webguiNodes[0] ?? null;
+    $authmode=$webgui instanceof SimpleXMLElement ? access_xml_text($webgui,'authmode') : '';
+    return [
+        'autologout'=>access_xml_text($system,'autologout'),
+        'authmode'=>$authmode===''?[]:array_values(array_filter(array_map('trim',explode(',',$authmode)))),
+        'sudo_allow_wheel'=>access_xml_text($system,'sudo_allow_wheel'),
+        'sudo_allow_group'=>access_xml_text($system,'sudo_allow_group'),
+        'user_allow_gen_token'=>access_xml_listish_values($system,'user_allow_gen_token'),
+    ];
+}
+
+function access_parse_authservers(SimpleXMLElement $xml): array
+{
+    $servers=[['index'=>-1,'name'=>'Local Database','type'=>'local','builtin'=>true]];
+    $index=0;
+    foreach (access_xml_system_nodes($xml,'authserver') as $node) {
+        $row=['index'=>$index,'builtin'=>false];
+        foreach ($node->children() as $key=>$value) {
+            $key=(string)$key;
+            if (in_array($key,['ldap_bindpw','radius_secret'],true)) {
+                $row[$key.'_set']=trim((string)$value)!=='';
+                continue;
+            }
+            $row[$key]=trim((string)$value);
+        }
+        if (($row['name'] ?? '')!=='') $servers[]=$row;
+        $index++;
+    }
+    return $servers;
+}
+
 function access_parse_users(SimpleXMLElement $xml): array
 {
     $users=[];
@@ -216,11 +254,11 @@ function access_load_fleet_inventory(array $firewalls): array
     foreach ($firewalls as $firewall) {
         $id=(int)$firewall['id'];
         if (isset($agentInventory[$id])) {
-            $result[$id]=['firewall'=>$firewall,'ok'=>true,'users'=>$agentInventory[$id]['users'],'groups'=>$agentInventory[$id]['groups'],'error'=>'','normalized_escaped_xml'=>false,'source'=>'agent','source_note'=>'Agent '.$agentInventory[$id]['agent_version'].' local config'];
+            $result[$id]=['firewall'=>$firewall,'ok'=>true,'users'=>$agentInventory[$id]['users'],'groups'=>$agentInventory[$id]['groups'],'settings'=>[],'authservers'=>[],'error'=>'','normalized_escaped_xml'=>false,'source'=>'agent','source_note'=>'Agent '.$agentInventory[$id]['agent_version'].' local config'];
             continue;
         }
         $download=$downloads[$id] ?? ['ok'=>false,'error'=>'No response.'];
-        $entry=['firewall'=>$firewall,'ok'=>false,'users'=>[],'groups'=>[],'error'=>'','normalized_escaped_xml'=>false,'source'=>'backup_api','source_note'=>'OPNsense backup API'];
+        $entry=['firewall'=>$firewall,'ok'=>false,'users'=>[],'groups'=>[],'settings'=>[],'authservers'=>[],'error'=>'','normalized_escaped_xml'=>false,'source'=>'backup_api','source_note'=>'OPNsense backup API'];
         if (($download['ok'] ?? false)!==true) {
             $entry['error']=(string)($download['error'] ?? 'Could not read configuration.');
             $result[$id]=$entry;
@@ -241,6 +279,8 @@ function access_load_fleet_inventory(array $firewalls): array
             if (strcasecmp($xml->getName(),'opnsense')!==0) throw new RuntimeException('Backup endpoint did not return an OPNsense configuration document.');
             $entry['users']=access_parse_users($xml);
             $entry['groups']=access_parse_groups($xml);
+            $entry['settings']=access_parse_settings($xml);
+            $entry['authservers']=access_parse_authservers($xml);
             if ($entry['users']===[] && $entry['groups']===[]) throw new RuntimeException('Configuration XML is valid, but contains no System Access users or groups. Agent 0.1.11+ will read Access inventory locally instead.');
             access_reconcile_memberships($entry['users'],$entry['groups']);
             $entry['ok']=true;
