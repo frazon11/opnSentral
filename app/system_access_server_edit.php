@@ -32,12 +32,12 @@ require __DIR__ . '/inc/header.php';
   <input type="hidden" name="action" value="save">
   <input type="hidden" name="firewall_id" value="<?= (int)$firewall['id'] ?>">
   <input type="hidden" name="index" value="<?= $server!==null?(int)$s['index']:'' ?>">
-  <label>Name<input name="name" required maxlength="128" value="<?= h((string)($s['name']??'')) ?>"></label>
-  <label>Type<select name="type" id="server-type">
+  <label>Name<input name="name" required maxlength="128" value="<?= h((string)($s['name']??'')) ?>" <?= $server?'readonly':'' ?>></label>
+  <label>Type<select name="type" id="server-type" <?= $server?'disabled':'' ?>>
     <?php foreach(['totp'=>'Local + TOTP','ldap'=>'LDAP','ldap-totp'=>'LDAP + TOTP','radius'=>'RADIUS'] as $value=>$label): ?>
       <option value="<?= h($value) ?>" <?= $type===$value?'selected':'' ?>><?= h($label) ?></option>
     <?php endforeach; ?>
-  </select></label>
+  </select><?php if($server): ?><input type="hidden" name="type" value="<?= h($type) ?>"><?php endif; ?></label>
 
   <div class="server-type-section type-totp type-ldap-totp">
     <label>Token length<select name="otpLength"><option value="">Default (6)</option><option value="6" <?= (string)($s['otpLength']??'')==='6'?'selected':'' ?>>6</option><option value="8" <?= (string)($s['otpLength']??'')==='8'?'selected':'' ?>>8</option></select></label>
@@ -49,7 +49,7 @@ require __DIR__ . '/inc/header.php';
   <div class="server-type-section type-ldap type-ldap-totp">
     <label>LDAP host<input name="host" value="<?= h((string)($s['host']??'')) ?>"></label>
     <label>LDAP port<input type="number" min="1" max="65535" name="ldap_port" value="<?= h((string)($s['ldap_port']??'')) ?>"></label>
-    <label>Transport<select name="ldap_urltype"><?php foreach(['TCP - Standard'=>'Standard','SSL - Encrypted'=>'SSL/TLS','STARTTLS'=>'STARTTLS'] as $v=>$l): ?><option value="<?= h($v) ?>" <?= (string)($s['ldap_urltype']??'')===$v?'selected':'' ?>><?= h($l) ?></option><?php endforeach; ?></select></label>
+    <label>Transport<select name="ldap_urltype"><?php foreach(['TCP - Standard'=>'TCP - Standard','StartTLS'=>'StartTLS','SSL - Encrypted'=>'SSL - Encrypted'] as $v=>$l): ?><option value="<?= h($v) ?>" <?= (string)($s['ldap_urltype']??'')===$v?'selected':'' ?>><?= h($l) ?></option><?php endforeach; ?></select></label>
     <label>Protocol version<input name="ldap_protver" value="<?= h((string)($s['ldap_protver']??'3')) ?>"></label>
     <label class="wide">Base DN<input name="ldap_basedn" value="<?= h((string)($s['ldap_basedn']??'')) ?>"></label>
     <label>Authentication containers<input name="ldap_authcn" value="<?= h((string)($s['ldap_authcn']??'')) ?>"></label>
