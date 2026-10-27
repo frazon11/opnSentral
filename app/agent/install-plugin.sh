@@ -53,6 +53,7 @@ fetch_plugin_file lockout_script /usr/local/opnsense/scripts/OPNsense/OpnSentral
 fetch_plugin_file lockout_guard /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout_guard.sh 0755
 fetch_plugin_file controller /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/IndexController.php 0644
 fetch_plugin_file lockout_controller /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/LockoutController.php 0644
+fetch_plugin_file access_controller /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php 0644
 fetch_plugin_file actions /usr/local/opnsense/service/conf/actions.d/actions_opnsentralagent.conf 0644
 fetch_plugin_file acl /usr/local/opnsense/mvc/app/models/OPNsense/OpnSentralAgent/ACL/ACL.xml 0644
 fetch_plugin_file menu /usr/local/opnsense/mvc/app/models/OPNsense/OpnSentralAgent/Menu/Menu.xml 0644
@@ -63,6 +64,7 @@ fetch_plugin_file view /usr/local/opnsense/mvc/app/views/OPNsense/OpnSentralAgen
 /usr/local/bin/php -l /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout.php >/dev/null
 /usr/local/bin/php -l /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/IndexController.php >/dev/null
 /usr/local/bin/php -l /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/LockoutController.php >/dev/null
+/usr/local/bin/php -l /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php >/dev/null
 
 service configd restart >/dev/null
 sleep 1
@@ -108,6 +110,7 @@ service opnsentral_agent onestatus >/dev/null
 [ -x /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout.php ] || { echo "SSH lockout trusted-host helper was not installed correctly." >&2; exit 1; }
 [ -x /usr/local/opnsense/scripts/OPNsense/OpnSentralAgent/sshlockout_guard.sh ] || { echo "SSH lockout trusted-host guard was not installed correctly." >&2; exit 1; }
 [ -r /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/LockoutController.php ] || { echo "SSH lockout trusted-host API was not installed correctly." >&2; exit 1; }
+[ -r /usr/local/opnsense/mvc/app/controllers/OPNsense/OpnSentralAgent/Api/AccessController.php ] || { echo "System Access management API was not installed correctly." >&2; exit 1; }
 
 echo ""
 echo "os-opnsentral-agent installed and online."
@@ -116,5 +119,6 @@ echo "OPNsense service registry: /usr/local/etc/inc/plugins.inc.d/opnsentralagen
 echo "Lockout guard: service opnsentral_lockout_guard status"
 echo "Boot recovery: /usr/local/etc/rc.syshook.d/start/50-opnsentral-agent"
 echo "SSH lockout: /api/opnsentralagent/lockout/status"
+echo "System Access: /api/opnsentralagent/access/get"
 echo "Hardware DMI: official os-dmidecode plugin (/api/dmidecode/service/get)"
 echo "GUI:     Services -> opnSentral Agent"
