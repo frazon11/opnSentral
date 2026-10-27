@@ -28,7 +28,7 @@ require __DIR__ . '/inc/header.php';
 </style>
 <div class="page-title">
     <div><h1>System → Access → Users</h1><p>Compare local OPNsense users across managed firewalls.</p></div>
-    <div class="access-tabs"><a class="button" href="/system_access_users.php">Users</a><a class="button secondary" href="/system_access_groups.php">Groups</a></div>
+    <div class="access-tabs"><a class="button" href="/system_access_users.php">Users</a><a class="button secondary" href="/system_access_groups.php">Groups</a><a class="button secondary" href="/system_access_settings.php">Settings</a><a class="button secondary" href="/system_access_servers.php">Servers</a></div>
 </div>
 <div class="alert warningbox"><strong>SSH-key writes only.</strong> There is one supported write path: choose the exact user on the exact firewall below and click <em>Add SSH key</em>. No generic/manual target form and no broad user editing.</div>
 <div class="access-toolbar"><strong><?= count($userNames) ?> unique user<?= count($userNames) === 1 ? '' : 's' ?> across <?= count($firewalls) ?> managed firewall<?= count($firewalls) === 1 ? '' : 's' ?></strong><button type="button" class="button secondary" onclick="window.location.reload()">Refresh</button></div>
