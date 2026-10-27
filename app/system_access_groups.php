@@ -32,7 +32,7 @@ require __DIR__ . '/inc/header.php';
 </style>
 <div class="page-title">
     <div><h1>System → Access → Groups</h1><p>Compare local OPNsense groups, membership and privileges across all managed firewalls.</p></div>
-    <div class="access-tabs"><a class="button secondary" href="/system_access_users.php">Users</a><a class="button" href="/system_access_groups.php">Groups</a><a class="button secondary" href="/system_access_ssh_key.php">Add SSH Key</a></div>
+    <div class="access-tabs"><a class="button secondary" href="/system_access_users.php">Users</a><a class="button" href="/system_access_groups.php">Groups</a><a class="button secondary" href="/system_access_settings.php">Settings</a><a class="button secondary" href="/system_access_servers.php">Servers</a></div>
 </div>
 <div class="alert warningbox"><strong>Read-only inventory.</strong> Agent 0.1.11+ supplies the Access inventory directly from the local OPNsense configuration; older agents fall back to the backup API.</div>
 <div class="access-toolbar"><strong><?= count($groupNames) ?> unique group<?= count($groupNames) === 1 ? '' : 's' ?> across <?= count($firewalls) ?> managed firewall<?= count($firewalls) === 1 ? '' : 's' ?></strong><button type="button" class="button secondary" onclick="window.location.reload()">Refresh</button></div>
