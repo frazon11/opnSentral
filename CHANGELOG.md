@@ -6,6 +6,13 @@ Historical releases remain summarized here and in published GitHub releases. The
 
 ## Unreleased
 
+## 0.6.21.113
+
+- Added independent Collapse/Expand controls for OPNsense configuration sections in Troubleshooting comparisons.
+- Added Expand all and Collapse all actions, with per-section setting and difference counts.
+- Preserved the existing All/Different and search filters; section visibility resets on a new comparison.
+
+
 - Clarified Docker platform support in the README, including Raspberry Pi 4/5 with a 64-bit OS.
 - Removed low-level implementation details from the README feature list.
 - Consolidated and cleaned the changelog so future changes are tracked here instead of as repeated README or release notes.
