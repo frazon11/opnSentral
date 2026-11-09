@@ -269,6 +269,8 @@ require __DIR__ . '/inc/header.php';
         <button type="button" id="compare-collapse-all" class="button secondary">Collapse all</button>
     </div>
 
+    <div id="compare-openvpn-warning" class="alert warningbox hidden"></div>
+
     <div class="compare-summary">
         <div>
             <strong>Total settings</strong>
@@ -322,6 +324,7 @@ require __DIR__ . '/inc/header.php';
     const body = document.getElementById('compare-body');
     const empty = document.getElementById('compare-empty');
     const search = document.getElementById('compare-search');
+    const vpnWarning = document.getElementById('compare-openvpn-warning');
     const expandAll = document.getElementById('compare-expand-all');
     const collapseAll = document.getElementById('compare-collapse-all');
 
@@ -329,17 +332,65 @@ require __DIR__ . '/inc/header.php';
     let comparisonData = null;
     const collapsedSections = new Set();
 
-    // Group by the first configuration path component below the XML root.
-    // This avoids guessing a separate menu hierarchy that the API does not supply.
-    function sectionOf(path){
-        const parts = String(path ?? '').split('/');
-        return parts.length > 1 && parts[0].toLowerCase() === 'opnsense'
-            ? (parts[1] || 'Other')
-            : (parts[0] || 'Other');
+    // Menu hierarchy is a presentation mapping, never a rewrite of the original
+    // configuration path. Entries without a known OPNsense menu remain identifiable
+    // under Other configuration rather than receiving a fabricated menu location.
+    function menuPath(path){
+        const full = String(path ?? '');
+        if(full.startsWith('VPN/OpenVPN/Instances/')){
+            const parts = full.split('/');
+            return ['VPN', 'OpenVPN', 'Instances', parts[3] || 'Unnamed instance'];
+        }
+        const raw = full.split('/');
+        if(raw[0].toLowerCase() === 'opnsense') raw.shift();
+        const root = (raw[0] || '').toLowerCase();
+        const second = (raw[1] || '').toLowerCase();
+        const normalize = str => String(str).replace(/\\[\\d+\\]$/, '');
+        switch(root){
+            case 'filter': return ['Firewall', 'Rules', 'Configuration'];
+            case 'nat': return ['Firewall', 'NAT', second.replace(/\\[\\d+\\]$/, '') || 'Configuration'];
+            case 'aliases': return ['Firewall', 'Aliases', 'Configuration'];
+            case 'interfaces': return ['Interfaces', 'Assignments'];
+            case 'gateways': return ['System', 'Gateways'];
+            case 'openvpn': return ['VPN', 'OpenVPN', 'Legacy configuration'];
+            case 'ipsec': return ['VPN', 'IPsec'];
+            case 'wireguard': return ['VPN', 'WireGuard'];
+            case 'system':
+                if(second === 'webgui') return ['System','Settings','Administration'];
+                if(second === 'ssh') return ['System','Settings','Administration'];
+                if(['user','group','authserver'].includes(second)) return ['System','Access',
+                    second === 'user' ? 'Users' : second === 'group' ? 'Groups' : 'Servers'];
+                return ['System','Settings', 'Other'];
+            case 'unbound': return ['Services','Unbound DNS'];
+            case 'dhcpd': return ['Services','DHCPv4'];
+            case 'ntpd': return ['Services','Network Time'];
+            default: return ['Other configuration', raw[0] || 'Other'];
+        }
     }
 
-    function sectionLabel(name){
-        return name.replace(/[-_]/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+    function makeTree(rows){
+        const root = {children:new Map(), rows:[], count:0, different:0};
+        for(const row of rows){
+            let node = root;
+            for(const label of menuPath(row.path)){
+                if(!node.children.has(label)){
+                    node.children.set(label,{label, children:new Map(),rows:[],count:0,different:0});
+                }
+                node=node.children.get(label);
+            }
+            node.rows.push(row);
+        }
+        function totals(node){
+            node.count=node.rows.length;
+            node.different=node.rows.filter(r=>r.different).length;
+            for(const child of node.children.values()){
+                totals(child);
+                node.count+=child.count;
+                node.different+=child.different;
+            }
+        }
+        totals(root);
+        return root;
     }
 
     function escapeHtml(value){
@@ -376,34 +427,30 @@ require __DIR__ . '/inc/header.php';
             return haystack.includes(query);
         });
 
-        const groups = new Map();
-        for(const row of rows){
-            const section = sectionOf(row.path);
-            if(!groups.has(section)) groups.set(section, []);
-            groups.get(section).push(row);
-        }
-
+        const tree = makeTree(rows);
         const html = [];
-        for(const [section, sectionRows] of groups){
-            const collapsed = collapsedSections.has(section);
-            const changed = sectionRows.filter(row => row.different).length;
+        const searching = query !== '';
+
+        function appendNode(node, ancestors, level){
+            const parts = [...ancestors, node.label];
+            const id = JSON.stringify(parts);
+            const folded = !searching && collapsedSections.has(id);
             html.push(`
                 <tr class="compare-section-row">
                     <td colspan="4">
                         <button type="button" class="compare-section-toggle"
-                            data-section="${escapeHtml(section)}"
-                            aria-expanded="${!collapsed}">
-                            <span class="compare-section-chevron" aria-hidden="true">${collapsed ? '▸' : '▾'}</span>
-                            <strong>${escapeHtml(sectionLabel(section))}</strong>
-                            <span class="compare-section-count">
-                                ${sectionRows.length} settings · ${changed} different
-                            </span>
+                            data-section="${escapeHtml(id)}" aria-expanded="${!folded}"
+                            style="padding-left:${12 + level * 22}px">
+                            <span class="compare-section-chevron" aria-hidden="true">${folded ? '▸' : '▾'}</span>
+                            <strong>${escapeHtml(node.label)}</strong>
+                            <span class="compare-section-count">${node.count} settings · ${node.different} different</span>
                         </button>
                     </td>
                 </tr>
             `);
-            if(collapsed) continue;
-            for(const row of sectionRows){
+            if(folded) return;
+            for(const child of node.children.values()) appendNode(child,parts,level+1);
+            for(const row of node.rows){
                 const left = row.left_exists
                     ? escapeHtml(row.left ?? '')
                     : '<span class="compare-missing">Missing</span>';
@@ -412,18 +459,17 @@ require __DIR__ . '/inc/header.php';
                     : '<span class="compare-missing">Missing</span>';
                 html.push(`
                     <tr class="${row.different ? 'is-different' : 'is-same'}">
-                        <td class="compare-path">${escapeHtml(row.path)}</td>
+                        <td class="compare-path" style="padding-left:${22 + (level + 1) * 22}px">${escapeHtml(row.path)}</td>
                         <td class="compare-value">${left}</td>
                         <td class="compare-value">${right}</td>
-                        <td>
-                            <span class="compare-difference-badge ${row.different ? 'changed' : 'same'}">
-                                ${row.different ? 'Different' : 'Same'}
-                            </span>
-                        </td>
+                        <td><span class="compare-difference-badge ${row.different ? 'changed' : 'same'}">
+                            ${row.different ? 'Different' : 'Same'}
+                        </span></td>
                     </tr>
                 `);
             }
         }
+        for(const node of tree.children.values()) appendNode(node,[],0);
         body.innerHTML = html.join('');
 
         empty.classList.toggle('hidden', rows.length !== 0);
@@ -483,6 +529,11 @@ require __DIR__ . '/inc/header.php';
 
             comparisonData = data;
             collapsedSections.clear();
+            vpnWarning.classList.toggle('hidden', data.openvpn_compared !== false);
+            vpnWarning.textContent = data.openvpn_compared === false
+                ? 'OpenVPN Instances comparison unavailable: ' + String(data.openvpn_error || 'Unknown error') +
+                  '. The legacy OpenVPN XML entry must not be interpreted as instance equality.'
+                : '';
             comparisonRows = Array.isArray(data.rows)
                 ? data.rows
                 : [];
@@ -542,7 +593,15 @@ require __DIR__ . '/inc/header.php';
         render();
     });
     collapseAll.addEventListener('click', () => {
-        for(const row of comparisonRows) collapsedSections.add(sectionOf(row.path));
+        const tree = makeTree(comparisonRows);
+        function visit(node, ancestors){
+            for(const child of node.children.values()){
+                const parts=[...ancestors, child.label];
+                collapsedSections.add(JSON.stringify(parts));
+                visit(child,parts);
+            }
+        }
+        visit(tree,[]);
         render();
     });
 })();
