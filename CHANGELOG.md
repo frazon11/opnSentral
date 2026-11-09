@@ -6,6 +6,13 @@ Historical releases remain summarized here and in published GitHub releases. The
 
 ## Unreleased
 
+## 0.6.21.114
+
+- Troubleshooting comparison displays a nested OPNsense-style navigation hierarchy with independent Collapse/Expand at each level.
+- Compares OpenVPN MVC instance settings using the existing OPNsense instance API rather than relying on legacy XML OpenVPN entries.
+- Reports OpenVPN comparison failures visibly instead of implying that missing instance information means an equal configuration.
+
+
 ## 0.6.21.113
 
 - Added independent Collapse/Expand controls for OPNsense configuration sections in Troubleshooting comparisons.
