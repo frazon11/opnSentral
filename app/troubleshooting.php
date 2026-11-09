@@ -343,9 +343,11 @@ require __DIR__ . '/inc/header.php';
         }
         const raw = full.split('/');
         if(raw[0].toLowerCase() === 'opnsense') raw.shift();
-        const root = (raw[0] || '').toLowerCase();
-        const second = (raw[1] || '').toLowerCase();
-        const normalize = str => String(str).replace(/\\[\\d+\\]$/, '');
+        // Flattened XML creates numbered sibling paths such as filter[40].
+        // Strip only a trailing numeric index for menu classification.
+        const root = (raw[0] || '').toLowerCase().replace(/\\[\\d+\\]$/, '');
+        const second = (raw[1] || '').toLowerCase().replace(/\\[\\d+\\]$/, '');
+        if(root === 'opnsense' && second === 'openvpn') return ['VPN','OpenVPN','Instances (XML)'];
         switch(root){
             case 'filter': return ['Firewall', 'Rules', 'Configuration'];
             case 'nat': return ['Firewall', 'NAT', second.replace(/\\[\\d+\\]$/, '') || 'Configuration'];
