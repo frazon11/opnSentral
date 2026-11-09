@@ -7,6 +7,7 @@ ob_start();
 
 require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/opnsense.php';
+require_once __DIR__ . '/inc/troubleshooting_openvpn.php';
 
 require_login();
 
@@ -310,6 +311,19 @@ try {
         ];
     }
 
+    // Explicitly compare MVC OpenVPN instances; the legacy XML node is insufficient.
+    $openvpnError = '';
+    try {
+        foreach (trouble_vpn_compare($left, $right) as $item) {
+            $rows[] = $item;
+            if ($item['different']) $different++; else $same++;
+            if (!$item['left_exists']) $missingLeft++;
+            if (!$item['right_exists']) $missingRight++;
+        }
+    } catch (Throwable $openvpnException) {
+        $openvpnError = $openvpnException->getMessage();
+    }
+
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
@@ -337,6 +351,8 @@ try {
                 'missing_right' => $missingRight,
             ],
             'rows' => $rows,
+            'openvpn_compared' => $openvpnError === '',
+            'openvpn_error' => $openvpnError,
         ],
         JSON_UNESCAPED_SLASHES |
         JSON_UNESCAPED_UNICODE |
