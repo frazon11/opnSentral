@@ -441,7 +441,7 @@ require __DIR__ . '/inc/header.php';
                 <tr class="compare-section-row">
                     <td colspan="4">
                         <button type="button" class="compare-section-toggle"
-                            data-section="${escapeHtml(id)}" aria-expanded="${!folded}"
+                            data-section="${encodeURIComponent(id)}" aria-expanded="${!folded}"
                             style="padding-left:${12 + level * 22}px">
                             <span class="compare-section-chevron" aria-hidden="true">${folded ? '▸' : '▾'}</span>
                             <strong>${escapeHtml(node.label)}</strong>
@@ -584,7 +584,7 @@ require __DIR__ . '/inc/header.php';
     body.addEventListener('click', event => {
         const button = event.target.closest('.compare-section-toggle');
         if(!button || !body.contains(button)) return;
-        const section = button.dataset.section;
+        const section = decodeURIComponent(button.dataset.section);
         if(collapsedSections.has(section)) collapsedSections.delete(section);
         else collapsedSections.add(section);
         render();
