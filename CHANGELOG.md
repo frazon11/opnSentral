@@ -6,6 +6,11 @@ Historical releases remain summarized here and in published GitHub releases. The
 
 ## Unreleased
 
+## 0.6.21.115
+
+- Fixed individual Collapse/Expand buttons in the Troubleshooting menu tree. JSON node keys are now safely encoded as HTML data attributes and decoded by the click handler.
+
+
 ## 0.6.21.114
 
 - Troubleshooting comparison displays a nested OPNsense-style navigation hierarchy with independent Collapse/Expand at each level.
