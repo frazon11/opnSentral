@@ -112,6 +112,7 @@ function nav_active_query(string $path, string $key, string $value): string {
                 <a class="menu-link<?= nav_active(['/system_general.php']) ?>" href="/system_general.php"><span>General</span></a>
                 <a class="menu-link<?= nav_active(['/system_administration.php','/system_administration_matrix.php']) ?>" href="/system_administration.php"><span>Administration</span></a>
                 <a class="menu-link<?= nav_active(['/ssh_access.php']) ?>" href="/ssh_access.php"><span>Managed SSH Access</span></a>
+                <a class="menu-link<?= nav_active(['/api_access_protection.php']) ?>" href="/api_access_protection.php"><span>API Access Protection</span></a>
 
                 <span class="menu-level2">Diagnostics</span>
                 <a class="menu-link<?= nav_active(['/services.php']) ?>" href="/services.php"><span>Services</span></a>
