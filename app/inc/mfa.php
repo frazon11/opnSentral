@@ -210,17 +210,23 @@ function mfa_disable(string $password, string $code): bool
     if ($password === '' || !hash_equals(envv('ADMIN_PASSWORD'), $password)) return false;
     if (!mfa_verify_login_code($code)) return false;
     $pdo = mfa_store();
+    // Rotate session generation on disabling MFA so previously authenticated
+    // API-key and password sessions cannot become valid again.
     $stmt = $pdo->prepare('UPDATE administrator_mfa SET secret_enc="", recovery_hashes="[]",
-        last_counter=-1, generation="", failure_count=0, blocked_until=0 WHERE id=1');
-    $stmt->execute();
+        last_counter=-1, generation=?, failure_count=0, blocked_until=0 WHERE id=1');
+    $stmt->execute([bin2hex(random_bytes(16))]);
     return true;
 }
 
 function mfa_session_satisfied(): bool
 {
     $state = mfa_state();
+    $generation = (string)$state['generation'];
+    // Blank generation preserves existing sessions on installations that
+    // have never activated MFA. After enrollment, all sessions are epoch-bound.
+    if ($generation !== '' && !hash_equals($generation, (string)($_SESSION['mfa_generation'] ?? ''))) {
+        return false;
+    }
     if ((string)$state['secret_enc'] === '') return true;
-    return ($_SESSION['mfa_verified'] ?? false) === true
-        && hash_equals((string)$state['generation'], (string)($_SESSION['mfa_generation'] ?? ''))
-        && (string)$state['generation'] !== '';
+    return ($_SESSION['mfa_verified'] ?? false) === true && $generation !== '';
 }
