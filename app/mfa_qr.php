@@ -17,12 +17,14 @@ $uri = 'otpauth://totp/' . rawurlencode($issuer) . ':' . rawurlencode($account)
     . '?secret=' . rawurlencode($secret) . '&issuer=' . rawurlencode($issuer)
     . '&algorithm=SHA1&digits=6&period=30';
 
-$cmd = ['/usr/bin/qrencode', '-t', 'PNG', '-s', '6', '-m', '2', '-o', '-', $uri];
+// Pass the provisioning URI over stdin, not via process arguments.
+$cmd = ['/usr/bin/qrencode', '-t', 'PNG', '-s', '6', '-m', '2', '-o', '-'];
 $process = proc_open($cmd, [0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']], $pipes);
 if (!is_resource($process)) {
     http_response_code(503);
     exit;
 }
+fwrite($pipes[0], $uri);
 fclose($pipes[0]);
 $image = stream_get_contents($pipes[1]);
 $diagnostics = stream_get_contents($pipes[2]);
