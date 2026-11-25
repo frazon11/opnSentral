@@ -134,7 +134,7 @@ function start_session_secure(): void {
 function csrf_token(): string { start_session_secure(); if(empty($_SESSION['csrf']))$_SESSION['csrf']=bin2hex(random_bytes(24)); return $_SESSION['csrf']; }
 function require_csrf(): void { start_session_secure();$v=(string)($_POST['csrf']??'');if(!hash_equals((string)($_SESSION['csrf']??''),$v)){http_response_code(400);exit('Invalid CSRF token');}}
 function verify_csrf(): void { require_csrf(); }
-function logged_in(): bool { start_session_secure(); return ($_SESSION['auth']??false)===true; }
+function logged_in(): bool { start_session_secure(); if (($_SESSION['auth']??false)!==true) return false; require_once __DIR__.'/mfa.php'; return mfa_session_satisfied(); }
 function require_login(): void { if(!logged_in()){header('Location: /login.php');exit;}}
 
 // 0.6.21+: configuration changes are available to authenticated users without
