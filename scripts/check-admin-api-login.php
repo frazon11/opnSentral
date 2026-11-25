@@ -25,7 +25,7 @@ function must_contain(string $content, string $needle, string $message): void
 $login = read_required_file($root . '/app/login.php');
 must_contain($login, "envv('ADMIN_API_KEY')", 'login must read ADMIN_API_KEY from the environment');
 must_contain($login, '!$mfaActive && strlen($apiKey) >= 32', 'MFA must disable interactive API-key login');
-must_contain($login, "hash_equals(\$apiKey,\$provided)", 'API-key comparison must be timing-safe');
+must_contain($login, "hash_equals(\$apiKey, \$provided)", 'API-key comparison must be timing-safe');
 must_contain($login, "complete_login(\$adminUser, 'api_key')", 'API-key login must map to the configured administrator account');
 must_contain($login, "session_regenerate_id(true)", 'successful login must regenerate the session identifier');
 must_contain($login, "mfa_verify_login_code(\$provided)", 'MFA challenge must validate TOTP or recovery code');
