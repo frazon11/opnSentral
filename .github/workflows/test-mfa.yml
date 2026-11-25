@@ -1,0 +1,72 @@
+name: Test opnSentral MFA
+
+on:
+  pull_request:
+    paths:
+      - 'app/login.php'
+      - 'app/security_mfa.php'
+      - 'app/mfa_qr.php'
+      - 'app/inc/mfa.php'
+      - 'app/inc/config.php'
+      - 'app/settings.php'
+      - 'Dockerfile'
+      - 'scripts/check-mfa.php'
+      - 'scripts/test-mfa-http.py'
+      - 'scripts/check-admin-api-login.php'
+      - '.github/workflows/test-mfa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mfa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Build disposable MFA container
+        run: docker build --tag opnsentral-mfa-ci .
+
+      - name: Run PHP lint, algorithm and login-contract checks
+        run: |
+          docker run --rm --entrypoint sh -v "$PWD:/work:ro" \
+            opnsentral-mfa-ci -ec '
+              cd /work
+              php -l app/inc/mfa.php
+              php -l app/login.php
+              php -l app/security_mfa.php
+              php -l app/mfa_qr.php
+              php -l app/inc/config.php
+              php -l scripts/check-mfa.php
+              php scripts/check-admin-api-login.php
+              php scripts/check-mfa.php
+            '
+
+      - name: Test browser login, QR and recovery against running Apache
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name opnsentral-mfa-http \
+            -p 127.0.0.1:18788:80 \
+            -e APP_KEY="$(printf 'ab%.0s' {1..32})" \
+            -e ADMIN_USER=admin \
+            -e ADMIN_PASSWORD=ci-only-mfa-password \
+            -e ADMIN_API_KEY="$(printf 'c1%.0s' {1..32})" \
+            -e SESSION_SECURE=false \
+            opnsentral-mfa-ci
+          trap 'docker rm -f opnsentral-mfa-http >/dev/null 2>&1 || true' EXIT
+          ready=0
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:18788/health.php >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker logs opnsentral-mfa-http
+            exit 1
+          fi
+          python3 scripts/test-mfa-http.py http://127.0.0.1:18788
