@@ -116,6 +116,11 @@ require __DIR__ . '/inc/header.php';
         </div>
 
         <div class="settings-group-grid">
+            <section class="card" id="mfa-settings-card">
+                <h2>Multi-factor authentication</h2>
+                <p class="muted">Secure interactive administrator login with a TOTP authenticator and one-time recovery codes. When enabled, API-key browser login is disabled.</p>
+                <a class="button secondary" href="/security_mfa.php">Configure MFA</a>
+            </section>
             <section class="card" id="update-settings-card">
                 <div class="card-head">
                     <div>
