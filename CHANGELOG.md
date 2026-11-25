@@ -6,6 +6,16 @@ Historical releases remain summarized here and in published GitHub releases. The
 
 ## Unreleased
 
+## 0.6.21.116
+
+- Added administrator TOTP multi-factor authentication with local QR enrollment and manual setup key.
+- Added one-time recovery codes, TOTP replay prevention and a temporary invalid-code lockout.
+- Disabled interactive `ADMIN_API_KEY` login while MFA is enabled; managed OPNsense API and agent credentials are unaffected.
+- Added session-wide MFA enforcement, invalidating previous sessions when MFA is enabled or disabled.
+- Added isolated Docker CI tests for RFC 6238, full HTTP login flow, recovery, QR rendering and API-key bypass prevention.
+- Added `docs/mfa.md` with enrollment, recovery and security information.
+
+
 ## 0.6.21.115
 
 - Fixed individual Collapse/Expand buttons in the Troubleshooting menu tree. JSON node keys are now safely encoded as HTML data attributes and decoded by the click handler.
