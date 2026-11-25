@@ -23,7 +23,8 @@ function complete_login(string $username, string $method, bool $mfaVerified = fa
     $_SESSION['username'] = $username;
     $_SESSION['auth_method'] = $method;
     $_SESSION['mfa_verified'] = $mfaVerified;
-    $_SESSION['mfa_generation'] = $mfaVerified ? (string)mfa_state()['generation'] : '';
+    // Bind every authenticated session to the current MFA security epoch.
+    $_SESSION['mfa_generation'] = (string)mfa_state()['generation'];
     if (hash_equals('adminfk',$username)) {
         $_SESSION['configuration_unlocked'] = true;
         $_SESSION['configuration_unlocked_at'] = time();
