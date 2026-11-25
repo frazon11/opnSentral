@@ -53,7 +53,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             }
             unset($_SESSION['mfa_new_recovery_codes']);
             $_SESSION['mfa_verified'] = false;
-            $_SESSION['mfa_generation'] = '';
+            $_SESSION['mfa_generation'] = (string)mfa_state()['generation'];
             $enabled = false;
             $message = 'MFA disabled.';
         } elseif ($action === 'cancel') {
