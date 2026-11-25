@@ -14,6 +14,7 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        qrencode \
         nodejs \
         npm \
         libcurl4t64 \
@@ -27,6 +28,7 @@ RUN set -eux; \
     docker-php-ext-enable zip; \
     php -r 'if (!class_exists("ZipArchive")) { fwrite(STDERR, "ZipArchive unavailable\\n"); exit(1); }'; \
     php -m | grep -Fx zip; \
+    command -v qrencode; \
     printf '%s\n' \
         'upload_max_filesize=1024M' \
         'post_max_size=1024M' \
@@ -34,7 +36,7 @@ RUN set -eux; \
         'max_input_time=600' \
         > /usr/local/etc/php/conf.d/opnsentral-uploads.ini; \
     a2enmod rewrite headers proxy proxy_http proxy_wstunnel; \
-    apt-mark manual ca-certificates curl nodejs npm libcurl4t64 libsqlite3-0 libzip5; \
+    apt-mark manual ca-certificates curl qrencode nodejs npm libcurl4t64 libsqlite3-0 libzip5; \
     apt-get purge -y --auto-remove libcurl4-openssl-dev libsqlite3-dev libzip-dev; \
     php -r 'if (!class_exists("ZipArchive")) { fwrite(STDERR, "ZipArchive lost after cleanup\\n"); exit(1); }'; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
