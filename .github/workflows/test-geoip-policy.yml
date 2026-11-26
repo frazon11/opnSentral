@@ -38,3 +38,43 @@ jobs:
           new Function(clean);
           console.log('GeoIP JavaScript syntax passed');
           JS
+      - name: End-to-end GeoIP inspection with mocked OPNsense
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name opnsentral-geoip-http \
+            --add-host=host.docker.internal:host-gateway \
+            -p 127.0.0.1:18788:80 \
+            -e APP_KEY="$(printf 'ab%.0s' {1..32})" \
+            -e ADMIN_USER=admin \
+            -e ADMIN_PASSWORD=ci-only-geoip-password \
+            -e SESSION_SECURE=false \
+            -e ALERTS_ENABLED=false \
+            opnsentral-geoip-ci
+          trap 'docker rm -f opnsentral-geoip-http >/dev/null 2>&1 || true' EXIT
+          ready=0
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:18788/health.php >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker logs opnsentral-geoip-http
+            exit 1
+          fi
+          docker exec -i opnsentral-geoip-http php <<'PHP'
+          <?php
+          require '/var/www/html/inc/config.php';
+          $stmt=db()->prepare('INSERT INTO firewalls
+            (name,base_url,api_key_enc,api_secret_enc,verify_tls,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,?)');
+          $stmt->execute([
+            'CI OPNsense','http://host.docker.internal:18789',
+            encrypt_value('test-api-key'),encrypt_value('test-api-secret'),
+            0,gmdate('c'),gmdate('c')
+          ]);
+          PHP
+          python3 scripts/test-geoip-http.py
+
