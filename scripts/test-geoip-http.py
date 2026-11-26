@@ -43,6 +43,8 @@ class MockOPNsense(BaseHTTPRequestHandler):
             return self.reply({"rows":[
                 {"description":"Block GeoIP WAN","type":"block","enabled":"1",
                 "interface":"wan","direction":"in","source_net":"GeoIP_Block","destination_net":"any"},
+                {"description":"GeoIP exception","type":"pass","enabled":"1",
+                 "interface":"wan","direction":"in","source_net":"AllowList","destination_net":"any"},
                 {"description":"No alias ref","type":"pass","source_net":"anything","destination_net":"any"},
             ]})
         if path=="/api/core/backup/download/this":
