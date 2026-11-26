@@ -115,7 +115,7 @@ require __DIR__ . '/inc/header.php';
       <thead><tr><th>Source</th><th>Rule / description</th><th>Action</th><th>Enabled</th><th>Interface / direction</th><th>Source → Destination</th><th>Matched aliases</th></tr></thead>
       <tbody id="geoip-policy-rules"></tbody>
     </table></div>
-    <p class="muted">Rules shown are configured references found through the Automation API or legacy configuration.
+    <p class="muted">Rules shown are configured references from the filter API (including legacy rules), or from legacy XML if API results are unavailable.
        Rule ordering, applied ruleset, implicit rules, state table and actual packet filtering are <strong>not</strong> verified here.</p>
   </div>
 </section>
