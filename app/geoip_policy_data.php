@@ -65,7 +65,7 @@ function geoip_inspect_rules_api(array $firewall, array $names): array
         $dst=geoip_inspect_alias_ref($destination,$names);
         if ($src===[] && $dst===[]) continue;
         $items[]=[
-            'origin'=>'Automation API',
+            'origin'=>'Firewall filter API',
             'description'=>geoip_inspect_value($rule['description'] ?? $rule['descr'] ?? ''),
             'action'=>geoip_inspect_value($rule['type'] ?? ''),
             'enabled'=>geoip_inspect_value($rule['enabled'] ?? ''),
@@ -149,10 +149,24 @@ try {
     usort($aliases,static fn($a,$b)=>strnatcasecmp($a['name'],$b['name']));
     $rules=[]; $warnings=[];
     if ($names!==[]) {
-        try { $rules=array_merge($rules,geoip_inspect_rules_api($firewall,$names)); }
-        catch (Throwable $e) { $warnings[]='Automation rules unavailable: '.$e->getMessage(); }
-        try { $rules=array_merge($rules,geoip_inspect_rules_legacy($firewall,$names)); }
-        catch (Throwable $e) { $warnings[]='Legacy rules unavailable: '.$e->getMessage(); }
+        $apiWorked = false;
+        try {
+            $rules=geoip_inspect_rules_api($firewall,$names);
+            $apiWorked = true;
+        } catch (Throwable $e) {
+            $warnings[]='Firewall filter API unavailable: '.$e->getMessage();
+        }
+        // The OPNsense filter API already includes legacy/internal rules.
+        // Consult legacy XML only as a fallback, never count both sources as
+        // independent copies of the same rule.
+        if (!$apiWorked || $rules===[]) {
+            try {
+                $fallback=geoip_inspect_rules_legacy($firewall,$names);
+                if ($fallback!==[]) $rules=$fallback;
+            } catch (Throwable $e) {
+                $warnings[]='Legacy rule fallback unavailable: '.$e->getMessage();
+            }
+        }
     }
     echo json_encode(['ok'=>true,'firewall'=>$firewall['name'],'aliases'=>$aliases,
         'rules'=>$rules,'warnings'=>$warnings,
