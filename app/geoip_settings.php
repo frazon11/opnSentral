@@ -112,7 +112,7 @@ require __DIR__ . '/inc/header.php';
     </table></div>
     <h3>Firewall rules referencing these aliases</h3>
     <div class="table-scroll"><table class="management-table">
-      <thead><tr><th>Source</th><th>Rule / description</th><th>Action</th><th>Enabled</th><th>Interface / direction</th><th>Source → Destination</th><th>Matched aliases</th></tr></thead>
+      <thead><tr><th>Source</th><th>Rule / description</th><th>Action</th><th>Enabled</th><th>Interface / direction</th><th>Order / protocol</th><th>Source → Destination</th><th>Matched aliases</th></tr></thead>
       <tbody id="geoip-policy-rules"></tbody>
     </table></div>
     <p class="muted">Rules shown are configured references from the filter API (including legacy rules), or from legacy XML if API results are unavailable.
@@ -192,9 +192,11 @@ require __DIR__ . '/inc/header.php';
         '<tr><td>'+esc(r.origin)+'</td><td>'+esc(r.description)+'</td>'+
         '<td>'+esc(r.action)+'</td><td>'+esc(r.enabled)+'</td>'+
         '<td>'+esc(r.interface)+' / '+esc(r.direction)+'</td>'+
-        '<td>'+esc(r.source)+' → '+esc(r.destination)+'</td>'+
+        '<td>'+esc(r.sequence||'—')+' / '+esc(r.protocol||'—')+'</td>'+
+        '<td>'+esc(String(r.source_not)==='1'?'NOT ':'')+esc(r.source)+
+        ' → '+esc(String(r.destination_not)==='1'?'NOT ':'')+esc(r.destination)+'</td>'+
         '<td>'+esc([...(r.matched_source||[]),...(r.matched_destination||[])].join(', '))+'</td></tr>'
-      ).join(''):'<tr><td colspan="7">No matching rules found in the sources successfully queried.</td></tr>';
+      ).join(''):'<tr><td colspan="8">No matching rules found in the sources successfully queried.</td></tr>';
       policyResult.innerHTML=
         '<div class="alert">'+esc(data.firewall)+': '+aliases.length+' aliases; '+rules.length+' referencing rules.</div>'+
         (warnings.length?'<div class="alert error">'+esc(warnings.join(' | '))+
