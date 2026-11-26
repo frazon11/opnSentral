@@ -86,6 +86,40 @@ require __DIR__ . '/inc/header.php';
   </div>
 </section>
 
+
+<section class="card" id="geoip-policy">
+  <h2>GeoIP aliases &amp; firewall blocking rules</h2>
+  <p class="muted">Inspect the actual alias definitions and firewall rules for a selected OPNsense.
+    GeoIP country selections are not the same as an active blocking rule.</p>
+  <div class="actions" style="display:flex;align-items:end;gap:12px;flex-wrap:wrap">
+    <label for="geoip-policy-firewall">OPNsense
+      <select id="geoip-policy-firewall">
+        <?php foreach ($firewalls as $fw): ?>
+        <option value="<?= (int)$fw['id'] ?>"><?= h((string)$fw['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+    <button type="button" id="geoip-policy-refresh" class="button secondary">Refresh aliases &amp; rules</button>
+  </div>
+  <div id="geoip-policy-result" role="status" aria-live="polite">Select a firewall and refresh.</div>
+  <div id="geoip-policy-detail" hidden>
+    <h3>GeoIP / Block / Allow / Exception aliases</h3>
+    <p class="muted">Included: aliases of type GeoIP, plus aliases whose names mention GeoIP, block, allow, exception or whitelist/blacklist.
+       The name does not establish an allow/block policy; only referencing rules can do that.</p>
+    <div class="table-scroll"><table class="management-table">
+      <thead><tr><th>Alias</th><th>Type</th><th>Enabled</th><th>Configured content / countries</th><th>Edit</th></tr></thead>
+      <tbody id="geoip-policy-aliases"></tbody>
+    </table></div>
+    <h3>Firewall rules referencing these aliases</h3>
+    <div class="table-scroll"><table class="management-table">
+      <thead><tr><th>Source</th><th>Rule / description</th><th>Action</th><th>Enabled</th><th>Interface / direction</th><th>Source → Destination</th><th>Matched aliases</th></tr></thead>
+      <tbody id="geoip-policy-rules"></tbody>
+    </table></div>
+    <p class="muted">Rules shown are configured references found through the Automation API or legacy configuration.
+       Rule ordering, applied ruleset, implicit rules, state table and actual packet filtering are <strong>not</strong> verified here.</p>
+  </div>
+</section>
+
 <script>
 (function(){
   'use strict';
@@ -124,6 +158,56 @@ require __DIR__ . '/inc/header.php';
   }
   document.getElementById('geoip-save').addEventListener('click',()=>run('save'));
   document.getElementById('geoip-update').addEventListener('click',()=>run('update'));
+  const policySelect=document.getElementById('geoip-policy-firewall');
+  const policyRefresh=document.getElementById('geoip-policy-refresh');
+  const policyResult=document.getElementById('geoip-policy-result');
+  const policyDetail=document.getElementById('geoip-policy-detail');
+  const policyAliases=document.getElementById('geoip-policy-aliases');
+  const policyRules=document.getElementById('geoip-policy-rules');
+  async function refreshPolicy(){
+    const firewallId=Number(policySelect.value);
+    if(!firewallId)return;
+    policyRefresh.disabled=true;
+    policyDetail.hidden=true;
+    policyResult.innerHTML='<div class="alert">Loading GeoIP aliases and referencing firewall rules…</div>';
+    try{
+      const response=await fetch('/geoip_policy_data.php?'+new URLSearchParams({firewall_id:String(firewallId)}),{
+        credentials:'same-origin',cache:'no-store'
+      });
+      const data=await response.json();
+      if(!response.ok || data.ok!==true)throw new Error(data.error||'Unable to load GeoIP policy.');
+      const aliases=Array.isArray(data.aliases)?data.aliases:[];
+      const rules=Array.isArray(data.rules)?data.rules:[];
+      const warnings=Array.isArray(data.warnings)?data.warnings:[];
+      policyAliases.innerHTML=aliases.length?aliases.map(a=>{
+        const href='/alias_edit.php?'+new URLSearchParams({source_firewall_id:String(firewallId),name:String(a.name)});
+        const content=String(a.content||'');
+        return '<tr><td><strong>'+esc(a.name)+'</strong><br><small>'+esc(a.description)+'</small></td>'+
+          '<td>'+esc(a.type)+'</td><td>'+esc(a.enabled)+'</td>'+
+          '<td><details><summary>'+esc(content?content.split(/\r?\n/).filter(Boolean).length+' configured items':'No configured items')+
+          '</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(content||'(empty)')+'</pre></details></td>'+
+          '<td><a class="button secondary" href="'+esc(href)+'">Edit alias</a></td></tr>';
+      }).join(''):'<tr><td colspan="5">No matching GeoIP/policy aliases found.</td></tr>';
+      policyRules.innerHTML=rules.length?rules.map(r=>
+        '<tr><td>'+esc(r.origin)+'</td><td>'+esc(r.description)+'</td>'+
+        '<td>'+esc(r.action)+'</td><td>'+esc(r.enabled)+'</td>'+
+        '<td>'+esc(r.interface)+' / '+esc(r.direction)+'</td>'+
+        '<td>'+esc(r.source)+' → '+esc(r.destination)+'</td>'+
+        '<td>'+esc([...(r.matched_source||[]),...(r.matched_destination||[])].join(', '))+'</td></tr>'
+      ).join(''):'<tr><td colspan="7">No matching rules found in the sources successfully queried.</td></tr>';
+      policyResult.innerHTML=
+        '<div class="alert">'+esc(data.firewall)+': '+aliases.length+' aliases; '+rules.length+' referencing rules.</div>'+
+        (warnings.length?'<div class="alert error">'+esc(warnings.join(' | '))+
+          ' — Rule inventory is incomplete; absence of a rule cannot be concluded.</div>':'');
+      policyDetail.hidden=false;
+    }catch(e){
+      policyResult.innerHTML='<div class="alert error">'+esc(e.message)+'</div>';
+    }finally{policyRefresh.disabled=false;}
+  }
+  policyRefresh.addEventListener('click',refreshPolicy);
+  policySelect.addEventListener('change',refreshPolicy);
+  if(policySelect.options.length)refreshPolicy();
+
 })();
 </script>
 <?php require __DIR__ . '/inc/footer.php'; ?>
