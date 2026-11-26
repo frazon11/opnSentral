@@ -23,8 +23,22 @@ function geoip_inspect_rows(array $response): array
 
 function geoip_inspect_value(mixed $value): string
 {
+    if (is_bool($value)) return $value ? '1' : '0';
     if (is_array($value)) return central_alias_scalar($value);
     return is_scalar($value) ? trim((string)$value) : '';
+}
+
+function geoip_inspect_rule_enabled(array $rule): string
+{
+    if (array_key_exists('enabled',$rule)) {
+        $v=strtolower(geoip_inspect_value($rule['enabled']));
+        return in_array($v,['1','true','yes','on'],true) ? '1' : '0';
+    }
+    if (array_key_exists('disabled',$rule)) {
+        $v=strtolower(geoip_inspect_value($rule['disabled']));
+        return in_array($v,['1','true','yes','on'],true) ? '0' : '1';
+    }
+    return 'unknown';
 }
 
 function geoip_inspect_alias_ref(mixed $value, array $names): array
@@ -68,9 +82,13 @@ function geoip_inspect_rules_api(array $firewall, array $names): array
             'origin'=>'Firewall filter API',
             'description'=>geoip_inspect_value($rule['description'] ?? $rule['descr'] ?? ''),
             'action'=>geoip_inspect_value($rule['type'] ?? ''),
-            'enabled'=>geoip_inspect_value($rule['enabled'] ?? ''),
+            'enabled'=>geoip_inspect_rule_enabled($rule),
             'interface'=>geoip_inspect_value($rule['interface'] ?? ''),
             'direction'=>geoip_inspect_value($rule['direction'] ?? ''),
+            'source_not'=>geoip_inspect_value($rule['source_not'] ?? '0'),
+            'destination_not'=>geoip_inspect_value($rule['destination_not'] ?? '0'),
+            'protocol'=>geoip_inspect_value($rule['protocol'] ?? 'any'),
+            'sequence'=>geoip_inspect_value($rule['sequence'] ?? $rule['sort_order'] ?? ''),
             'source'=>geoip_inspect_value($source),
             'destination'=>geoip_inspect_value($destination),
             'matched_source'=>$src,
@@ -102,6 +120,10 @@ function geoip_inspect_rules_legacy(array $firewall, array $names): array
             'enabled'=>isset($rule->disabled) ? '0' : '1',
             'interface'=>trim((string)($rule->interface ?? '')),
             'direction'=>trim((string)($rule->direction ?? '')),
+            'source_not'=>isset($rule->source->not) ? '1' : '0',
+            'destination_not'=>isset($rule->destination->not) ? '1' : '0',
+            'protocol'=>trim((string)($rule->protocol ?? 'any')),
+            'sequence'=>trim((string)($rule->seq ?? '')),
             'source'=>$source,
             'destination'=>$destination,
             'matched_source'=>$src,
