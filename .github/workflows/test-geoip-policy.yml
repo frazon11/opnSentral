@@ -1,0 +1,40 @@
+name: Test GeoIP policy inventory
+
+on:
+  pull_request:
+    paths:
+      - 'app/geoip_settings.php'
+      - 'app/geoip_policy_data.php'
+      - 'scripts/check-geoip-policy.php'
+      - '.github/workflows/test-geoip-policy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  geoip-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build actual opnSentral container
+        run: docker build -t opnsentral-geoip-ci .
+      - name: PHP syntax and GeoIP rule-matching regression tests
+        run: |
+          docker run --rm --entrypoint sh opnsentral-geoip-ci -ec '
+            php -l /var/www/html/geoip_settings.php
+            php -l /var/www/html/geoip_policy_data.php
+          '
+          docker run --rm --entrypoint php -v "$PWD:/work:ro" \
+            opnsentral-geoip-ci /work/scripts/check-geoip-policy.php
+      - name: JavaScript syntax after stripping PHP-only JSON interpolation
+        run: |
+          node <<'JS'
+          const fs=require('fs');
+          const s=fs.readFileSync('app/geoip_settings.php','utf8');
+          const code=s.match(/<script>([\s\S]*?)<\/script>/);
+          if(!code)throw Error('GeoIP JavaScript missing');
+          const clean=code[1].replace(/const allIds=<\?=[\s\S]*?\?>;/,'const allIds=[];');
+          new Function(clean);
+          console.log('GeoIP JavaScript syntax passed');
+          JS
