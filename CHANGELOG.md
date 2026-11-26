@@ -6,6 +6,14 @@ Historical releases remain summarized here and in published GitHub releases. The
 
 ## Unreleased
 
+## 0.6.21.117
+
+- Extended Firewall → GeoIP Settings with per-firewall GeoIP and Block/Allow/Exception alias inventory, configured country/content values, and links into opnSentral's existing alias editor.
+- Added inspection of configured firewall rules referencing those aliases via the OPNsense filter API, with legacy XML fallback, rule action, enabled state, interface, direction, protocol, sequence and source/destination inversion.
+- Added visible warnings when rule inventories are unavailable or truncated. Configured rule references do not prove active packet blocking; firewall rule editing is not part of this release.
+- Tested with offline alias/rule fixtures and an authenticated disposable Docker instance against a mocked OPNsense API.
+
+
 ## 0.6.21.116
 
 - Added administrator TOTP multi-factor authentication with local QR enrollment and manual setup key.
