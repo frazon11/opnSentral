@@ -127,7 +127,9 @@ try {
         if ($name==='' || $uuid==='') continue;
         $type=strtolower(geoip_inspect_value($row['type'] ?? ''));
         $isGeoIP=$type==='geoip' || str_contains($type,'geoip');
-        $isPolicyName=(bool)preg_match('/(^|[_-])(geoip|block|allow|except|whitelist|blacklist)([_-]|$)/i',$name);
+        // Catch names such as GeoIP_Block, BlockedCountries, AllowList, GeoIPExceptions.
+        // This is a candidate selector, NOT a policy classification.
+        $isPolicyName=(bool)preg_match('/geo.?ip|block|allow|except|white.?list|black.?list/i',$name);
         if (!$isGeoIP && !$isPolicyName) continue;
         $details=opn_raw_request($firewall,'firewall/alias/get_item/'.rawurlencode($uuid),'GET',null,20);
         $model=$details['alias'] ?? null;
