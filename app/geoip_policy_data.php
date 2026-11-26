@@ -18,7 +18,13 @@ function geoip_inspect_rows(array $response): array
     if (!isset($response['rows']) || !is_array($response['rows'])) {
         throw new RuntimeException('Unexpected OPNsense search response (rows missing).');
     }
-    return $response['rows'];
+    $rows = $response['rows'];
+    if (isset($response['total']) && is_numeric($response['total']) &&
+        (int)$response['total'] > count($rows)) {
+        throw new RuntimeException('OPNsense returned a truncated search result ('
+            .count($rows).' of '.(int)$response['total'].' records).');
+    }
+    return $rows;
 }
 
 function geoip_inspect_value(mixed $value): string
