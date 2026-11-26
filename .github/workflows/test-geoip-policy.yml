@@ -1,0 +1,80 @@
+name: Test GeoIP policy inventory
+
+on:
+  pull_request:
+    paths:
+      - 'app/geoip_settings.php'
+      - 'app/geoip_policy_data.php'
+      - 'scripts/check-geoip-policy.php'
+      - '.github/workflows/test-geoip-policy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  geoip-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build actual opnSentral container
+        run: docker build -t opnsentral-geoip-ci .
+      - name: PHP syntax and GeoIP rule-matching regression tests
+        run: |
+          docker run --rm --entrypoint sh opnsentral-geoip-ci -ec '
+            php -l /var/www/html/geoip_settings.php
+            php -l /var/www/html/geoip_policy_data.php
+          '
+          docker run --rm --entrypoint php -v "$PWD:/work:ro" \
+            opnsentral-geoip-ci /work/scripts/check-geoip-policy.php
+      - name: JavaScript syntax after stripping PHP-only JSON interpolation
+        run: |
+          node <<'JS'
+          const fs=require('fs');
+          const s=fs.readFileSync('app/geoip_settings.php','utf8');
+          const code=s.match(/<script>([\s\S]*?)<\/script>/);
+          if(!code)throw Error('GeoIP JavaScript missing');
+          const clean=code[1].replace(/const allIds=<\?=[\s\S]*?\?>;/,'const allIds=[];');
+          new Function(clean);
+          console.log('GeoIP JavaScript syntax passed');
+          JS
+      - name: End-to-end GeoIP inspection with mocked OPNsense
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name opnsentral-geoip-http \
+            --add-host=host.docker.internal:host-gateway \
+            -p 127.0.0.1:18788:80 \
+            -e APP_KEY="$(printf 'ab%.0s' {1..32})" \
+            -e ADMIN_USER=admin \
+            -e ADMIN_PASSWORD=ci-only-geoip-password \
+            -e SESSION_SECURE=false \
+            -e ALERTS_ENABLED=false \
+            opnsentral-geoip-ci
+          trap 'docker rm -f opnsentral-geoip-http >/dev/null 2>&1 || true' EXIT
+          ready=0
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:18788/health.php >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker logs opnsentral-geoip-http
+            exit 1
+          fi
+          docker exec -i opnsentral-geoip-http php <<'PHP'
+          <?php
+          require '/var/www/html/inc/config.php';
+          $stmt=db()->prepare('INSERT INTO firewalls
+            (name,base_url,api_key_enc,api_secret_enc,verify_tls,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,?)');
+          $stmt->execute([
+            'CI OPNsense','http://host.docker.internal:18789',
+            encrypt_value('test-api-key'),encrypt_value('test-api-secret'),
+            0,gmdate('c'),gmdate('c')
+          ]);
+          PHP
+          python3 scripts/test-geoip-http.py
+
