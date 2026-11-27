@@ -147,34 +147,39 @@ try {
     $response=opn_raw_request($firewall,'firewall/alias/search_item','POST',[
         'current'=>1,'rowCount'=>-1,'searchPhrase'=>'','sort'=>new stdClass()
     ],30);
-    $aliases=[]; $names=[];
+    // Exact, case-insensitive identifiers. Do not include other GeoIP aliases.
+    $wanted=['geoip_allow'=>'GeoIP_allow',
+             'geoip_block'=>'GeoIP_block',
+             'geoip_tempallow'=>'GeoIP_TempAllow'];
+    $aliases=[]; $names=$wanted;
+    $available=[];
     foreach (geoip_inspect_rows($response) as $row) {
         if (!is_array($row)) continue;
         $name=trim((string)($row['name'] ?? ''));
         $uuid=trim((string)($row['uuid'] ?? ''));
-        if ($name==='' || $uuid==='') continue;
-        $type=strtolower(geoip_inspect_value($row['type'] ?? ''));
-        $isGeoIP=$type==='geoip' || str_contains($type,'geoip');
-        // Catch names such as GeoIP_Block, BlockedCountries, AllowList, GeoIPExceptions.
-        // This is a candidate selector, NOT a policy classification.
-        $isPolicyName=(bool)preg_match('/geo.?ip|block|allow|except|white.?list|black.?list/i',$name);
-        if (!$isGeoIP && !$isPolicyName) continue;
+        $key=strtolower($name);
+        if (!isset($wanted[$key])) continue;
+        if ($uuid==='') throw new RuntimeException('No UUID for alias '.$name);
+        if (isset($available[$key])) throw new RuntimeException('Duplicate alias identifier '.$name);
         $details=opn_raw_request($firewall,'firewall/alias/get_item/'.rawurlencode($uuid),'GET',null,20);
         $model=$details['alias'] ?? null;
         if (!is_array($model)) throw new RuntimeException('Invalid alias details for '.$name);
         $normalized=central_alias_normalize_remote($model);
-        $actualType=strtolower(geoip_inspect_value($normalized['type'] ?? $type));
-        $entry=[
-            'name'=>$name,'uuid'=>$uuid,'type'=>$actualType,
+        $available[$key]=[
+            'name'=>$name,'uuid'=>$uuid,
+            'type'=>strtolower(geoip_inspect_value($normalized['type'] ?? $row['type'] ?? '')),
             'enabled'=>geoip_inspect_value($normalized['enabled'] ?? $row['enabled'] ?? ''),
             'description'=>geoip_inspect_value($normalized['description'] ?? ''),
             'content'=>(string)($normalized['content'] ?? ''),
-            'geoip'=>$actualType==='geoip' || str_contains($actualType,'geoip')
+            'exists'=>true
         ];
-        $aliases[]=$entry;
-        $names[strtolower($name)]=$name;
     }
-    usort($aliases,static fn($a,$b)=>strnatcasecmp($a['name'],$b['name']));
+    foreach($wanted as $key=>$name) {
+        $aliases[]=$available[$key] ?? [
+            'name'=>$name,'uuid'=>'','type'=>'','enabled'=>'',
+            'description'=>'','content'=>'','exists'=>false
+        ];
+    }
     $rules=[]; $warnings=[];
     if ($names!==[]) {
         $apiWorked = false;
