@@ -88,8 +88,8 @@ require __DIR__ . '/inc/header.php';
 
 
 <section class="card" id="geoip-policy">
-  <h2>GeoIP aliases &amp; firewall blocking rules</h2>
-  <p class="muted">Inspect the actual alias definitions and firewall rules for a selected OPNsense.
+  <h2>GeoIP_allow / GeoIP_block / GeoIP_TempAllow and related rules</h2>
+  <p class="muted">Inspect only these three alias definitions and firewall rules referencing them on a selected OPNsense.
     GeoIP country selections are not the same as an active blocking rule.</p>
   <div class="actions" style="display:flex;align-items:end;gap:12px;flex-wrap:wrap">
     <label for="geoip-policy-firewall">OPNsense
@@ -103,9 +103,8 @@ require __DIR__ . '/inc/header.php';
   </div>
   <div id="geoip-policy-result" role="status" aria-live="polite">Select a firewall and refresh.</div>
   <div id="geoip-policy-detail" hidden>
-    <h3>GeoIP / Block / Allow / Exception aliases</h3>
-    <p class="muted">Included: aliases of type GeoIP, plus aliases whose names mention GeoIP, block, allow, exception or whitelist/blacklist.
-       The name does not establish an allow/block policy; only referencing rules can do that.</p>
+    <h3>Selected GeoIP aliases</h3>
+    <p class="muted">Only GeoIP_allow, GeoIP_block and GeoIP_TempAllow are shown. Missing aliases are reported explicitly.</p>
     <div class="table-scroll"><table class="management-table">
       <thead><tr><th>Alias</th><th>Type</th><th>Enabled</th><th>Configured content / countries</th><th>Edit</th></tr></thead>
       <tbody id="geoip-policy-aliases"></tbody>
@@ -182,6 +181,7 @@ require __DIR__ . '/inc/header.php';
       policyAliases.innerHTML=aliases.length?aliases.map(a=>{
         const href='/alias_edit.php?'+new URLSearchParams({source_firewall_id:String(firewallId),name:String(a.name)});
         const content=String(a.content||'');
+        if(a.exists===false)return '<tr><td><strong>'+esc(a.name)+'</strong></td><td colspan="3">Missing on selected firewall</td><td>—</td></tr>';
         return '<tr><td><strong>'+esc(a.name)+'</strong><br><small>'+esc(a.description)+'</small></td>'+
           '<td>'+esc(a.type)+'</td><td>'+esc(a.enabled)+'</td>'+
           '<td><details><summary>'+esc(content?content.split(/\r?\n/).filter(Boolean).length+' configured items':'No configured items')+
@@ -198,7 +198,7 @@ require __DIR__ . '/inc/header.php';
         '<td>'+esc([...(r.matched_source||[]),...(r.matched_destination||[])].join(', '))+'</td></tr>'
       ).join(''):'<tr><td colspan="8">No matching rules found in the sources successfully queried.</td></tr>';
       policyResult.innerHTML=
-        '<div class="alert">'+esc(data.firewall)+': '+aliases.length+' aliases; '+rules.length+' referencing rules.</div>'+
+        '<div class="alert">'+esc(data.firewall)+': '+aliases.filter(a=>a.exists!==false).length+' of 3 aliases found; '+rules.length+' referencing rules.</div>'+
         (warnings.length?'<div class="alert error">'+esc(warnings.join(' | '))+
           ' — Rule inventory is incomplete; absence of a rule cannot be concluded.</div>':'');
       policyDetail.hidden=false;
