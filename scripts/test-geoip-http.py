@@ -28,28 +28,28 @@ class MockOPNsense(BaseHTTPRequestHandler):
         path=self.path.split("?")[0]
         if path=="/api/firewall/alias/search_item":
             return self.reply({"rows":[
-                {"name":"GeoIP_Block","uuid":"a0001","type":"GeoIP","enabled":"1"},
-                {"name":"AllowList","uuid":"a0002","type":"Host(s)","enabled":"1"},
-                {"name":"Unrelated","uuid":"a0003","type":"Host(s)","enabled":"1"},
+                {"name":"GeoIP_block","uuid":"a0001","type":"GeoIP","enabled":"1"},
+                {"name":"GeoIP_allow","uuid":"a0002","type":"Host(s)","enabled":"1"},
+                {"name":"Unrelated","uuid":"a0003","type":"Host(s)","enabled":"1"},\n                {"name":"GeoIP_Extra","uuid":"a0004","type":"GeoIP","enabled":"1"},
             ]})
         if path=="/api/firewall/alias/get_item/a0001":
-            return self.reply({"alias":{"name":"GeoIP_Block","type":{"geoip":"GeoIP"},
+            return self.reply({"alias":{"name":"GeoIP_block","type":{"geoip":"GeoIP"},
                 "enabled":"1","description":"Geographic block","content":{"BE":{"value":"BE","selected":1},
                 "FR":{"value":"FR","selected":1},"DE":{"value":"DE","selected":0}}}})
         if path=="/api/firewall/alias/get_item/a0002":
-            return self.reply({"alias":{"name":"AllowList","type":"host","enabled":"1",
+            return self.reply({"alias":{"name":"GeoIP_allow","type":"host","enabled":"1",
                 "description":"Exception addresses","content":"192.0.2.10"}})
         if path=="/api/firewall/filter/search_rule":
             return self.reply({"rows":[
                 {"description":"Block GeoIP WAN","type":"block","enabled":"1",
-                "interface":"wan","direction":"in","source_net":"GeoIP_Block","destination_net":"any"},
+                "interface":"wan","direction":"in","source_net":"GeoIP_block","destination_net":"any"},
                 {"description":"GeoIP exception","type":"pass","enabled":"1",
-                 "interface":"wan","direction":"in","source_net":"AllowList","destination_net":"any"},
+                 "interface":"wan","direction":"in","source_net":"GeoIP_allow","destination_net":"any"},
                 {"description":"No alias ref","type":"pass","source_net":"anything","destination_net":"any"},
             ]})
         if path=="/api/core/backup/download/this":
             return self.reply("<opnsense><filter><rule><type>pass</type><interface>wan</interface>"
-                "<descr>GeoIP exception</descr><source><address>AllowList</address></source>"
+                "<descr>GeoIP exception</descr><source><address>GeoIP_allow</address></source>"
                 "<destination><any/></destination></rule></filter></opnsense>", "text/xml")
         return self.reply({"error":"Unexpected mock path: "+path})
 
@@ -73,15 +73,15 @@ assert b'geoip-policy-rules' in page, "Rules table absent"
 data,_=get("/geoip_policy_data.php?firewall_id=1")
 result=json.loads(data)
 assert result["ok"],result
-assert len(result["aliases"])==2,result["aliases"]
+assert len(result["aliases"])==3,result["aliases"]
 aliases={item["name"]:item for item in result["aliases"]}
-assert "BE" in aliases["GeoIP_Block"]["content"]
-assert "FR" in aliases["GeoIP_Block"]["content"]
-assert "DE" not in aliases["GeoIP_Block"]["content"]
-assert aliases["AllowList"]["content"]=="192.0.2.10"
+assert "BE" in aliases["GeoIP_block"]["content"]
+assert "FR" in aliases["GeoIP_block"]["content"]
+assert "DE" not in aliases["GeoIP_block"]["content"]
+assert aliases["GeoIP_allow"]["content"]=="192.0.2.10"\nassert aliases["GeoIP_TempAllow"]["exists"] is False\nassert set(aliases)=={"GeoIP_allow","GeoIP_block","GeoIP_TempAllow"}
 assert len(result["rules"])==2,result["rules"]
-assert any(r["action"]=="block" and "GeoIP_Block" in r["matched_source"] for r in result["rules"])
-assert any(r["action"]=="pass" and "AllowList" in r["matched_source"] for r in result["rules"])
+assert any(r["action"]=="block" and "GeoIP_block" in r["matched_source"] for r in result["rules"])
+assert any(r["action"]=="pass" and "GeoIP_allow" in r["matched_source"] for r in result["rules"])
 assert not result["warnings"],result["warnings"]
 print("PASS: authenticated GeoIP page, country selections, AllowList, API block and legacy allow rule")
 server.shutdown()
