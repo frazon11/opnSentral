@@ -78,10 +78,12 @@ aliases={item["name"]:item for item in result["aliases"]}
 assert "BE" in aliases["GeoIP_block"]["content"]
 assert "FR" in aliases["GeoIP_block"]["content"]
 assert "DE" not in aliases["GeoIP_block"]["content"]
-assert aliases["GeoIP_allow"]["content"]=="192.0.2.10"\nassert aliases["GeoIP_TempAllow"]["exists"] is False\nassert set(aliases)=={"GeoIP_allow","GeoIP_block","GeoIP_TempAllow"}
+assert aliases["GeoIP_allow"]["content"]=="192.0.2.10"
+assert aliases["GeoIP_TempAllow"]["exists"] is False
+assert set(aliases)=={"GeoIP_allow","GeoIP_block","GeoIP_TempAllow"}
 assert len(result["rules"])==2,result["rules"]
 assert any(r["action"]=="block" and "GeoIP_block" in r["matched_source"] for r in result["rules"])
 assert any(r["action"]=="pass" and "GeoIP_allow" in r["matched_source"] for r in result["rules"])
 assert not result["warnings"],result["warnings"]
-print("PASS: authenticated GeoIP page, country selections, AllowList, API block and legacy allow rule")
+print("PASS: exact GeoIP aliases including missing TempAllow, selected countries and related rules")
 server.shutdown()
