@@ -6,6 +6,13 @@ Historical releases remain summarized here and in published GitHub releases. The
 
 ## Unreleased
 
+## 0.6.21.118
+
+- Restrict Firewall → GeoIP Settings policy inventory to exactly `GeoIP_allow`, `GeoIP_block`, and `GeoIP_TempAllow`, with clear missing-alias indications.
+- Display only firewall rules that reference these three aliases, even if an alias definition is missing; retain existing per-firewall alias editor links.
+- Verify exact alias selection and related-rule visibility through authenticated disposable-container CI tests.
+
+
 ## 0.6.21.117
 
 - Extended Firewall → GeoIP Settings with per-firewall GeoIP and Block/Allow/Exception alias inventory, configured country/content values, and links into opnSentral's existing alias editor.
