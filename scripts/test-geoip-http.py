@@ -30,7 +30,8 @@ class MockOPNsense(BaseHTTPRequestHandler):
             return self.reply({"rows":[
                 {"name":"GeoIP_block","uuid":"a0001","type":"GeoIP","enabled":"1"},
                 {"name":"GeoIP_allow","uuid":"a0002","type":"Host(s)","enabled":"1"},
-                {"name":"Unrelated","uuid":"a0003","type":"Host(s)","enabled":"1"},\n                {"name":"GeoIP_Extra","uuid":"a0004","type":"GeoIP","enabled":"1"},
+                {"name":"Unrelated","uuid":"a0003","type":"Host(s)","enabled":"1"},
+                {"name":"GeoIP_Extra","uuid":"a0004","type":"GeoIP","enabled":"1"},
             ]})
         if path=="/api/firewall/alias/get_item/a0001":
             return self.reply({"alias":{"name":"GeoIP_block","type":{"geoip":"GeoIP"},
